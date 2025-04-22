@@ -1,7 +1,8 @@
-[package]
-name = "kigiri"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [ "codegen","parser"]
+resolver = "3"
 
-[dependencies]
+[workspace.dependencies]
 inkwell = { version = "0.5.0", features = ["llvm18-0"]}
+pest = "2.8.0"
+pest_derive = "2.8.0"

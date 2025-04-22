@@ -1,0 +1,38 @@
+program = { SOI ~ functionDeclaration+ ~ EOI }
+
+functionDeclaration = { "fn" ~ identifier ~ "(" ~ functionDeclarationParameters ~ ")" ~ block }
+functionDeclarationParameters = { (identifier ~ ("," ~ identifier)*)? }
+
+block = { "{" ~ (statement | block)* ~ "}" }
+
+statement = _{ (letStatement | assignmentStatement | returnStatement) ~ ";" }
+
+letStatement = { "let" ~ identifier ~ "=" ~ expression }
+
+assignmentStatement = { identifier ~ "=" ~ expression }
+
+returnStatement = { "return" ~ expression }
+
+expression = { prefix? ~ factor ~ (infix ~ prefix? ~ factor )* }
+      infix    =  _{ add | sub | mul | div }
+        add    =   { "+" } // Addition
+        sub    =   { "-" } // Subtraction
+        mul    =   { "*" } // Multiplication
+        div    =   { "/" } // Division
+      prefix   =  _{ neg }
+        neg    =   { "-" } // Negation
+      factor   =  _{ number | "(" ~ expression ~ ")" | functionCall | identifier }
+  functionCall =   { identifier ~ "(" ~ functionCallArguments ~ ")" }
+
+functionCallArguments = { (expression ~ ("," ~ expression)*)? }
+
+number = @{"-"? ~ (hexNumber | integerNumber)}
+
+integerNumber = @{
+    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+}
+hexNumber = @{ "0" ~ "x" ~ ASCII_HEX_DIGIT+ }
+
+identifier = @{ XID_START ~ XID_CONTINUE* }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
