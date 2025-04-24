@@ -1,6 +1,7 @@
 use crate::memory::{StringId, StringInterner};
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
-
+use std::rc::Rc;
 //
 //
 // #[derive(Debug, PartialEq)]
@@ -35,9 +36,9 @@ use std::fmt::{Display, Formatter};
 // }
 
 #[derive(Debug, PartialEq)]
-pub enum Expression<'a, 'i> {
+pub enum Expression<'a> {
     Identifier {
-        string_interner: &'i StringInterner,
+        string_interner: Rc<RefCell<StringInterner>>,
         symbol_id: StringId,
     },
     LiteralInteger {
@@ -51,42 +52,43 @@ pub enum Expression<'a, 'i> {
     },
 
     Negate {
-        operand: &'a Expression<'a, 'i>,
+        operand: &'a Expression<'a>,
     },
     Not {
-        operand: &'a Expression<'a, 'i>,
+        operand: &'a Expression<'a>,
     },
 
     Add {
-        left: &'a Expression<'a, 'i>,
-        right: &'a Expression<'a, 'i>,
+        left: &'a Expression<'a>,
+        right: &'a Expression<'a>,
     },
     Sub {
-        left: &'a Expression<'a, 'i>,
-        right: &'a Expression<'a, 'i>,
+        left: &'a Expression<'a>,
+        right: &'a Expression<'a>,
     },
     Mul {
-        left: &'a Expression<'a, 'i>,
-        right: &'a Expression<'a, 'i>,
+        left: &'a Expression<'a>,
+        right: &'a Expression<'a>,
     },
     Div {
-        left: &'a Expression<'a, 'i>,
-        right: &'a Expression<'a, 'i>,
+        left: &'a Expression<'a>,
+        right: &'a Expression<'a>,
     },
     Rem {
-        left: &'a Expression<'a, 'i>,
-        right: &'a Expression<'a, 'i>,
+        left: &'a Expression<'a>,
+        right: &'a Expression<'a>,
     },
     // FunctionCall(FunctionCall<'input>),
 }
 
-impl Display for Expression<'_, '_> {
+impl Display for Expression<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Identifier {
                 string_interner,
                 symbol_id,
             } => {
+                let string_interner = string_interner.borrow();
                 let symbol = string_interner
                     .resolve(*symbol_id)
                     .expect("invalid symbol!");
@@ -94,7 +96,7 @@ impl Display for Expression<'_, '_> {
             }
             Expression::LiteralInteger { value } => write!(f, "{}i", value),
             Expression::LiteralDouble { value } => write!(f, "{}d", value),
-            Expression::LiteralBoolean { value } => write!(f, "{}", value.to_string()),
+            Expression::LiteralBoolean { value } => write!(f, "{}", value),
             Expression::Negate { operand } => write!(f, "(- {})", operand),
             Expression::Not { operand } => write!(f, "(! {})", operand),
             Expression::Add { left, right } => write!(f, "(+ {} {})", left, right),
@@ -108,17 +110,48 @@ impl Display for Expression<'_, '_> {
 
 pub struct Ast {
     arena: bumpalo::Bump,
+    interner: Rc<RefCell<StringInterner>>,
 }
 
 impl Ast {
-    pub fn new() -> Self {
+    pub fn new(interner: Rc<RefCell<StringInterner>>) -> Self {
         Self {
             arena: bumpalo::Bump::new(),
+            interner,
         }
     }
 
-    pub fn alloc<T>(&self, value: T) -> &T {
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        let string_interner = Rc::new(RefCell::new(StringInterner::default()));
+        Self::new(string_interner)
+    }
+
+    fn alloc<T>(&self, value: T) -> &T {
         self.arena.alloc(value)
+    }
+
+    pub fn identifier(&self, symbol: &str) -> &Expression {
+        self.alloc(Expression::Identifier {
+            string_interner: self.interner.clone(),
+            symbol_id: self.interner.borrow_mut().get_or_intern(symbol),
+        })
+    }
+
+    pub fn literal_integer(&self, value: i64) -> &Expression {
+        self.alloc(Expression::LiteralInteger { value })
+    }
+
+    pub fn add<'s, 'l, 'r>(
+        &'s self,
+        left: &'l Expression,
+        right: &'r Expression,
+    ) -> &'s Expression<'s>
+    where
+        'l: 's,
+        'r: 's,
+    {
+        self.alloc(Expression::Add { left, right })
     }
 }
 
@@ -128,27 +161,18 @@ mod tests {
 
     #[test]
     fn can_allocate_via_ast() {
-        let ast = Ast::new();
-        let id = ast.alloc(Expression::LiteralInteger { value: 1 });
+        let ast = Ast::for_tests();
+        let id = ast.literal_integer(1);
         assert_eq!(id, &Expression::LiteralInteger { value: 1 });
     }
 
     #[test]
     fn format_expressions() {
-        let mut string_interner = StringInterner::default();
-        let mut ast = Ast::new();
+        let ast = Ast::for_tests();
 
-        let x_symbol = string_interner.get_or_intern("x");
-
-        let x = ast.alloc(Expression::Identifier {
-            string_interner: &string_interner,
-            symbol_id: x_symbol,
-        });
-        let one = ast.alloc(Expression::LiteralInteger { value: 1 });
-        let sum = ast.alloc(Expression::Add {
-            left: x,
-            right: one,
-        });
+        let x = ast.identifier("x");
+        let one = ast.literal_integer(1);
+        let sum = ast.add(x, one);
         assert_eq!(sum.to_string(), "(+ x 1i)");
     }
 }
