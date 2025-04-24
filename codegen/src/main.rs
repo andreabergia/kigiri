@@ -11,11 +11,13 @@ fn main() {
     let bb = context.append_basic_block(fun, "entry");
 
     builder.position_at_end(bb);
-    let ival = builder.build_int_add(
-        context.i64_type().const_int(1, false),
-        context.i64_type().const_int(2, false),
-        "add0"
-    ).unwrap();
+    let ival = builder
+        .build_int_add(
+            context.i64_type().const_int(1, false),
+            context.i64_type().const_int(2, false),
+            "add0",
+        )
+        .unwrap();
     builder.build_return(Some(&ival)).unwrap();
 
     if !fun.verify(true) {
