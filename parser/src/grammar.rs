@@ -11,8 +11,23 @@ pub struct Grammar;
 static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     PrattParser::new()
         .op(Op::infix(Rule::add, Assoc::Left) | Op::infix(Rule::sub, Assoc::Left))
-        .op(Op::infix(Rule::mul, Assoc::Left) | Op::infix(Rule::div, Assoc::Left))
-        .op(Op::prefix(Rule::neg))
+        .op(Op::infix(Rule::mul, Assoc::Left)
+            | Op::infix(Rule::div, Assoc::Left)
+            | Op::infix(Rule::rem, Assoc::Left))
+        .op(Op::infix(Rule::exp, Assoc::Right))
+        .op(Op::prefix(Rule::neg) | Op::prefix(Rule::not) | Op::prefix(Rule::bitwise_not))
+        .op(Op::infix(Rule::bitwise_shl, Assoc::Left) | Op::infix(Rule::bitwise_shr, Assoc::Left))
+        .op(Op::infix(Rule::bitwise_and, Assoc::Left)
+            | Op::infix(Rule::bitwise_or, Assoc::Left)
+            | Op::infix(Rule::bitwise_xor, Assoc::Left))
+        .op(Op::infix(Rule::eq, Assoc::Left)
+            | Op::infix(Rule::neq, Assoc::Left)
+            | Op::infix(Rule::lt, Assoc::Left)
+            | Op::infix(Rule::lte, Assoc::Left)
+            | Op::infix(Rule::gt, Assoc::Left)
+            | Op::infix(Rule::gte, Assoc::Left))
+        .op(Op::infix(Rule::and, Assoc::Left))
+        .op(Op::infix(Rule::or, Assoc::Left))
 });
 
 #[allow(unused)]
@@ -63,9 +78,31 @@ mod tests {
         assert_can_be_parsed_as("x", Rule::expression);
         assert_can_be_parsed_as("42", Rule::expression);
         assert_can_be_parsed_as("-3", Rule::expression);
-        assert_can_be_parsed_as("3 * 4 + g", Rule::expression);
-        assert_can_be_parsed_as("-(1 + x) * 4 - f()", Rule::expression);
         assert_can_be_parsed_as("f()", Rule::expression);
+        assert_can_be_parsed_as("1 + 2", Rule::expression);
+        assert_can_be_parsed_as("1 * 2", Rule::expression);
+        assert_can_be_parsed_as("1 - 2", Rule::expression);
+        assert_can_be_parsed_as("1 / 2", Rule::expression);
+        assert_can_be_parsed_as("1 % 2", Rule::expression);
+        assert_can_be_parsed_as("1 ** 2", Rule::expression);
+        assert_can_be_parsed_as("1 == 2", Rule::expression);
+        assert_can_be_parsed_as("1 != 2", Rule::expression);
+        assert_can_be_parsed_as("1 < 2", Rule::expression);
+        assert_can_be_parsed_as("1 <= 2", Rule::expression);
+        assert_can_be_parsed_as("1 > 2", Rule::expression);
+        assert_can_be_parsed_as("1 >= 2", Rule::expression);
+        assert_can_be_parsed_as("1 && 2", Rule::expression);
+        assert_can_be_parsed_as("1 || 2", Rule::expression);
+        assert_can_be_parsed_as("1 & 2", Rule::expression);
+        assert_can_be_parsed_as("1 | 2", Rule::expression);
+        assert_can_be_parsed_as("1 ^ 2", Rule::expression);
+        assert_can_be_parsed_as("1 << 2", Rule::expression);
+        assert_can_be_parsed_as("1 >> 2", Rule::expression);
+        assert_can_be_parsed_as("! 1", Rule::expression);
+        assert_can_be_parsed_as("- 1", Rule::expression);
+        assert_can_be_parsed_as("~ 1", Rule::expression);
+        assert_can_be_parsed_as("-(1 + x) * 4 - f()", Rule::expression);
+        assert_can_be_parsed_as("3 * 2 > 2 ^ 5 & ~42 && (1 << x)", Rule::expression);
     }
 
     #[test]

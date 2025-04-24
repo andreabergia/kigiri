@@ -14,16 +14,34 @@ assignmentStatement = { identifier ~ "=" ~ expression }
 returnStatement = { "return" ~ expression }
 
 expression = { prefix? ~ factor ~ (infix ~ prefix? ~ factor )* }
-      infix    =  _{ add | sub | mul | div }
-        add    =   { "+" } // Addition
-        sub    =   { "-" } // Subtraction
-        mul    =   { "*" } // Multiplication
-        div    =   { "/" } // Division
-      prefix   =  _{ neg }
-        neg    =   { "-" } // Negation
-      factor   =  _{ number | "(" ~ expression ~ ")" | functionCall | identifier }
-  functionCall =   { identifier ~ "(" ~ functionCallArguments ~ ")" }
-
+// Note: the order here is important, since some rules are a prefix of others. In particular, exp needs to come
+// before mul, bitwise shifts before comparison, lte before lt, and so on.
+infix =  _{ exp | bitwise_shl | bitwise_shr | add | sub | mul | div | rem | eq | neq | lte | lt | gte | gt | and | or | bitwise_and | bitwise_or | bitwise_xor }
+    add         =  { "+" }
+    sub         =  { "-" }
+    mul         =  { "*" }
+    div         =  { "/" }
+    rem         =  { "%" }
+    exp         =  { "**" }
+    eq          =  { "==" }
+    neq         =  { "!=" }
+    lt          =  { "<" }
+    lte         =  { "<=" }
+    gt          =  { ">" }
+    gte         =  { ">=" }
+    and         =  { "&&" }
+    or          =  { "||" }
+    bitwise_and =  { "&" }
+    bitwise_or  =  { "|" }
+    bitwise_xor =  { "^" }
+    bitwise_shl =  { "<<" }
+    bitwise_shr =  { ">>" }
+prefix = _{ neg | not | bitwise_not }
+    neg         =  { "-" }
+    not         =  { "!" }
+    bitwise_not =  { "~" }
+factor   =  _{ number | "(" ~ expression ~ ")" | functionCall | identifier }
+functionCall =   { identifier ~ "(" ~ functionCallArguments ~ ")" }
 functionCallArguments = { (expression ~ ("," ~ expression)*)? }
 
 number = @{"-"? ~ (hexNumber | integerNumber)}

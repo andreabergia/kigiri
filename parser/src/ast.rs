@@ -39,6 +39,7 @@ use std::rc::Rc;
 pub enum UnaryOperator {
     Neg,
     Not,
+    BitwiseNot,
 }
 
 impl Display for UnaryOperator {
@@ -49,6 +50,7 @@ impl Display for UnaryOperator {
             match self {
                 UnaryOperator::Neg => "-",
                 UnaryOperator::Not => "!",
+                UnaryOperator::BitwiseNot => "~",
             }
         )
     }
@@ -61,6 +63,20 @@ pub enum BinaryOperator {
     Mul,
     Div,
     Rem,
+    Exp,
+    Eq,
+    Neq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    And,
+    Or,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseShl,
+    BitwiseShr,
 }
 
 impl Display for BinaryOperator {
@@ -74,6 +90,20 @@ impl Display for BinaryOperator {
                 BinaryOperator::Mul => "*",
                 BinaryOperator::Div => "/",
                 BinaryOperator::Rem => "%",
+                BinaryOperator::Exp => "**",
+                BinaryOperator::Eq => "==",
+                BinaryOperator::Neq => "!=",
+                BinaryOperator::Lt => "<",
+                BinaryOperator::Lte => "<=",
+                BinaryOperator::Gt => ">",
+                BinaryOperator::Gte => ">=",
+                BinaryOperator::And => "&&",
+                BinaryOperator::Or => "||",
+                BinaryOperator::BitwiseAnd => "&",
+                BinaryOperator::BitwiseOr => "|",
+                BinaryOperator::BitwiseXor => "^",
+                BinaryOperator::BitwiseShl => "<<",
+                BinaryOperator::BitwiseShr => ">>",
             }
         )
     }
