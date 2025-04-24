@@ -1,10 +1,32 @@
 use crate::ast::{Ast, BinaryOperator, Expression, UnaryOperator};
 use crate::grammar::Rule;
 use pest::iterators::Pair;
+use pest::pratt_parser::{Assoc, Op, PrattParser};
+use std::sync::LazyLock;
+
+static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    PrattParser::new()
+        .op(Op::infix(Rule::or, Assoc::Left))
+        .op(Op::infix(Rule::and, Assoc::Left))
+        .op(Op::infix(Rule::bitwise_and, Assoc::Left)
+            | Op::infix(Rule::bitwise_or, Assoc::Left)
+            | Op::infix(Rule::bitwise_xor, Assoc::Left))
+        .op(Op::infix(Rule::eq, Assoc::Left) | Op::infix(Rule::neq, Assoc::Left))
+        .op(Op::infix(Rule::lt, Assoc::Left)
+            | Op::infix(Rule::lte, Assoc::Left)
+            | Op::infix(Rule::gt, Assoc::Left)
+            | Op::infix(Rule::gte, Assoc::Left))
+        .op(Op::infix(Rule::bitwise_shl, Assoc::Left) | Op::infix(Rule::bitwise_shr, Assoc::Left))
+        .op(Op::infix(Rule::add, Assoc::Left) | Op::infix(Rule::sub, Assoc::Left))
+        .op(Op::infix(Rule::mul, Assoc::Left)
+            | Op::infix(Rule::div, Assoc::Left)
+            | Op::infix(Rule::rem, Assoc::Left))
+        .op(Op::infix(Rule::exp, Assoc::Right))
+        .op(Op::prefix(Rule::neg) | Op::prefix(Rule::not) | Op::prefix(Rule::bitwise_not))
+});
 
 fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Expression<'ast> {
-    let pratt = crate::grammar::pratt_parser();
-    pratt
+    PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::number => ast.literal_integer(primary.as_str().parse().unwrap()),
             Rule::identifier => ast.identifier(primary.as_str()),
@@ -14,6 +36,8 @@ fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Express
         })
         .map_prefix(|prefix, operand| match prefix.as_rule() {
             Rule::neg => ast.unary(UnaryOperator::Neg, operand),
+            Rule::not => ast.unary(UnaryOperator::Not, operand),
+            Rule::bitwise_not => ast.unary(UnaryOperator::BitwiseNot, operand),
             _ => unreachable!(),
         })
         .map_infix(|left, op, right| match op.as_rule() {
@@ -21,6 +45,21 @@ fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Express
             Rule::mul => ast.binary(BinaryOperator::Mul, left, right),
             Rule::sub => ast.binary(BinaryOperator::Sub, left, right),
             Rule::div => ast.binary(BinaryOperator::Div, left, right),
+            Rule::rem => ast.binary(BinaryOperator::Rem, left, right),
+            Rule::exp => ast.binary(BinaryOperator::Exp, left, right),
+            Rule::eq => ast.binary(BinaryOperator::Eq, left, right),
+            Rule::neq => ast.binary(BinaryOperator::Neq, left, right),
+            Rule::lt => ast.binary(BinaryOperator::Lt, left, right),
+            Rule::lte => ast.binary(BinaryOperator::Lte, left, right),
+            Rule::gt => ast.binary(BinaryOperator::Gt, left, right),
+            Rule::gte => ast.binary(BinaryOperator::Gte, left, right),
+            Rule::and => ast.binary(BinaryOperator::And, left, right),
+            Rule::or => ast.binary(BinaryOperator::Or, left, right),
+            Rule::bitwise_and => ast.binary(BinaryOperator::BitwiseAnd, left, right),
+            Rule::bitwise_or => ast.binary(BinaryOperator::BitwiseOr, left, right),
+            Rule::bitwise_xor => ast.binary(BinaryOperator::BitwiseXor, left, right),
+            Rule::bitwise_shl => ast.binary(BinaryOperator::BitwiseShl, left, right),
+            Rule::bitwise_shr => ast.binary(BinaryOperator::BitwiseShr, left, right),
             _ => unreachable!(),
         })
         .parse(rule.into_inner())
@@ -32,16 +71,48 @@ mod tests {
     use crate::grammar::Grammar;
     use pest::Parser;
 
-    #[test]
-    fn test_parse_sum_expression() {
-        let ast = Ast::for_tests();
-
-        let pair = Grammar::parse(Rule::expression, "3 + x * true + -2")
-            .unwrap()
-            .next()
-            .unwrap();
+    fn build_ast_from<'ast>(ast: &'ast Ast, rule: Rule, text: &str) -> &'ast Expression<'ast> {
+        let pair = Grammar::parse(rule, text).unwrap().next().unwrap();
         let expression = parse_expression(&ast, pair);
-
-        assert_eq!(expression.to_string(), "(+ (+ 3i (* x true)) (- 2i))");
+        expression
     }
+
+    macro_rules! test_expression {
+        ($name: ident, $source: expr, $ast: expr) => {
+            #[test]
+            fn $name() {
+                let ast = Ast::for_tests();
+                let pair = Grammar::parse(Rule::expression, $source)
+                    .unwrap()
+                    .next()
+                    .unwrap();
+                let expression = parse_expression(&ast, pair);
+                assert_eq!(expression.to_string(), $ast);
+            }
+        };
+    }
+
+    test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i (* 2i 3i))");
+    test_expression!(precedence_02, "1 - 2 / 3", "(- 1i (/ 2i 3i))");
+    test_expression!(precedence_03, "1 + 2 % 3", "(+ 1i (% 2i 3i))");
+    test_expression!(precedence_04, "1 * 2 ** 3", "(* 1i (** 2i 3i))");
+    test_expression!(precedence_05, "1 == 2 + 3", "(== 1i (+ 2i 3i))");
+    test_expression!(precedence_06, "1 != 2 + 3", "(!= 1i (+ 2i 3i))");
+    test_expression!(precedence_07, "1 < 2 + 3", "(< 1i (+ 2i 3i))");
+    test_expression!(precedence_08, "1 <= 2 + 3", "(<= 1i (+ 2i 3i))");
+    test_expression!(precedence_09, "1 > 2 + 3", "(> 1i (+ 2i 3i))");
+    test_expression!(precedence_10, "1 >= 2 + 3", "(>= 1i (+ 2i 3i))");
+    test_expression!(precedence_11, "1 && 2 == 3", "(&& 1i (== 2i 3i))");
+    test_expression!(precedence_12, "1 || 2 && 3", "(|| 1i (&& 2i 3i))");
+    test_expression!(precedence_13, "1 & 2 + 3", "(& 1i (+ 2i 3i))");
+    test_expression!(precedence_14, "1 + 2 | 3", "(| (+ 1i 2i) 3i)");
+    test_expression!(precedence_15, "1 ^ 2 == 3", "(^ 1i (== 2i 3i))");
+    test_expression!(precedence_16, "1 | 2 && 3", "(&& (| 1i 2i) 3i)");
+    test_expression!(precedence_17, "1 + 2 << 3", "(<< (+ 1i 2i) 3i)");
+    test_expression!(precedence_18, "1 == 2 >> 3", "(== 1i (>> 2i 3i))");
+    test_expression!(precedence_19, "1 == 2 > 3", "(== 1i (> 2i 3i))");
+    test_expression!(precedence_20, "1 != 2 <= 3", "(!= 1i (<= 2i 3i))");
+    test_expression!(precedence_21, "1 + - 2", "(+ 1i (- 2i))");
+    test_expression!(precedence_22, "1 + ~ 2", "(+ 1i (~ 2i))");
+    test_expression!(precedence_23, "1 && ! 2", "(&& 1i (! 2i))");
 }

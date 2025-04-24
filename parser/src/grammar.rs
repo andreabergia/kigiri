@@ -1,39 +1,9 @@
-use std::sync::LazyLock;
-
-use pest::pratt_parser::{Assoc, Op, PrattParser};
 use pest_derive::Parser;
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 #[allow(dead_code)]
 pub struct Grammar;
-
-static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
-    PrattParser::new()
-        .op(Op::infix(Rule::add, Assoc::Left) | Op::infix(Rule::sub, Assoc::Left))
-        .op(Op::infix(Rule::mul, Assoc::Left)
-            | Op::infix(Rule::div, Assoc::Left)
-            | Op::infix(Rule::rem, Assoc::Left))
-        .op(Op::infix(Rule::exp, Assoc::Right))
-        .op(Op::prefix(Rule::neg) | Op::prefix(Rule::not) | Op::prefix(Rule::bitwise_not))
-        .op(Op::infix(Rule::bitwise_shl, Assoc::Left) | Op::infix(Rule::bitwise_shr, Assoc::Left))
-        .op(Op::infix(Rule::bitwise_and, Assoc::Left)
-            | Op::infix(Rule::bitwise_or, Assoc::Left)
-            | Op::infix(Rule::bitwise_xor, Assoc::Left))
-        .op(Op::infix(Rule::eq, Assoc::Left)
-            | Op::infix(Rule::neq, Assoc::Left)
-            | Op::infix(Rule::lt, Assoc::Left)
-            | Op::infix(Rule::lte, Assoc::Left)
-            | Op::infix(Rule::gt, Assoc::Left)
-            | Op::infix(Rule::gte, Assoc::Left))
-        .op(Op::infix(Rule::and, Assoc::Left))
-        .op(Op::infix(Rule::or, Assoc::Left))
-});
-
-#[allow(unused)]
-pub fn pratt_parser() -> &'static PrattParser<Rule> {
-    &PRATT_PARSER
-}
 
 #[cfg(test)]
 mod tests {
