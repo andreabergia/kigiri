@@ -229,6 +229,9 @@ mod tests {
         let x = ast.identifier("x");
         let one = ast.literal_integer(1);
         let sum = ast.binary(BinaryOperator::Add, x, one);
-        assert_eq!(sum.to_string(), "(+ x 1i)");
+        let two = ast.literal_double(2.1);
+        let neg = ast.unary(UnaryOperator::Neg, two);
+        let mul = ast.binary(BinaryOperator::Mul, sum, neg);
+        assert_eq!(mul.to_string(), "(* (+ x 1i) (- 2.1d))");
     }
 }
