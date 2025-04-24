@@ -36,45 +36,79 @@ use std::rc::Rc;
 // }
 
 #[derive(Debug, PartialEq)]
+pub enum UnaryOperator {
+    Neg,
+    Not,
+}
+
+impl Display for UnaryOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                UnaryOperator::Neg => "-",
+                UnaryOperator::Not => "!",
+            }
+        )
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+}
+
+impl Display for BinaryOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                BinaryOperator::Add => "+",
+                BinaryOperator::Sub => "-",
+                BinaryOperator::Mul => "*",
+                BinaryOperator::Div => "/",
+                BinaryOperator::Rem => "%",
+            }
+        )
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LiteralValue {
+    Integer(i64),
+    Double(f64),
+    Boolean(bool),
+}
+
+impl Display for LiteralValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LiteralValue::Integer(value) => write!(f, "{}i", value),
+            LiteralValue::Double(value) => write!(f, "{}d", value),
+            LiteralValue::Boolean(value) => write!(f, "{}", value),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Expression<'a> {
     Identifier {
         string_interner: Rc<RefCell<StringInterner>>,
         symbol_id: StringId,
     },
-    LiteralInteger {
-        value: i64,
-    },
-    LiteralDouble {
-        value: f64,
-    },
-    LiteralBoolean {
-        value: bool,
-    },
-
-    Negate {
+    Literal(LiteralValue),
+    Unary {
+        operator: UnaryOperator,
         operand: &'a Expression<'a>,
     },
-    Not {
-        operand: &'a Expression<'a>,
-    },
-
-    Add {
-        left: &'a Expression<'a>,
-        right: &'a Expression<'a>,
-    },
-    Sub {
-        left: &'a Expression<'a>,
-        right: &'a Expression<'a>,
-    },
-    Mul {
-        left: &'a Expression<'a>,
-        right: &'a Expression<'a>,
-    },
-    Div {
-        left: &'a Expression<'a>,
-        right: &'a Expression<'a>,
-    },
-    Rem {
+    Binary {
+        operator: BinaryOperator,
         left: &'a Expression<'a>,
         right: &'a Expression<'a>,
     },
@@ -94,16 +128,13 @@ impl Display for Expression<'_> {
                     .expect("invalid symbol!");
                 write!(f, "{}", symbol)
             }
-            Expression::LiteralInteger { value } => write!(f, "{}i", value),
-            Expression::LiteralDouble { value } => write!(f, "{}d", value),
-            Expression::LiteralBoolean { value } => write!(f, "{}", value),
-            Expression::Negate { operand } => write!(f, "(- {})", operand),
-            Expression::Not { operand } => write!(f, "(! {})", operand),
-            Expression::Add { left, right } => write!(f, "(+ {} {})", left, right),
-            Expression::Sub { left, right } => write!(f, "(- {} {})", left, right),
-            Expression::Mul { left, right } => write!(f, "(* {} {})", left, right),
-            Expression::Div { left, right } => write!(f, "(/ {} {})", left, right),
-            Expression::Rem { left, right } => write!(f, "(% {} {})", left, right),
+            Expression::Literal(value) => write!(f, "{}", value),
+            Expression::Unary { operator, operand } => write!(f, "({} {})", operator, operand),
+            Expression::Binary {
+                operator,
+                left,
+                right,
+            } => write!(f, "({} {} {})", operator, left, right),
         }
     }
 }
@@ -139,11 +170,32 @@ impl Ast {
     }
 
     pub fn literal_integer(&self, value: i64) -> &Expression {
-        self.alloc(Expression::LiteralInteger { value })
+        self.alloc(Expression::Literal(LiteralValue::Integer(value)))
     }
 
-    pub fn add<'s, 'l, 'r>(
+    pub fn literal_double(&self, value: f64) -> &Expression {
+        self.alloc(Expression::Literal(LiteralValue::Double(value)))
+    }
+
+    pub fn literal_boolean(&self, value: bool) -> &Expression {
+        self.alloc(Expression::Literal(LiteralValue::Boolean(value)))
+    }
+
+    pub fn unary<'s, 'l, 'r>(
         &'s self,
+        operator: UnaryOperator,
+        operand: &'l Expression,
+    ) -> &'s Expression<'s>
+    where
+        'l: 's,
+        'r: 's,
+    {
+        self.alloc(Expression::Unary { operator, operand })
+    }
+
+    pub fn binary<'s, 'l, 'r>(
+        &'s self,
+        operator: BinaryOperator,
         left: &'l Expression,
         right: &'r Expression,
     ) -> &'s Expression<'s>
@@ -151,7 +203,11 @@ impl Ast {
         'l: 's,
         'r: 's,
     {
-        self.alloc(Expression::Add { left, right })
+        self.alloc(Expression::Binary {
+            operator,
+            left,
+            right,
+        })
     }
 }
 
@@ -163,7 +219,7 @@ mod tests {
     fn can_allocate_via_ast() {
         let ast = Ast::for_tests();
         let id = ast.literal_integer(1);
-        assert_eq!(id, &Expression::LiteralInteger { value: 1 });
+        assert_eq!(id, &Expression::Literal(LiteralValue::Integer(1)));
     }
 
     #[test]
@@ -172,7 +228,7 @@ mod tests {
 
         let x = ast.identifier("x");
         let one = ast.literal_integer(1);
-        let sum = ast.add(x, one);
+        let sum = ast.binary(BinaryOperator::Add, x, one);
         assert_eq!(sum.to_string(), "(+ x 1i)");
     }
 }
