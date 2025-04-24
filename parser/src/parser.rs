@@ -1,11 +1,14 @@
 // use pest::iterators::Pair;
+// use crate::ast::Expression;
 // use crate::grammar::Rule;
 //
-// fn parse_expression(rule: Pair<'_, Rule>) -> Expression {
+// fn parse_expression(
+//     ast: Ast,
+//     rule: Pair<'_, Rule>) -> Expression {
 //     let pratt = crate::grammar::pratt_parser();
 //     pratt
 //         .map_primary(|primary| match primary.as_rule() {
-//             Rule::number => Expression::Number(primary.as_str().parse().unwrap()),
+//             Rule::number => Expression::LiteralInteger { value: primary.as_str().parse().unwrap() },
 //             Rule::identifier => Expression::Identifier(primary.as_str()),
 //             Rule::expression => parse_expression(primary),
 //             Rule::functionCall => Expression::FunctionCall(parse_function_call(primary)),

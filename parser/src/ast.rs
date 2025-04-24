@@ -106,48 +106,19 @@ impl Display for Expression<'_, '_> {
     }
 }
 
-pub struct Ast<'interner> {
-    string_interner: &'interner mut StringInterner,
+pub struct Ast {
     arena: bumpalo::Bump,
 }
 
-impl<'interner> Ast<'interner> {
-    pub fn new(string_interner: &'interner mut StringInterner) -> Self {
+impl Ast {
+    pub fn new() -> Self {
         Self {
-            string_interner,
             arena: bumpalo::Bump::new(),
         }
     }
 
     pub fn alloc<T>(&self, value: T) -> &T {
         self.arena.alloc(value)
-    }
-
-    fn symbol_for(&mut self, string: &str) -> StringId {
-        self.string_interner.get_or_intern(string)
-    }
-
-    pub fn identifier<'s>(&'s mut self, string: &str) -> &'s Expression<'s, 'interner>
-    where
-        's: 'interner,
-    {
-        let symbol = self.symbol_for(string);
-        self.alloc(Expression::Identifier {
-            string_interner: self.string_interner,
-            symbol_id: symbol,
-        })
-    }
-
-    pub fn literal_integer(&self, value: i64) -> &Expression<'_, 'interner> {
-        self.alloc(Expression::LiteralInteger { value })
-    }
-
-    pub fn add<'s>(
-        &'s self,
-        left: &'s Expression<'s, 'interner>,
-        right: &'s Expression<'s, 'interner>,
-    ) -> &'s Expression<'s, 'interner> {
-        self.alloc(Expression::Add { left, right })
     }
 }
 
@@ -157,8 +128,7 @@ mod tests {
 
     #[test]
     fn can_allocate_via_ast() {
-        let mut string_interner = StringInterner::default();
-        let ast = Ast::new(&mut string_interner);
+        let ast = Ast::new();
         let id = ast.alloc(Expression::LiteralInteger { value: 1 });
         assert_eq!(id, &Expression::LiteralInteger { value: 1 });
     }
@@ -166,11 +136,19 @@ mod tests {
     #[test]
     fn format_expressions() {
         let mut string_interner = StringInterner::default();
-        let mut ast = Ast::new(&mut string_interner);
+        let mut ast = Ast::new();
 
-        let x = ast.identifier("x");
-        let one = ast.literal_integer(1);
-        let sum = ast.add(x, one);
+        let x_symbol = string_interner.get_or_intern("x");
+
+        let x = ast.alloc(Expression::Identifier {
+            string_interner: &string_interner,
+            symbol_id: x_symbol,
+        });
+        let one = ast.alloc(Expression::LiteralInteger { value: 1 });
+        let sum = ast.alloc(Expression::Add {
+            left: x,
+            right: one,
+        });
         assert_eq!(sum.to_string(), "(+ x 1i)");
     }
 }
