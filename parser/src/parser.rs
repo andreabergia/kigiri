@@ -125,6 +125,12 @@ mod tests {
     test_expression!(literal_float_5, ".1e1", "1d");
     test_expression!(literal_float_6, "1e4", "10000d");
 
+    test_expression!(identifier_1, "i", "i");
+    test_expression!(identifier_2, "a_b", "a_b");
+    test_expression!(identifier_3, "éñò", "éñò");
+    test_expression!(identifier_4, "_a", "_a");
+    test_expression!(identifier_5, "_", "_");
+
     test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i (* 2i 3i))");
     test_expression!(precedence_02, "1 - 2 / 3", "(- 1i (/ 2i 3i))");
     test_expression!(precedence_03, "1 + 2 % 3", "(+ 1i (% 2i 3i))");

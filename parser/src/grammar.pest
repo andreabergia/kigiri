@@ -57,6 +57,6 @@ doubleNumber = @{
     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)
 }
 
-identifier = @{ XID_START ~ XID_CONTINUE* }
+identifier = @{ (XID_START | "_") ~ XID_CONTINUE* }
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
