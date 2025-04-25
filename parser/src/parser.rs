@@ -158,4 +158,6 @@ mod tests {
     test_expression!(precedence_21, "1 + - 2", "(+ 1i (- 2i))");
     test_expression!(precedence_22, "1 + ~ 2", "(+ 1i (~ 2i))");
     test_expression!(precedence_23, "1 && ! 2", "(&& 1i (! 2i))");
+
+    test_expression!(parenthesis, "(1 + 2) * 3", "(* (+ 1i 2i) 3i)");
 }
