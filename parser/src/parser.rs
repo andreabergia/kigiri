@@ -2,6 +2,7 @@ use crate::ast::{Ast, BinaryOperator, Expression, UnaryOperator};
 use crate::grammar::Rule;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
+use std::str::FromStr;
 use std::sync::LazyLock;
 
 static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
@@ -27,12 +28,29 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 
 fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Expression<'ast> {
     PRATT_PARSER
-        .map_primary(|primary| match primary.as_rule() {
-            Rule::number => ast.literal_integer(primary.as_str().parse().unwrap()),
-            Rule::identifier => ast.identifier(primary.as_str()),
-            Rule::expression => parse_expression(ast, primary),
-            // Rule::functionCall => Expression::FunctionCall(parse_function_call(primary)),
-            _ => unreachable!(""),
+        .map_primary(|primary| {
+            match primary.as_rule() {
+                Rule::number => {
+                    let pair = primary.into_inner().next().unwrap();
+                    let text = pair.as_str();
+                    match pair.as_rule() {
+                        Rule::integerNumber => ast.literal_integer(i64::from_str(text).unwrap()),
+                        Rule::hexNumber => ast.literal_integer(
+                            i64::from_str_radix(
+                                text.to_ascii_lowercase().trim_start_matches("0x"),
+                                16,
+                            )
+                            .unwrap(),
+                        ),
+                        Rule::doubleNumber => ast.literal_double(f64::from_str(text).unwrap()),
+                        _ => unreachable!(""),
+                    }
+                }
+                Rule::identifier => ast.identifier(primary.as_str()),
+                Rule::expression => parse_expression(ast, primary),
+                // Rule::functionCall => Expression::FunctionCall(parse_function_call(primary)),
+                _ => unreachable!(""),
+            }
         })
         .map_prefix(|prefix, operand| match prefix.as_rule() {
             Rule::neg => ast.unary(UnaryOperator::Neg, operand),
@@ -77,6 +95,10 @@ mod tests {
         expression
     }
 
+    /// Generates a test case to verify the AST produced by a given source expression.
+    /// The AST is passed as its string representation.
+    /// The macro allows us to one-line a test case, reducing noise such as the
+    /// `#[test]` annotation and the various newline required by a function.
     macro_rules! test_expression {
         ($name: ident, $source: expr, $ast: expr) => {
             #[test]
@@ -91,6 +113,17 @@ mod tests {
             }
         };
     }
+
+    test_expression!(literal_int_1, "1", "1i");
+    test_expression!(literal_int_2, "3217832", "3217832i");
+    test_expression!(literal_int_3, "0xA1", "161i");
+
+    test_expression!(literal_float_1, "0.", "0d");
+    test_expression!(literal_float_2, "3.14", "3.14d");
+    test_expression!(literal_float_3, "1.1e+2", "110d");
+    test_expression!(literal_float_4, "10e-1", "1d");
+    test_expression!(literal_float_5, ".1e1", "1d");
+    test_expression!(literal_float_6, "1e4", "10000d");
 
     test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i (* 2i 3i))");
     test_expression!(precedence_02, "1 - 2 / 3", "(- 1i (/ 2i 3i))");

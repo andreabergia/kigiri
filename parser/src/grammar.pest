@@ -44,12 +44,18 @@ factor   =  _{ number | "(" ~ expression ~ ")" | functionCall | identifier }
 functionCall =   { identifier ~ "(" ~ functionCallArguments ~ ")" }
 functionCallArguments = { (expression ~ ("," ~ expression)*)? }
 
-number = @{"-"? ~ (hexNumber | integerNumber)}
-
+number = {doubleNumber | hexNumber | integerNumber}
 integerNumber = @{
     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
 }
-hexNumber = @{ "0" ~ "x" ~ ASCII_HEX_DIGIT+ }
+hexNumber = @{
+    "0" ~ "x" ~ ASCII_HEX_DIGIT+
+}
+doubleNumber = @{
+    ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT* ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)? |
+    ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)? |
+    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)
+}
 
 identifier = @{ XID_START ~ XID_CONTINUE* }
 
