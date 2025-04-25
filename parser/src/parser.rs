@@ -48,6 +48,7 @@ fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Express
                 }
                 Rule::identifier => ast.identifier(primary.as_str()),
                 Rule::expression => parse_expression(ast, primary),
+                Rule::boolean => ast.literal_boolean(primary.as_str().parse().unwrap()),
                 // Rule::functionCall => Expression::FunctionCall(parse_function_call(primary)),
                 _ => unreachable!(""),
             }
@@ -130,6 +131,9 @@ mod tests {
     test_expression!(identifier_3, "éñò", "éñò");
     test_expression!(identifier_4, "_a", "_a");
     test_expression!(identifier_5, "_", "_");
+
+    test_expression!(boolean_1, "true", "true!");
+    test_expression!(boolean_2, "false", "false!");
 
     test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i (* 2i 3i))");
     test_expression!(precedence_02, "1 - 2 / 3", "(- 1i (/ 2i 3i))");

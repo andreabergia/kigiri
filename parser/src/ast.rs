@@ -121,7 +121,7 @@ impl Display for LiteralValue {
         match self {
             LiteralValue::Integer(value) => write!(f, "{}i", value),
             LiteralValue::Double(value) => write!(f, "{}d", value),
-            LiteralValue::Boolean(value) => write!(f, "{}", value),
+            LiteralValue::Boolean(value) => write!(f, "{}!", value),
         }
     }
 }
@@ -262,6 +262,9 @@ mod tests {
         let two = ast.literal_double(2.1);
         let neg = ast.unary(UnaryOperator::Neg, two);
         let mul = ast.binary(BinaryOperator::Mul, sum, neg);
-        assert_eq!(mul.to_string(), "(* (+ x 1i) (- 2.1d))");
+        let lt = ast.binary(BinaryOperator::Lt, mul, ast.literal_double(4.2));
+        let true_lit = ast.literal_boolean(true);
+        let or = ast.binary(BinaryOperator::Or, lt, true_lit);
+        assert_eq!(or.to_string(), "(|| (< (* (+ x 1i) (- 2.1d)) 4.2d) true!)");
     }
 }
