@@ -352,6 +352,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "type_engine"
+version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "parser",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "typenum"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

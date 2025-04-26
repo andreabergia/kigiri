@@ -35,7 +35,7 @@ use std::rc::Rc;
 //     pub args: Vec<Expression<'input>>,
 // }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum UnaryOperator {
     Neg,
     Not,
@@ -56,7 +56,7 @@ impl Display for UnaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -109,7 +109,7 @@ impl Display for BinaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LiteralValue {
     Integer(i64),
     Double(f64),
@@ -182,7 +182,6 @@ impl Ast {
         }
     }
 
-    #[cfg(test)]
     pub fn for_tests() -> Self {
         let string_interner = Rc::new(RefCell::new(StringInterner::default()));
         Self::new(string_interner)

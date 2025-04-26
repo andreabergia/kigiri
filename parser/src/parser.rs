@@ -1,7 +1,8 @@
 use crate::ast::{Ast, BinaryOperator, Expression, UnaryOperator};
-use crate::grammar::Rule;
+use crate::grammar::{Grammar, Rule};
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -84,17 +85,17 @@ fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Express
         .parse(rule.into_inner())
 }
 
+pub fn parse<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression<'ast> {
+    let pair = Grammar::parse(Rule::expression, text)
+        .unwrap()
+        .next()
+        .unwrap();
+    parse_expression(ast, pair)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grammar::Grammar;
-    use pest::Parser;
-
-    fn build_ast_from<'ast>(ast: &'ast Ast, rule: Rule, text: &str) -> &'ast Expression<'ast> {
-        let pair = Grammar::parse(rule, text).unwrap().next().unwrap();
-        let expression = parse_expression(&ast, pair);
-        expression
-    }
 
     /// Generates a test case to verify the AST produced by a given source expression.
     /// The AST is passed as its string representation.
@@ -105,11 +106,7 @@ mod tests {
             #[test]
             fn $name() {
                 let ast = Ast::for_tests();
-                let pair = Grammar::parse(Rule::expression, $source)
-                    .unwrap()
-                    .next()
-                    .unwrap();
-                let expression = parse_expression(&ast, pair);
+                let expression = parse(&ast, $source);
                 assert_eq!(expression.to_string(), $ast);
             }
         };
