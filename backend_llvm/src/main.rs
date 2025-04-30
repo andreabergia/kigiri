@@ -1,8 +1,3 @@
-#![allow(unused)]
-
-mod ir;
-mod ir_builder;
-
 use inkwell::context::Context;
 
 fn main() {

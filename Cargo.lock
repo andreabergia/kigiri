@@ -9,6 +9,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
+name = "backend_llvm"
+version = "0.1.0"
+dependencies = [
+ "inkwell",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -25,9 +32,9 @@ checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
 
 [[package]]
 name = "cc"
-version = "1.2.19"
+version = "1.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e3a13707ac958681c13b39b458c073d0d9bc8a22cb1b2f4c8e55eb72c13f362"
+checksum = "04da6a0d40b948dfc4fa8f5bbf402b0fc1a64a28dbf7d12ffd683550f2c1b63a"
 dependencies = [
  "shlex",
 ]
@@ -43,7 +50,6 @@ name = "codegen"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
- "inkwell",
  "parser",
  "type_engine",
 ]
