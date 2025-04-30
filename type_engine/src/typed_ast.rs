@@ -69,7 +69,7 @@ impl Display for TypedExpression<'_> {
     }
 }
 
-impl<'a> TypedExpression<'a> {
+impl TypedExpression<'_> {
     pub fn resolved_type(&self) -> Type {
         match self {
             // Expression::Identifier { resolved_type, .. } => *resolved_type,

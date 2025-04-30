@@ -65,7 +65,7 @@ mod tests {
         let ast = parser::Ast::for_tests();
         let expression = parser::parse(&ast, "1");
 
-        let type_engine = TypeEngine::new();
+        let type_engine = TypeEngine::default();
         let result = type_engine.check_and_infer_types(expression);
         let expression = result.expect("should have passed semantic analysis");
 

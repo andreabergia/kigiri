@@ -17,17 +17,12 @@ pub enum TypeEngineError {
     },
 }
 
+#[derive(Default)]
 pub struct TypeEngine {
     arena: bumpalo::Bump,
 }
 
 impl TypeEngine {
-    pub fn new() -> Self {
-        Self {
-            arena: bumpalo::Bump::new(),
-        }
-    }
-
     pub fn check_and_infer_types<'s>(
         &'s self,
         root: &Expression,
@@ -151,7 +146,7 @@ mod tests {
             fn $name() {
                 let ast = parser::Ast::for_tests();
                 let expression = parser::parse(&ast, $source);
-                let type_engine = TypeEngine::new();
+                let type_engine = TypeEngine::default();
                 let result = type_engine.check_and_infer_types(expression);
                 assert_eq!(
                     result
@@ -169,7 +164,7 @@ mod tests {
             fn $name() {
                 let ast = parser::Ast::for_tests();
                 let expression = parser::parse(&ast, $source);
-                let type_engine = TypeEngine::new();
+                let type_engine = TypeEngine::default();
                 let result = type_engine.check_and_infer_types(expression);
                 assert_eq!(
                     result.expect_err("should have failed to match types"),
