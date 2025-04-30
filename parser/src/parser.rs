@@ -129,8 +129,8 @@ mod tests {
     test_expression!(identifier_4, "_a", "_a");
     test_expression!(identifier_5, "_", "_");
 
-    test_expression!(boolean_1, "true", "true!");
-    test_expression!(boolean_2, "false", "false!");
+    test_expression!(boolean_1, "true", "true");
+    test_expression!(boolean_2, "false", "false");
 
     test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i (* 2i 3i))");
     test_expression!(precedence_02, "1 - 2 / 3", "(- 1i (/ 2i 3i))");

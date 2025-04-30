@@ -183,7 +183,7 @@ mod tests {
 
     test_types_ok!(literal_int, "1", "1i");
     test_types_ok!(literal_double, "3.14", "3.14d");
-    test_types_ok!(literal_boolean, "true", "true!");
+    test_types_ok!(literal_boolean, "true", "true");
 
     // Unary
 
@@ -214,7 +214,7 @@ mod tests {
             operand_type: Type::Double
         }
     );
-    test_types_ok!(unary_not_boolean, "! false", "(!b false!)");
+    test_types_ok!(unary_not_boolean, "! false", "(!b false)");
 
     test_types_ok!(unary_bitwise_not_int, "~ 3", "(~i 3i)");
     test_types_ko!(
