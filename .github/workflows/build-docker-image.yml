@@ -11,6 +11,7 @@ on:
       - main
     paths:
       - 'build-docker-image/**'
+  workflow_dispatch:
 
 jobs:
   docker:
