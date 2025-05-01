@@ -48,12 +48,14 @@ jobs:
         run: |
           rustup install 1.85.1  --profile minimal --no-self-update
           rustup component add clippy
-          cargo install cargo-nextest
 
       - name: Run tests
-        run: cargo nextest run --all --verbose
+        run: cargo test
         env:
           LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
 
       - name: Run Clippy
         run: cargo clippy --all --all-targets --all-features -- -D warnings
+
+      - name: test
+        run: cargo run
