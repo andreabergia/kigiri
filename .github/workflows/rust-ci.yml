@@ -38,6 +38,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-index-
 
+      - name: debug
+        run: |
+          rustup show
+          ls /usr/lib/llvm-18
+          clang-18 -v
+
       - name: Run tests
         run: cargo nextest run --all --verbose
         env:
