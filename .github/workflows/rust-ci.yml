@@ -40,6 +40,8 @@ jobs:
 
       - name: Run tests
         run: cargo nextest run --all --verbose
+        env:
+          LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
 
       - name: Run Clippy
         run: cargo clippy --all --all-targets --all-features -- -D warnings
