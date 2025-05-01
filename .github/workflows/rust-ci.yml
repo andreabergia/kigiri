@@ -11,6 +11,7 @@ on:
 
 jobs:
   build:
+    runs-on: ubuntu-latest
     container:
       image: andreabergia/kigiri-build-image:latest
       credentials:
@@ -38,7 +39,7 @@ jobs:
             ${{ runner.os }}-cargo-index-
 
       - name: Run tests
-        run: cargo nextest --all --verbose
+        run: cargo nextest run --all --verbose
 
       - name: Run Clippy
         run: cargo clippy --all --all-targets --all-features -- -D warnings
