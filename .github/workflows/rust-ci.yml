@@ -44,6 +44,12 @@ jobs:
           ls /usr/lib/llvm-18
           clang-18 -v
 
+      - name: setup Rust toolchain
+        run: |
+          rustup install 1.85.1  --profile minimal --no-self-update
+          rustup component add clippy
+          cargo install cargo-nextest
+
       - name: Run tests
         run: cargo nextest run --all --verbose
         env:
