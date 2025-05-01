@@ -38,13 +38,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-index-
 
-      - name: debug
-        run: |
-          rustup show
-          ls /usr/lib/llvm-18
-          clang-18 -v
-
-      - name: setup Rust toolchain
+      - name: Setup Rust toolchain
         run: |
           rustup install 1.85.1  --profile minimal --no-self-update
           rustup component add clippy
@@ -56,6 +50,3 @@ jobs:
 
       - name: Run Clippy
         run: cargo clippy --all --all-targets --all-features -- -D warnings
-
-      - name: test
-        run: cargo run
