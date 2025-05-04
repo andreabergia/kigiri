@@ -1,5 +1,4 @@
 use crate::ir::*;
-use type_engine::Type;
 use type_engine::TypedExpression;
 
 struct IrBuilder<'a> {
@@ -57,35 +56,37 @@ pub fn build_ir<'ir>(ir: &'ir Ir, expression: &TypedExpression) -> &'ir BasicBlo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::LiteralValue;
     use type_engine::TypeEngine;
 
-    #[test]
-    fn test_build_ir() {
+    fn make_analyzed_ast<'te>(
+        type_engine: &'te TypeEngine,
+        source: &str,
+    ) -> &'te TypedExpression<'te> {
         let ast = parser::Ast::for_tests();
-        let expression = parser::parse(&ast, "1");
+        let expression = parser::parse(&ast, source);
 
-        let type_engine = TypeEngine::default();
         let result = type_engine.check_and_infer_types(expression);
-        let expression = result.expect("should have passed semantic analysis");
-
-        let ir = Ir::new();
-        let bb = build_ir(&ir, expression);
-
-        assert_eq!(
-            bb.instructions.borrow()[0],
-            &Instruction {
-                operand_type: Type::Int,
-                name: "0_const",
-                instruction_type: InstructionType::Const,
-                args: bumpalo::vec![in &ir.arena; ],
-                constant: Some(LiteralValue::Integer(1)),
-            }
-        );
-
-        assert_eq!(
-            bb.instructions.borrow()[0].to_string(),
-            "i 0_const    = const(1i, )",
-        );
+        result.expect("should have passed semantic analysis")
     }
+
+    fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
+        let type_engine = TypeEngine::default();
+        let expression = make_analyzed_ast(&type_engine, source);
+        build_ir(ir, expression)
+    }
+
+    macro_rules! test_ir {
+        ($name: ident, $source: expr, $expected: expr) => {
+            #[test]
+            fn $name() {
+                let ir = Ir::new();
+                let bb = basic_block_from_source(&ir, $source);
+                assert_eq!(bb.to_string(), $expected);
+            }
+        };
+    }
+
+    test_ir!(const_int, "1", "i 0_const    = const(1i, )\n");
+    test_ir!(const_dbl, "2.0", "d 0_const    = const(2d, )\n");
+    test_ir!(const_bool, "true", "b 0_const    = const(true, )\n");
 }

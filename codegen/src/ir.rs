@@ -95,6 +95,16 @@ pub struct BasicBlock<'a> {
     pub instructions: RefCell<BumpVec<'a, &'a Instruction<'a>>>,
 }
 
+impl Display for BasicBlock<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let instructions = self.instructions.borrow();
+        for instr in instructions.iter() {
+            writeln!(f, "{}", instr)?;
+        }
+        Ok(())
+    }
+}
+
 pub struct Ir {
     pub(crate) arena: bumpalo::Bump,
 }
