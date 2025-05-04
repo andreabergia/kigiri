@@ -1,6 +1,5 @@
 use crate::ir::*;
-use bumpalo::collections::Vec as BumpVec;
-use parser::UnaryOperator;
+use parser::{BinaryOperator, UnaryOperator};
 use std::cell::RefCell;
 use type_engine::TypedExpression;
 
@@ -35,9 +34,7 @@ impl<'ir> IrBuilder<'ir> {
         }
     }
 
-    fn generate(&self, expression: &TypedExpression) -> BumpVec<'ir, &'ir Instruction<'ir>> {
-        let mut generated = BumpVec::new_in(&self.ir.arena);
-
+    fn generate(&self, expression: &TypedExpression) -> &'ir Instruction<'ir> {
         match expression {
             TypedExpression::Literal {
                 resolved_type,
@@ -46,29 +43,42 @@ impl<'ir> IrBuilder<'ir> {
                 let name = self.instr_name("const");
                 let instruction = self.ir.new_const(&name, value.clone());
                 self.push_to_current_bb(instruction);
-                generated.push(instruction);
+                instruction
             }
             TypedExpression::Unary {
                 resolved_type,
                 operator,
                 operand,
             } => {
-                let operand_instructions = self.generate(operand);
-                let last_instruction = operand_instructions
-                    .last()
-                    .expect("the operand of an unary should have generated an instruction");
+                let operand_instruction = self.generate(operand);
 
                 let name = self.instr_name(Self::instruction_name_for_unary(operator));
-                let instruction = self.ir.new_unary(&name, operator.clone(), last_instruction);
+                let instruction = self
+                    .ir
+                    .new_unary(&name, operator.clone(), operand_instruction);
                 self.push_to_current_bb(instruction);
-                generated.push(instruction);
+                instruction
             }
-            TypedExpression::Binary { .. } => {
-                todo!()
-            }
-        };
+            TypedExpression::Binary {
+                resolved_type,
+                operator,
+                left,
+                right,
+            } => {
+                let left_instruction = self.generate(left);
+                let right_instruction = self.generate(right);
 
-        generated
+                let name = self.instr_name(Self::instruction_name_for_binary(operator));
+                let instruction = self.ir.new_binary(
+                    &name,
+                    operator.clone(),
+                    left_instruction,
+                    right_instruction,
+                );
+                self.push_to_current_bb(instruction);
+                instruction
+            }
+        }
     }
 
     fn instr_name(&self, suffix: &str) -> String {
@@ -84,6 +94,30 @@ impl<'ir> IrBuilder<'ir> {
             UnaryOperator::Neg => "neg",
             UnaryOperator::Not => "not",
             UnaryOperator::BitwiseNot => "bitwise_not",
+        }
+    }
+
+    fn instruction_name_for_binary(operator: &BinaryOperator) -> &'static str {
+        match operator {
+            BinaryOperator::Add => "add",
+            BinaryOperator::Sub => "sub",
+            BinaryOperator::Mul => "mul",
+            BinaryOperator::Div => "div",
+            BinaryOperator::Rem => "rem",
+            BinaryOperator::Exp => "exp",
+            BinaryOperator::Eq => "eq",
+            BinaryOperator::Neq => "neq",
+            BinaryOperator::Lt => "lt",
+            BinaryOperator::Lte => "lte",
+            BinaryOperator::Gt => "gt",
+            BinaryOperator::Gte => "gte",
+            BinaryOperator::And => "and",
+            BinaryOperator::Or => "or",
+            BinaryOperator::BitwiseAnd => "bitwise_and",
+            BinaryOperator::BitwiseOr => "bitwise_or",
+            BinaryOperator::BitwiseXor => "bitwise_xor",
+            BinaryOperator::BitwiseShl => "bitwise_shl",
+            BinaryOperator::BitwiseShr => "bitwise_shr",
         }
     }
 }
@@ -136,5 +170,13 @@ mod tests {
         "- 3",
         "i 0_const      = const(3i)\n\
         i 1_neg        = neg(0_const)\n"
+    );
+
+    test_ir!(
+        add_int,
+        "1 + 2",
+        "i 0_const      = const(1i)\n\
+        i 1_const      = const(2i)\n\
+        i 2_add        = add(0_const, 1_const)\n"
     );
 }
