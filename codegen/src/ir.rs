@@ -137,6 +137,20 @@ pub struct BasicBlock<'a> {
     pub instructions: RefCell<BumpVec<'a, &'a Instruction<'a>>>,
 }
 
+impl<'a> BasicBlock<'a> {
+    pub fn new_in(ir: &'a Ir) -> Self {
+        Self {
+            instructions: RefCell::new(BumpVec::new_in(&ir.arena)),
+        }
+    }
+
+    pub fn new_in_arena(arena: &'a bumpalo::Bump) -> Self {
+        Self {
+            instructions: RefCell::new(BumpVec::new_in(arena)),
+        }
+    }
+}
+
 impl Display for BasicBlock<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let instructions = self.instructions.borrow();
