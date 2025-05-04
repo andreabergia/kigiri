@@ -1,3 +1,4 @@
+use parser::LiteralValue;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
@@ -24,6 +25,14 @@ impl Type {
             Type::Int => "i".to_string(),
             Type::Double => "d".to_string(),
             Type::Boolean => "b".to_string(),
+        }
+    }
+
+    pub fn of_literal(literal: &LiteralValue) -> Self {
+        match literal {
+            LiteralValue::Integer(_) => Type::Int,
+            LiteralValue::Double(_) => Type::Double,
+            LiteralValue::Boolean(_) => Type::Boolean,
         }
     }
 }

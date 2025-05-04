@@ -28,13 +28,7 @@ impl<'a> IrBuilder<'a> {
                 let name = format!("{}_const", self.name_index);
                 self.name_index += 1;
 
-                let instruction = self.ir.instruction(
-                    resolved_type.clone(),
-                    &name,
-                    InstructionType::Const,
-                    [],
-                    Some(value.clone()),
-                );
+                let instruction = self.ir.new_const(&name, value.clone());
                 self.current_bb.instructions.borrow_mut().push(instruction);
             }
             TypedExpression::Unary { .. } => {
@@ -86,7 +80,7 @@ mod tests {
         };
     }
 
-    test_ir!(const_int, "1", "i 0_const    = const(1i, )\n");
-    test_ir!(const_dbl, "2.0", "d 0_const    = const(2d, )\n");
-    test_ir!(const_bool, "true", "b 0_const    = const(true, )\n");
+    test_ir!(const_int, "1", "i 0_const      = const(1i)\n");
+    test_ir!(const_dbl, "2.0", "d 0_const      = const(2d)\n");
+    test_ir!(const_bool, "true", "b 0_const      = const(true)\n");
 }

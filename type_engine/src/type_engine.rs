@@ -1,5 +1,5 @@
 use crate::{Type, TypedExpression};
-use parser::{BinaryOperator, Expression, LiteralValue, UnaryOperator};
+use parser::{BinaryOperator, Expression, UnaryOperator};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -34,20 +34,10 @@ impl TypeEngine {
             } => todo!(),
 
             // Literals will never fail
-            Expression::Literal(value) => match value {
-                LiteralValue::Integer(..) => Ok(self.alloc(TypedExpression::Literal {
-                    resolved_type: Type::Int,
-                    value: value.clone(),
-                })),
-                LiteralValue::Double(_) => Ok(self.alloc(TypedExpression::Literal {
-                    resolved_type: Type::Double,
-                    value: value.clone(),
-                })),
-                LiteralValue::Boolean(_) => Ok(self.alloc(TypedExpression::Literal {
-                    resolved_type: Type::Boolean,
-                    value: value.clone(),
-                })),
-            },
+            Expression::Literal(value) => Ok(self.alloc(TypedExpression::Literal {
+                resolved_type: Type::of_literal(value),
+                value: value.clone(),
+            })),
 
             // Unary operators - can fail!
             Expression::Unary { operator, operand } => {
