@@ -179,4 +179,16 @@ mod tests {
         i 1_const      = const(2i)\n\
         i 2_add        = add(0_const, 1_const)\n"
     );
+
+    test_ir!(
+        mixed_expression,
+        "1 + 2 * 3 < 4",
+        "i 0_const      = const(1i)\n\
+        i 1_const      = const(2i)\n\
+        i 2_const      = const(3i)\n\
+        i 3_mul        = mul(1_const, 2_const)\n\
+        i 4_add        = add(0_const, 3_mul)\n\
+        i 5_const      = const(4i)\n\
+        i 6_lt         = lt(4_add, 5_const)\n"
+    );
 }
