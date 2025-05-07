@@ -165,6 +165,12 @@ pub struct Ir {
     pub(crate) arena: bumpalo::Bump,
 }
 
+impl Default for Ir {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Ir {
     pub fn new() -> Self {
         Self {

@@ -12,7 +12,10 @@ checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 name = "backend_llvm"
 version = "0.1.0"
 dependencies = [
+ "codegen",
  "inkwell",
+ "parser",
+ "type_engine",
 ]
 
 [[package]]

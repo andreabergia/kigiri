@@ -1,3 +1,5 @@
+mod ir_to_llvm;
+
 use inkwell::context::Context;
 
 fn main() {

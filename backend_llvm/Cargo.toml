@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 inkwell = { workspace = true }
+parser = { path = "../parser" }
+type_engine = { path = "../type_engine" }
+codegen = { path = "../codegen" }
