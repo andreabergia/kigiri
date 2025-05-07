@@ -66,74 +66,161 @@ impl Display for InstructionType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
+pub enum InstructionPayload<'a> {
+    Ret,
+    Constant {
+        operand_type: Type,
+        constant: LiteralValue,
+    },
+    Unary {
+        operand_type: Type,
+        operator: UnaryOperator,
+        operand: &'a Instruction<'a>,
+    },
+    Binary {
+        operand_type: Type,
+        operator: BinaryOperator,
+        left: &'a Instruction<'a>,
+        right: &'a Instruction<'a>,
+    },
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Instruction<'a> {
-    pub operand_type: Option<Type>,
     pub name: &'a str,
-    pub instruction_type: InstructionType,
-    pub args: BumpVec<'a, &'a Instruction<'a>>,
-    pub constant: Option<LiteralValue>,
+    pub payload: InstructionPayload<'a>,
+}
+
+impl InstructionPayload<'_> {
+    pub fn instruction_type(&self) -> Option<Type> {
+        match self {
+            InstructionPayload::Ret => None,
+            InstructionPayload::Constant { operand_type, .. } => Some(operand_type.clone()),
+            InstructionPayload::Unary { operand_type, .. } => Some(operand_type.clone()),
+            InstructionPayload::Binary { operand_type, .. } => Some(operand_type.clone()),
+        }
+    }
 }
 
 impl<'a> Instruction<'a> {
-    fn new_const<'n>(arena: &'a bumpalo::Bump, name: &'n str, constant: LiteralValue) -> Self
+    pub fn instruction_type(&self) -> Option<Type> {
+        self.payload.instruction_type()
+    }
+
+    fn new_const<'n>(name: &'n str, constant: LiteralValue) -> Self
     where
         'n: 'a,
     {
         Self {
-            operand_type: Some(Type::of_literal(&constant)),
             name,
-            instruction_type: InstructionType::Const,
-            args: BumpVec::new_in(arena),
-            constant: Some(constant),
+            payload: InstructionPayload::Constant {
+                operand_type: Type::of_literal(&constant),
+                constant,
+            },
         }
     }
 
-    fn new_ret<'n>(arena: &'a bumpalo::Bump, name: &'n str) -> Self
+    fn new_ret<'n>(name: &'n str) -> Self
     where
         'n: 'a,
     {
         Self {
-            operand_type: None,
             name,
-            instruction_type: InstructionType::Ret,
-            args: BumpVec::new_in(arena),
-            constant: None,
+            payload: InstructionPayload::Ret {},
+        }
+    }
+
+    fn new_unary<'n>(
+        name: &'n str,
+        operand_type: Type,
+        operator: UnaryOperator,
+        operand: &'n Instruction<'n>,
+    ) -> Self
+    where
+        'n: 'a,
+    {
+        Self {
+            name,
+            payload: InstructionPayload::Unary {
+                operand_type,
+                operator,
+                operand,
+            },
+        }
+    }
+
+    fn new_binary<'n>(
+        name: &'n str,
+        operand_type: Type,
+        operator: BinaryOperator,
+        left: &'n Instruction<'n>,
+        right: &'n Instruction<'n>,
+    ) -> Self
+    where
+        'n: 'a,
+    {
+        Self {
+            name,
+            payload: InstructionPayload::Binary {
+                operand_type,
+                operator,
+                left,
+                right,
+            },
+        }
+    }
+}
+
+impl Display for InstructionPayload<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InstructionPayload::Ret => write!(f, "ret()"),
+            InstructionPayload::Constant {
+                operand_type,
+                constant,
+            } => write!(
+                f,
+                "{} = const({})",
+                operand_type.to_string_short(),
+                constant
+            ),
+            InstructionPayload::Unary {
+                operand_type,
+                operator,
+                operand,
+            } => write!(
+                f,
+                "{} = {}({})",
+                operand_type.to_string_short(),
+                operator.name(),
+                operand.name
+            ),
+            InstructionPayload::Binary {
+                operand_type,
+                operator,
+                left,
+                right,
+            } => write!(
+                f,
+                "{} = {}({}, {})",
+                operand_type.to_string_short(),
+                operator.name(),
+                left.name,
+                right.name
+            ),
         }
     }
 }
 
 impl Display for Instruction<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} {:-12} = {}(",
-            match &self.operand_type {
-                None => "v".to_string(),
-                Some(operand_type) => operand_type.to_string_short(),
-            },
-            self.name,
-            self.instruction_type,
-        )?;
-        let mut needs_comma = false;
-        for arg in self.args.iter() {
-            if needs_comma {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", arg.name)?;
-            needs_comma = true;
-        }
-        if let Some(constant) = &self.constant {
-            if needs_comma {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", constant)?;
-        }
-        write!(f, ")")
+        write!(f, "{:-15} {}", self.name, self.payload)
     }
 }
 
 pub struct BasicBlock<'a> {
+    // TODO: name
     pub instructions: RefCell<BumpVec<'a, &'a Instruction<'a>>>,
 }
 
@@ -141,12 +228,6 @@ impl<'a> BasicBlock<'a> {
     pub fn new_in(ir: &'a Ir) -> Self {
         Self {
             instructions: RefCell::new(BumpVec::new_in(&ir.arena)),
-        }
-    }
-
-    pub fn new_in_arena(arena: &'a bumpalo::Bump) -> Self {
-        Self {
-            instructions: RefCell::new(BumpVec::new_in(arena)),
         }
     }
 }
@@ -178,54 +259,30 @@ impl Ir {
         }
     }
 
-    fn instruction<'s>(
-        &'s self,
-        operand_type: Option<Type>,
-        name: &str,
-        instruction_type: InstructionType,
-        args: impl IntoIterator<Item = &'s Instruction<'s>>,
-        constant: Option<LiteralValue>,
-    ) -> &'s Instruction<'s> {
-        self.arena.alloc(Instruction {
-            operand_type,
-            name: self.arena.alloc_str(name),
-            instruction_type,
-            args: BumpVec::from_iter_in(args, &self.arena),
-            constant,
-        })
-    }
-
     pub fn new_const(&self, name: &str, constant: LiteralValue) -> &Instruction {
-        self.instruction(
-            Some(Type::of_literal(&constant)),
-            name,
-            InstructionType::Const,
-            [],
-            Some(constant),
-        )
+        self.arena
+            .alloc(Instruction::new_const(self.arena.alloc_str(name), constant))
     }
 
     pub fn new_ret(&self, name: &str) -> &Instruction {
-        self.instruction(None, name, InstructionType::Ret, [], None)
+        self.arena
+            .alloc(Instruction::new_ret(self.arena.alloc_str(name)))
     }
 
     pub fn new_unary<'s>(
         &'s self,
         name: &str,
         operator: UnaryOperator,
-        instr: &'s Instruction,
+        operand: &'s Instruction,
     ) -> &'s Instruction<'s> {
-        self.instruction(
-            instr.operand_type.clone(),
-            name,
-            match operator {
-                UnaryOperator::Neg => InstructionType::Neg,
-                UnaryOperator::Not => InstructionType::Not,
-                UnaryOperator::BitwiseNot => InstructionType::BitwiseNot,
-            },
-            [instr],
-            None,
-        )
+        self.arena.alloc(Instruction::new_unary(
+            self.arena.alloc_str(name),
+            operand
+                .instruction_type()
+                .expect("cannot have an unary instruction with a void operand"),
+            operator,
+            operand,
+        ))
     }
 
     pub fn new_binary<'s>(
@@ -235,35 +292,19 @@ impl Ir {
         left: &'s Instruction,
         right: &'s Instruction,
     ) -> &'s Instruction<'s> {
-        assert_eq!(left.operand_type, right.operand_type);
+        let left_type = left
+            .instruction_type()
+            .expect("cannot have a binary instruction with a void operand");
+        assert_eq!(Some(left_type.clone()), right.instruction_type());
 
-        self.instruction(
-            left.operand_type.clone(),
-            name,
-            match operator {
-                BinaryOperator::Add => InstructionType::Add,
-                BinaryOperator::Sub => InstructionType::Sub,
-                BinaryOperator::Mul => InstructionType::Mul,
-                BinaryOperator::Div => InstructionType::Div,
-                BinaryOperator::Rem => InstructionType::Rem,
-                BinaryOperator::Exp => InstructionType::Exp,
-                BinaryOperator::Eq => InstructionType::Eq,
-                BinaryOperator::Neq => InstructionType::Neq,
-                BinaryOperator::Lt => InstructionType::Lt,
-                BinaryOperator::Lte => InstructionType::Lte,
-                BinaryOperator::Gt => InstructionType::Gt,
-                BinaryOperator::Gte => InstructionType::Gte,
-                BinaryOperator::And => InstructionType::And,
-                BinaryOperator::Or => InstructionType::Or,
-                BinaryOperator::BitwiseAnd => InstructionType::BitwiseAnd,
-                BinaryOperator::BitwiseOr => InstructionType::BitwiseOr,
-                BinaryOperator::BitwiseXor => InstructionType::BitwiseXor,
-                BinaryOperator::BitwiseShl => InstructionType::BitwiseShl,
-                BinaryOperator::BitwiseShr => InstructionType::BitwiseShr,
-            },
-            [left, right],
-            None,
-        )
+        self.arena.alloc(Instruction::new_binary(
+            self.arena.alloc_str(name),
+            left.instruction_type()
+                .expect("cannot have a binary instruction with a void operand"),
+            operator,
+            left,
+            right,
+        ))
     }
 
     pub fn basic_block(&self) -> &BasicBlock {

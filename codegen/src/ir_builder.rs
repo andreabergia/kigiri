@@ -1,5 +1,4 @@
 use crate::ir::*;
-use parser::{BinaryOperator, UnaryOperator};
 use std::cell::RefCell;
 use type_engine::TypedExpression;
 
@@ -52,7 +51,7 @@ impl<'ir> IrBuilder<'ir> {
             } => {
                 let operand_instruction = self.generate(operand);
 
-                let name = self.instr_name(Self::instruction_name_for_unary(operator));
+                let name = self.instr_name(operator.name());
                 let instruction = self
                     .ir
                     .new_unary(&name, operator.clone(), operand_instruction);
@@ -68,7 +67,7 @@ impl<'ir> IrBuilder<'ir> {
                 let left_instruction = self.generate(left);
                 let right_instruction = self.generate(right);
 
-                let name = self.instr_name(Self::instruction_name_for_binary(operator));
+                let name = self.instr_name(operator.name());
                 let instruction = self.ir.new_binary(
                     &name,
                     operator.clone(),
@@ -87,38 +86,6 @@ impl<'ir> IrBuilder<'ir> {
 
     fn push_to_current_bb(&self, instruction: &'ir Instruction<'ir>) {
         self.current_bb.instructions.borrow_mut().push(instruction);
-    }
-
-    fn instruction_name_for_unary(operator: &UnaryOperator) -> &'static str {
-        match operator {
-            UnaryOperator::Neg => "neg",
-            UnaryOperator::Not => "not",
-            UnaryOperator::BitwiseNot => "bitwise_not",
-        }
-    }
-
-    fn instruction_name_for_binary(operator: &BinaryOperator) -> &'static str {
-        match operator {
-            BinaryOperator::Add => "add",
-            BinaryOperator::Sub => "sub",
-            BinaryOperator::Mul => "mul",
-            BinaryOperator::Div => "div",
-            BinaryOperator::Rem => "rem",
-            BinaryOperator::Exp => "exp",
-            BinaryOperator::Eq => "eq",
-            BinaryOperator::Neq => "neq",
-            BinaryOperator::Lt => "lt",
-            BinaryOperator::Lte => "lte",
-            BinaryOperator::Gt => "gt",
-            BinaryOperator::Gte => "gte",
-            BinaryOperator::And => "and",
-            BinaryOperator::Or => "or",
-            BinaryOperator::BitwiseAnd => "bitwise_and",
-            BinaryOperator::BitwiseOr => "bitwise_or",
-            BinaryOperator::BitwiseXor => "bitwise_xor",
-            BinaryOperator::BitwiseShl => "bitwise_shl",
-            BinaryOperator::BitwiseShr => "bitwise_shr",
-        }
     }
 }
 
@@ -161,34 +128,34 @@ mod tests {
         };
     }
 
-    test_ir!(const_int, "1", "i 0_const      = const(1i)\n");
-    test_ir!(const_dbl, "2.0", "d 0_const      = const(2d)\n");
-    test_ir!(const_bool, "true", "b 0_const      = const(true)\n");
+    test_ir!(const_int, "1", "0_const         i = const(1i)\n");
+    test_ir!(const_dbl, "2.0", "0_const         d = const(2d)\n");
+    test_ir!(const_bool, "true", "0_const         b = const(true)\n");
 
     test_ir!(
         neg_int,
         "- 3",
-        "i 0_const      = const(3i)\n\
-        i 1_neg        = neg(0_const)\n"
+        "0_const         i = const(3i)\n\
+        1_neg           i = neg(0_const)\n"
     );
 
     test_ir!(
         add_int,
         "1 + 2",
-        "i 0_const      = const(1i)\n\
-        i 1_const      = const(2i)\n\
-        i 2_add        = add(0_const, 1_const)\n"
+        "0_const         i = const(1i)\n\
+        1_const         i = const(2i)\n\
+        2_add           i = add(0_const, 1_const)\n"
     );
 
     test_ir!(
         mixed_expression,
         "1 + 2 * 3 < 4",
-        "i 0_const      = const(1i)\n\
-        i 1_const      = const(2i)\n\
-        i 2_const      = const(3i)\n\
-        i 3_mul        = mul(1_const, 2_const)\n\
-        i 4_add        = add(0_const, 3_mul)\n\
-        i 5_const      = const(4i)\n\
-        i 6_lt         = lt(4_add, 5_const)\n"
+        "0_const         i = const(1i)\n\
+        1_const         i = const(2i)\n\
+        2_const         i = const(3i)\n\
+        3_mul           i = mul(1_const, 2_const)\n\
+        4_add           i = add(0_const, 3_mul)\n\
+        5_const         i = const(4i)\n\
+        6_lt            i = lt(4_add, 5_const)\n"
     );
 }

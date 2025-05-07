@@ -42,6 +42,16 @@ pub enum UnaryOperator {
     BitwiseNot,
 }
 
+impl UnaryOperator {
+    pub fn name(&self) -> &'static str {
+        match self {
+            UnaryOperator::Neg => "neg",
+            UnaryOperator::Not => "not",
+            UnaryOperator::BitwiseNot => "bitwise_not",
+        }
+    }
+}
+
 impl Display for UnaryOperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(
@@ -77,6 +87,32 @@ pub enum BinaryOperator {
     BitwiseXor,
     BitwiseShl,
     BitwiseShr,
+}
+
+impl BinaryOperator {
+    pub fn name(&self) -> &'static str {
+        match self {
+            BinaryOperator::Add => "add",
+            BinaryOperator::Sub => "sub",
+            BinaryOperator::Mul => "mul",
+            BinaryOperator::Div => "div",
+            BinaryOperator::Rem => "rem",
+            BinaryOperator::Exp => "exp",
+            BinaryOperator::Eq => "eq",
+            BinaryOperator::Neq => "neq",
+            BinaryOperator::Lt => "lt",
+            BinaryOperator::Lte => "lte",
+            BinaryOperator::Gt => "gt",
+            BinaryOperator::Gte => "gte",
+            BinaryOperator::And => "and",
+            BinaryOperator::Or => "or",
+            BinaryOperator::BitwiseAnd => "bitwise_and",
+            BinaryOperator::BitwiseOr => "bitwise_or",
+            BinaryOperator::BitwiseXor => "bitwise_xor",
+            BinaryOperator::BitwiseShl => "bitwise_shl",
+            BinaryOperator::BitwiseShr => "bitwise_shr",
+        }
+    }
 }
 
 impl Display for BinaryOperator {

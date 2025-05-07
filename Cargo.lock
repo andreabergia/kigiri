@@ -15,6 +15,7 @@ dependencies = [
  "codegen",
  "inkwell",
  "parser",
+ "thiserror 2.0.12",
  "type_engine",
 ]
 
