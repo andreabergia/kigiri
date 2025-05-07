@@ -12,7 +12,7 @@ test-verbose:
     RUST_LOG=trace cargo nextest run --no-capture
 
 lint:
-    cargo clippy --fix --allow-dirty --allow-staged
+    cargo clippy --fix --allow-dirty --allow-staged -- -W clippy::all
 
 clean:
     cargo clean
