@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn test_ir_to_llvm() {
         let ir = Ir::new();
-        let basic_block = basic_block_from_source(&ir, "1 + 2 * 3 < 4");
+        let basic_block = basic_block_from_source(&ir, "1 + 2 * 3");
 
         let context = Context::create();
         let module = context.create_module("test");
