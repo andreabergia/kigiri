@@ -322,14 +322,14 @@ mod tests {
     #[test]
     fn test_display_instruction_no_args_no_const() {
         let ir = Ir::new();
-        assert_eq!("v ret_0        = ret()", ir.new_ret("ret_0").to_string())
+        assert_eq!("ret_0           ret()", ir.new_ret("ret_0").to_string())
     }
 
     #[test]
     fn test_display_instruction_no_args_const() {
         let ir = Ir::new();
         assert_eq!(
-            "i const_0      = const(1i)",
+            "const_0         i = const(1i)",
             ir.new_const("const_0", LiteralValue::Integer(1))
                 .to_string()
         )
@@ -340,7 +340,7 @@ mod tests {
         let ir = Ir::new();
         let const_0 = ir.new_const("const_0", LiteralValue::Integer(1));
         assert_eq!(
-            "i neg_0        = neg(const_0)",
+            "neg_0           i = neg(const_0)",
             ir.new_unary("neg_0", UnaryOperator::Neg, const_0)
                 .to_string()
         )
@@ -352,7 +352,7 @@ mod tests {
         let const_0 = ir.new_const("const_0", LiteralValue::Integer(0));
         let const_1 = ir.new_const("const_1", LiteralValue::Integer(1));
         assert_eq!(
-            "i add_0        = add(const_0, const_1)",
+            "add_0           i = add(const_0, const_1)",
             ir.new_binary("add_0", BinaryOperator::Add, const_0, const_1)
                 .to_string()
         )
