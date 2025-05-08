@@ -23,6 +23,7 @@ impl From<BuilderError> for CodeGenError {
     }
 }
 
+#[allow(unused)]
 fn ir_to_llvm<'c>(
     context: &'c Context,
     module: &Module<'c>,
