@@ -1,6 +1,6 @@
 # https://github.com/casey/just
 
-default: build test lint
+default: build fmt test lint
 
 build:
     cargo build
@@ -12,6 +12,7 @@ test-verbose:
     RUST_LOG=trace cargo nextest run --no-capture
 
 lint:
+    cargo fmt --all --check
     cargo clippy --fix --allow-dirty --allow-staged -- -W clippy::all
 
 clean:
@@ -19,3 +20,6 @@ clean:
 
 find-unused-dependencies:
     cargo +nightly udeps --all-targets
+
+fmt:
+    cargo fmt --all

@@ -1,8 +1,8 @@
 use crate::ast::{Ast, BinaryOperator, Expression, UnaryOperator};
 use crate::grammar::{Grammar, Rule};
+use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
-use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
