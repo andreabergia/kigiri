@@ -1,0 +1,7 @@
+LLVM backend
+- [ ] rather than a hash map for the values, add an index to IR instructions and use an array
+- [ ] function calls
+- [ ] float math
+- [ ] cast
+- [ ] variables
+- [ ] start using string interning
