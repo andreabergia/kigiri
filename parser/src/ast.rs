@@ -1,4 +1,4 @@
-use crate::memory::{STRING_INTERNER, StringId};
+use crate::symbols::{StringId, get_or_create_symbol, resolve_symbol};
 use std::fmt::{Display, Formatter};
 //
 //
@@ -182,10 +182,7 @@ impl Display for Expression<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Identifier { symbol_id } => {
-                let interner = STRING_INTERNER
-                    .lock()
-                    .expect("should be able to mutate the string interner");
-                let symbol = interner.resolve(*symbol_id).expect("invalid symbol!");
+                let symbol = resolve_symbol(*symbol_id).expect("invalid symbol!");
                 write!(f, "{}", symbol)
             }
             Expression::Literal(value) => write!(f, "{}", value),
@@ -210,10 +207,7 @@ impl Ast {
     }
 
     pub fn identifier(&self, symbol: &str) -> &Expression {
-        let mut interner = STRING_INTERNER
-            .lock()
-            .expect("should be able to lock the interner");
-        let id = interner.get_or_intern(symbol);
+        let id = get_or_create_symbol(symbol);
         self.alloc(Expression::Identifier { symbol_id: id })
     }
 
