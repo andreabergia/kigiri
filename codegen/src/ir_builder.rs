@@ -104,7 +104,7 @@ mod tests {
         type_engine: &'te TypeEngine,
         source: &str,
     ) -> &'te TypedExpression<'te> {
-        let ast = parser::Ast::for_tests();
+        let ast = parser::Ast::default();
         let expression = parser::parse(&ast, source);
 
         let result = type_engine.check_and_infer_types(expression);

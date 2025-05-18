@@ -105,7 +105,7 @@ mod tests {
         ($name: ident, $source: expr, $ast: expr) => {
             #[test]
             fn $name() {
-                let ast = Ast::for_tests();
+                let ast = Ast::default();
                 let expression = parse(&ast, $source);
                 assert_eq!(expression.to_string(), $ast);
             }

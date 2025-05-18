@@ -1,7 +1,5 @@
-use crate::memory::{StringId, StringInterner};
-use std::cell::RefCell;
+use crate::memory::{STRING_INTERNER, StringId};
 use std::fmt::{Display, Formatter};
-use std::rc::Rc;
 //
 //
 // #[derive(Debug, PartialEq)]
@@ -165,7 +163,6 @@ impl Display for LiteralValue {
 #[derive(Debug, PartialEq)]
 pub enum Expression<'a> {
     Identifier {
-        string_interner: Rc<RefCell<StringInterner>>,
         symbol_id: StringId,
     },
     Literal(LiteralValue),
@@ -184,14 +181,11 @@ pub enum Expression<'a> {
 impl Display for Expression<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Identifier {
-                string_interner,
-                symbol_id,
-            } => {
-                let string_interner = string_interner.borrow();
-                let symbol = string_interner
-                    .resolve(*symbol_id)
-                    .expect("invalid symbol!");
+            Expression::Identifier { symbol_id } => {
+                let interner = STRING_INTERNER
+                    .lock()
+                    .expect("should be able to mutate the string interner");
+                let symbol = interner.resolve(*symbol_id).expect("invalid symbol!");
                 write!(f, "{}", symbol)
             }
             Expression::Literal(value) => write!(f, "{}", value),
@@ -205,33 +199,22 @@ impl Display for Expression<'_> {
     }
 }
 
+#[derive(Default)]
 pub struct Ast {
     arena: bumpalo::Bump,
-    interner: Rc<RefCell<StringInterner>>,
 }
 
 impl Ast {
-    pub fn new(interner: Rc<RefCell<StringInterner>>) -> Self {
-        Self {
-            arena: bumpalo::Bump::new(),
-            interner,
-        }
-    }
-
-    pub fn for_tests() -> Self {
-        let string_interner = Rc::new(RefCell::new(StringInterner::default()));
-        Self::new(string_interner)
-    }
-
     fn alloc<T>(&self, value: T) -> &T {
         self.arena.alloc(value)
     }
 
     pub fn identifier(&self, symbol: &str) -> &Expression {
-        self.alloc(Expression::Identifier {
-            string_interner: self.interner.clone(),
-            symbol_id: self.interner.borrow_mut().get_or_intern(symbol),
-        })
+        let mut interner = STRING_INTERNER
+            .lock()
+            .expect("should be able to lock the interner");
+        let id = interner.get_or_intern(symbol);
+        self.alloc(Expression::Identifier { symbol_id: id })
     }
 
     pub fn literal_integer(&self, value: i64) -> &Expression {
@@ -282,14 +265,14 @@ mod tests {
 
     #[test]
     fn can_allocate_via_ast() {
-        let ast = Ast::for_tests();
+        let ast = Ast::default();
         let id = ast.literal_integer(1);
         assert_eq!(id, &Expression::Literal(LiteralValue::Integer(1)));
     }
 
     #[test]
     fn format_expressions() {
-        let ast = Ast::for_tests();
+        let ast = Ast::default();
 
         let x = ast.identifier("x");
         let one = ast.literal_integer(1);

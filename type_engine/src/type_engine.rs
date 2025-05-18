@@ -28,10 +28,7 @@ impl TypeEngine {
         root: &Expression,
     ) -> Result<&'s TypedExpression<'s>, TypeEngineError> {
         match root {
-            Expression::Identifier {
-                string_interner,
-                symbol_id,
-            } => todo!(),
+            Expression::Identifier { symbol_id } => todo!(),
 
             // Literals will never fail
             Expression::Literal(value) => Ok(self.alloc(TypedExpression::Literal {
@@ -134,7 +131,7 @@ mod tests {
         ($name: ident, $source: expr, $typed_ast: expr) => {
             #[test]
             fn $name() {
-                let ast = parser::Ast::for_tests();
+                let ast = parser::Ast::default();
                 let expression = parser::parse(&ast, $source);
                 let type_engine = TypeEngine::default();
                 let result = type_engine.check_and_infer_types(expression);
@@ -152,7 +149,7 @@ mod tests {
         ($name: ident, $source: expr, $expected_error: expr) => {
             #[test]
             fn $name() {
-                let ast = parser::Ast::for_tests();
+                let ast = parser::Ast::default();
                 let expression = parser::parse(&ast, $source);
                 let type_engine = TypeEngine::default();
                 let result = type_engine.check_and_infer_types(expression);
