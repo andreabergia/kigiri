@@ -1,16 +1,13 @@
-program = { SOI ~ functionDeclaration+ ~ EOI }
-
-functionDeclaration = { "fn" ~ identifier ~ "(" ~ functionDeclarationParameters ~ ")" ~ block }
-functionDeclarationParameters = { (identifier ~ ("," ~ identifier)*)? }
+// program = { SOI ~ functionDeclaration+ ~ EOI }
+//
+// functionDeclaration = { "fn" ~ identifier ~ "(" ~ functionDeclarationParameters ~ ")" ~ block }
+// functionDeclarationParameters = { (identifier ~ ("," ~ identifier)*)? }
 
 block = { "{" ~ (statement | block)* ~ "}" }
 
-statement = _{ (letStatement | assignmentStatement | returnStatement) ~ ";" }
-
-letStatement = { "let" ~ identifier ~ "=" ~ expression }
-
+statement = { (letStatement | assignmentStatement | returnStatement | expression) ~ ";" }
+letStatement = { "let" ~ identifier ~ ("=" ~ expression)? ~ ("," ~ identifier ~ ("=" ~ expression)? )* }
 assignmentStatement = { identifier ~ "=" ~ expression }
-
 returnStatement = { "return" ~ expression }
 
 expression = { prefix? ~ factor ~ (infix ~ prefix? ~ factor )* }
