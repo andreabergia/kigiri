@@ -1,8 +1,8 @@
 use crate::ast::{Ast, BinaryOperator, Expression, UnaryOperator};
 use crate::grammar::{Grammar, Rule};
-use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -85,7 +85,7 @@ fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Express
         .parse(rule.into_inner())
 }
 
-pub fn parse<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression<'ast> {
+pub fn parse_as_expression<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression<'ast> {
     let pair = Grammar::parse(Rule::expression, text)
         .unwrap()
         .next()
@@ -106,7 +106,7 @@ mod tests {
             #[test]
             fn $name() {
                 let ast = Ast::default();
-                let expression = parse(&ast, $source);
+                let expression = parse_as_expression(&ast, $source);
                 assert_eq!(expression.to_string(), $ast);
             }
         };

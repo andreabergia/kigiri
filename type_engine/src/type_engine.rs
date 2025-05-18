@@ -132,7 +132,7 @@ mod tests {
             #[test]
             fn $name() {
                 let ast = parser::Ast::default();
-                let expression = parser::parse(&ast, $source);
+                let expression = parser::parse_as_expression(&ast, $source);
                 let type_engine = TypeEngine::default();
                 let result = type_engine.check_and_infer_types(expression);
                 assert_eq!(
@@ -150,7 +150,7 @@ mod tests {
             #[test]
             fn $name() {
                 let ast = parser::Ast::default();
-                let expression = parser::parse(&ast, $source);
+                let expression = parser::parse_as_expression(&ast, $source);
                 let type_engine = TypeEngine::default();
                 let result = type_engine.check_and_infer_types(expression);
                 assert_eq!(

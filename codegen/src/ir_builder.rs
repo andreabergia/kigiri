@@ -105,7 +105,7 @@ mod tests {
         source: &str,
     ) -> &'te TypedExpression<'te> {
         let ast = parser::Ast::default();
-        let expression = parser::parse(&ast, source);
+        let expression = parser::parse_as_expression(&ast, source);
 
         let result = type_engine.check_and_infer_types(expression);
         result.expect("should have passed semantic analysis")
