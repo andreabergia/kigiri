@@ -46,7 +46,7 @@ pub enum Statement<'a> {
         expression: &'a Expression<'a>,
     },
     Return {
-        expression: &'a Expression<'a>,
+        expression: Option<&'a Expression<'a>>,
     },
     Expression {
         expression: &'a Expression<'a>,
@@ -85,7 +85,11 @@ impl Display for Statement<'_> {
                 )
             }
             Statement::Return { expression } => {
-                write!(f, "return {};", expression)
+                if let Some(expression) = expression {
+                    write!(f, "return {};", expression)
+                } else {
+                    write!(f, "return;")
+                }
             }
             Statement::Expression { expression } => {
                 write!(f, "{};", expression)
@@ -370,7 +374,10 @@ impl Ast {
         self.alloc(Statement::Expression { expression })
     }
 
-    pub fn statement_return<'s, 'e>(&'s self, expression: &'e Expression<'e>) -> &'s Statement<'s>
+    pub fn statement_return<'s, 'e>(
+        &'s self,
+        expression: Option<&'e Expression<'e>>,
+    ) -> &'s Statement<'s>
     where
         'e: 's,
     {

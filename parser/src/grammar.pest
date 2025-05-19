@@ -9,7 +9,7 @@ statement = { (letStatement | assignmentStatement | returnStatement | expression
 letStatement = { "let" ~ letStatementInitializer ~ ("," ~ letStatementInitializer )* }
 letStatementInitializer = { identifier ~ ("=" ~ expression)? }
 assignmentStatement = { identifier ~ "=" ~ expression }
-returnStatement = { "return" ~ expression }
+returnStatement = { "return" ~ expression? }
 
 expression = { prefix? ~ factor ~ (infix ~ prefix? ~ factor )* }
 // Note: the order here is important, since some rules are a prefix of others. In particular, exp needs to come

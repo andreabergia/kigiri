@@ -122,7 +122,7 @@ fn parse_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Statemen
             ast.statement_assignment(identifier, expression)
         }
         Rule::returnStatement => {
-            let expression = parse_expression(ast, pair);
+            let expression = pair.into_inner().next().map(|p| parse_expression(ast, p));
             ast.statement_return(expression)
         }
         Rule::expression => {
@@ -239,7 +239,7 @@ mod tests {
     test_expression!(parenthesis, "(1 + 2) * 3", "(* (+ 1i 2i) 3i)");
 
     test_block!(
-        expression_statement,
+        statement_expression,
         r"{
    1;
 }",
@@ -248,7 +248,7 @@ mod tests {
 }"
     );
     test_block!(
-        return_statement,
+        statement_return_with_value,
         r"{
    return 1;
 }",
@@ -257,7 +257,16 @@ return 1i;
 }"
     );
     test_block!(
-        let_statement_initializer,
+        statement_return_empty,
+        r"{
+   return;
+}",
+        r"{ #0
+return;
+}"
+    );
+    test_block!(
+        statement_let_initializer,
         r"{
    let a = 1;
 }",
@@ -266,7 +275,7 @@ let a = 1i;
 }"
     );
     test_block!(
-        let_statement_no_initializer,
+        statement_let_no_initializer,
         r"{
    let a;
 }",
@@ -275,7 +284,7 @@ let a;
 }"
     );
     test_block!(
-        let_statement_multiple_initializers,
+        statement_let_multiple_initializers,
         r"{
    let a = 1, b;
 }",
@@ -284,7 +293,7 @@ let a = 1i, b;
 }"
     );
     test_block!(
-        assignment_statement,
+        statement_assignment,
         r"{
    a = 1;
 }",
@@ -293,7 +302,7 @@ a = 1i;
 }"
     );
     test_block!(
-        nested_block_statement,
+        statement_nested_block,
         r"{
        {
           a = 1;
