@@ -66,12 +66,12 @@ impl Display for Statement<'_> {
                     if !first {
                         write!(f, ", ")?;
                     }
-                    write!(
-                        f,
-                        "{} = {}",
-                        resolve_symbol(i.name).expect("invalid let initializer"),
-                        i.value
-                    )?;
+                    let name = resolve_symbol(i.name).expect("invalid let initializer");
+                    if let Some(value) = i.value {
+                        write!(f, "{} = {}", name, value)?;
+                    } else {
+                        write!(f, "{}", name);
+                    }
                     first = false;
                 }
                 write!(f, ";")
@@ -100,7 +100,7 @@ impl Display for Statement<'_> {
 #[derive(Debug, PartialEq)]
 pub struct LetInitializer<'a> {
     pub name: StringId,
-    pub value: &'a Expression<'a>,
+    pub value: Option<&'a Expression<'a>>,
 }
 
 // #[derive(Debug, PartialEq)]

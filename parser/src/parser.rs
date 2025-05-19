@@ -92,16 +92,17 @@ fn parse_let_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Stat
     let mut iter = rule.into_inner();
     let mut initializers = ast.statement_let_initializers();
     loop {
-        let Some(id) = iter.next() else {
+        let Some(initializer_rule) = iter.next() else {
             break;
         };
+        let mut initializer_rule = initializer_rule.into_inner();
+
+        let id = initializer_rule.next().unwrap();
         let id = get_or_create_symbol(id.as_str());
 
-        let expression = parse_expression(ast, iter.next().unwrap());
-        initializers.push(LetInitializer {
-            name: id,
-            value: expression,
-        })
+        let value = initializer_rule.next().map(|e| parse_expression(ast, e));
+
+        initializers.push(LetInitializer { name: id, value })
     }
     ast.statement_let(initializers)
 }
@@ -251,6 +252,26 @@ mod tests {
 }",
         r"{ #0
   let a = 1i;
+}
+"
+    );
+    test_block!(
+        let_statement_no_initializer,
+        r"{
+   let a;
+}",
+        r"{ #0
+  let a;
+}
+"
+    );
+    test_block!(
+        let_statement_multiple_initializers,
+        r"{
+   let a = 1, b;
+}",
+        r"{ #0
+  let a = 1i, b;
 }
 "
     );
