@@ -3,9 +3,9 @@ use crate::ast::{
 };
 use crate::grammar::{Grammar, Rule};
 use crate::symbols::get_or_create_symbol;
+use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
-use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 

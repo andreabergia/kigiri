@@ -1,9 +1,9 @@
 use codegen::{Instruction, InstructionPayload, LiteralValue};
+use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::values::IntValue;
-use inkwell::IntPredicate;
 use parser::{BinaryOperator, UnaryOperator};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -372,9 +372,9 @@ fn ir_to_llvm<'c>(
 mod tests {
     use super::*;
     use codegen::Ir;
-    use codegen::{build_ir, BasicBlock};
+    use codegen::{BasicBlock, build_ir};
     use inkwell::context::Context;
-    use std::io::{stderr, Write};
+    use std::io::{Write, stderr};
     use type_engine::{TypeEngine, TypedExpression};
 
     // TODO: this needs to not be so duplicated across projects
