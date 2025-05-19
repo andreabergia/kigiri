@@ -30,9 +30,9 @@ impl Display for Block<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{{ #{}", self.id.0)?;
         for statement in &self.statements {
-            writeln!(f, "  {}", statement)?;
+            writeln!(f, "{}", statement)?;
         }
-        writeln!(f, "}}")
+        write!(f, "}}")
     }
 }
 
@@ -333,15 +333,20 @@ impl Ast {
         BumpVec::new_in(&self.arena)
     }
 
+    pub fn next_block_id(&self) -> BlockId {
+        let block_id = self.next_block_id.get();
+        self.next_block_id.set(block_id.next());
+        block_id
+    }
+
     pub fn block_from_statements<'s, 'v>(
         &'s self,
+        block_id: BlockId,
         statements: BumpVec<'v, &'v Statement>,
     ) -> &'s Block<'s>
     where
         'v: 's,
     {
-        let block_id = self.next_block_id.get();
-        self.next_block_id.set(block_id.next());
         self.alloc(Block {
             id: block_id,
             statements,
@@ -384,6 +389,20 @@ impl Ast {
         'e: 's,
     {
         self.alloc(Statement::Let { initializers })
+    }
+
+    pub fn statement_assignment<'s, 'e>(
+        &'s self,
+        name: &str,
+        expression: &'e Expression<'e>,
+    ) -> &'s Statement<'s>
+    where
+        'e: 's,
+    {
+        self.alloc(Statement::Assignment {
+            name: get_or_create_symbol(name),
+            expression,
+        })
     }
 }
 

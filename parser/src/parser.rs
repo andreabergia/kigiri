@@ -111,7 +111,16 @@ fn parse_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Statemen
     let pair = rule.into_inner().next().unwrap();
     match pair.as_rule() {
         Rule::letStatement => parse_let_statement(ast, pair),
-        Rule::assignmentStatement => todo!(),
+        Rule::assignmentStatement => {
+            let mut inner = pair.into_inner();
+            let identifier = inner
+                .next()
+                .expect("identifier on lhs of assignment")
+                .as_str();
+            let expression =
+                parse_expression(ast, inner.next().expect("expression on rhs of assignment"));
+            ast.statement_assignment(identifier, expression)
+        }
         Rule::returnStatement => {
             let expression = parse_expression(ast, pair);
             ast.statement_return(expression)
@@ -125,6 +134,10 @@ fn parse_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Statemen
 }
 
 fn parse_block<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Block<'ast> {
+    // We want a parent block to have a smaller id than any nested block,
+    // so we generate the block_id first and then recurse.
+    let block_id = ast.next_block_id();
+
     let mut statements = ast.statements();
     for pair in rule.into_inner() {
         match pair.as_rule() {
@@ -133,7 +146,7 @@ fn parse_block<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Block<'ast> 
             _ => unreachable!(),
         }
     }
-    ast.block_from_statements(statements)
+    ast.block_from_statements(block_id, statements)
 }
 
 pub fn parse_as_expression<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression<'ast> {
@@ -231,9 +244,8 @@ mod tests {
    1;
 }",
         r"{ #0
-  1i;
-}
-"
+1i;
+}"
     );
     test_block!(
         return_statement,
@@ -241,9 +253,8 @@ mod tests {
    return 1;
 }",
         r"{ #0
-  return 1i;
-}
-"
+return 1i;
+}"
     );
     test_block!(
         let_statement_initializer,
@@ -251,9 +262,8 @@ mod tests {
    let a = 1;
 }",
         r"{ #0
-  let a = 1i;
-}
-"
+let a = 1i;
+}"
     );
     test_block!(
         let_statement_no_initializer,
@@ -261,9 +271,8 @@ mod tests {
    let a;
 }",
         r"{ #0
-  let a;
-}
-"
+let a;
+}"
     );
     test_block!(
         let_statement_multiple_initializers,
@@ -271,8 +280,29 @@ mod tests {
    let a = 1, b;
 }",
         r"{ #0
-  let a = 1i, b;
+let a = 1i, b;
+}"
+    );
+    test_block!(
+        assignment_statement,
+        r"{
+   a = 1;
+}",
+        r"{ #0
+a = 1i;
+}"
+    );
+    test_block!(
+        nested_block_statement,
+        r"{
+       {
+          a = 1;
+       }
+    }",
+        r"{ #0
+{ #1
+a = 1i;
 }
-"
+}"
     );
 }
