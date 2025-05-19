@@ -7,7 +7,6 @@ pub enum TypedExpression<'a> {
     // TODO
     // Identifier {
     //     resolved_type: Type,
-    //     string_interner: Rc<RefCell<StringInterner>>,
     //     symbol_id: StringId,
     // },
     Literal {
@@ -31,7 +30,6 @@ impl Display for TypedExpression<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             // Expression::Identifier {
-            //     string_interner,
             //     symbol_id,
             // } => {
             //     let string_interner = string_interner.borrow();

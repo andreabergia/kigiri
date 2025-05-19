@@ -1,9 +1,9 @@
 #![allow(unused)]
 
-mod type_engine;
+mod semantic_analyzer;
 mod typed_ast;
 mod types;
 
-pub use type_engine::TypeEngine;
+pub use semantic_analyzer::SemanticAnalyzer;
 pub use typed_ast::TypedExpression;
 pub use types::Type;

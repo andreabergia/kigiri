@@ -98,21 +98,21 @@ pub fn build_ir<'ir>(ir: &'ir Ir, expression: &TypedExpression) -> &'ir BasicBlo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use type_engine::TypeEngine;
+    use type_engine::SemanticAnalyzer;
 
     fn make_analyzed_ast<'te>(
-        type_engine: &'te TypeEngine,
+        type_engine: &'te SemanticAnalyzer,
         source: &str,
     ) -> &'te TypedExpression<'te> {
         let ast = parser::Ast::default();
         let expression = parser::parse_as_expression(&ast, source);
 
-        let result = type_engine.check_and_infer_types(expression);
+        let result = type_engine.analyze(expression);
         result.expect("should have passed semantic analysis")
     }
 
     fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
-        let type_engine = TypeEngine::default();
+        let type_engine = SemanticAnalyzer::default();
         let expression = make_analyzed_ast(&type_engine, source);
         build_ir(ir, expression)
     }

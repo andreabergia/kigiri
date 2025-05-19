@@ -1,5 +1,5 @@
 [workspace]
-members = ["parser", "type_engine", "codegen", "backend_llvm"]
+members = ["parser", "semantic_analysis", "codegen", "backend_llvm"]
 resolver = "3"
 
 [workspace.dependencies]

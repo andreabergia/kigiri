@@ -375,22 +375,22 @@ mod tests {
     use codegen::{BasicBlock, build_ir};
     use inkwell::context::Context;
     use std::io::{Write, stderr};
-    use type_engine::{TypeEngine, TypedExpression};
+    use type_engine::{SemanticAnalyzer, TypedExpression};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'te>(
-        type_engine: &'te TypeEngine,
+        type_engine: &'te SemanticAnalyzer,
         source: &str,
     ) -> &'te TypedExpression<'te> {
         let ast = parser::Ast::default();
         let expression = parser::parse_as_expression(&ast, source);
 
-        let result = type_engine.check_and_infer_types(expression);
+        let result = type_engine.analyze(expression);
         result.expect("should have passed semantic analysis")
     }
 
     fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
-        let type_engine = TypeEngine::default();
+        let type_engine = SemanticAnalyzer::default();
         let expression = make_analyzed_ast(&type_engine, source);
         let bb = build_ir(ir, expression);
 

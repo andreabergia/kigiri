@@ -3,7 +3,7 @@ use parser::{BinaryOperator, Expression, UnaryOperator};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
-pub enum TypeEngineError {
+pub enum SemanticAnalysisError {
     #[error("cannot apply operator {operator} to type {operand_type}")]
     CannotApplyUnaryOperatorToType {
         operator: UnaryOperator,
@@ -18,15 +18,15 @@ pub enum TypeEngineError {
 }
 
 #[derive(Default)]
-pub struct TypeEngine {
+pub struct SemanticAnalyzer {
     arena: bumpalo::Bump,
 }
 
-impl TypeEngine {
-    pub fn check_and_infer_types<'s>(
+impl SemanticAnalyzer {
+    pub fn analyze<'s>(
         &'s self,
         root: &Expression,
-    ) -> Result<&'s TypedExpression<'s>, TypeEngineError> {
+    ) -> Result<&'s TypedExpression<'s>, SemanticAnalysisError> {
         match root {
             Expression::Identifier { symbol_id } => todo!(),
 
@@ -38,7 +38,7 @@ impl TypeEngine {
 
             // Unary operators - can fail!
             Expression::Unary { operator, operand } => {
-                let typed_operand = self.check_and_infer_types(operand)?;
+                let typed_operand = self.analyze(operand)?;
                 let operand_type = typed_operand.resolved_type();
                 if (Self::unary_op_is_allowed(operator.clone(), operand_type.clone())) {
                     Ok(self.alloc(TypedExpression::Unary {
@@ -47,7 +47,7 @@ impl TypeEngine {
                         operand: typed_operand,
                     }))
                 } else {
-                    Err(TypeEngineError::CannotApplyUnaryOperatorToType {
+                    Err(SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                         operator: operator.clone(),
                         operand_type: operand_type.clone(),
                     })
@@ -60,8 +60,8 @@ impl TypeEngine {
                 left,
                 right,
             } => {
-                let typed_left = self.check_and_infer_types(left)?;
-                let typed_right = self.check_and_infer_types(right)?;
+                let typed_left = self.analyze(left)?;
+                let typed_right = self.analyze(right)?;
                 let left_type = typed_left.resolved_type();
                 let right_type = typed_right.resolved_type();
                 if Self::bin_op_is_allowed(operator.clone(), left_type.clone(), right_type.clone())
@@ -73,7 +73,7 @@ impl TypeEngine {
                         right: typed_right,
                     }))
                 } else {
-                    Err(TypeEngineError::CannotApplyBinaryOperatorToType {
+                    Err(SemanticAnalysisError::CannotApplyBinaryOperatorToType {
                         operator: operator.clone(),
                         left_type: left_type.clone(),
                         right_type: right_type.clone(),
@@ -133,8 +133,8 @@ mod tests {
             fn $name() {
                 let ast = parser::Ast::default();
                 let expression = parser::parse_as_expression(&ast, $source);
-                let type_engine = TypeEngine::default();
-                let result = type_engine.check_and_infer_types(expression);
+                let type_engine = SemanticAnalyzer::default();
+                let result = type_engine.analyze(expression);
                 assert_eq!(
                     result
                         .expect("should have matched types correctly")
@@ -151,8 +151,8 @@ mod tests {
             fn $name() {
                 let ast = parser::Ast::default();
                 let expression = parser::parse_as_expression(&ast, $source);
-                let type_engine = TypeEngine::default();
-                let result = type_engine.check_and_infer_types(expression);
+                let type_engine = SemanticAnalyzer::default();
+                let result = type_engine.analyze(expression);
                 assert_eq!(
                     result.expect_err("should have failed to match types"),
                     $expected_error
@@ -174,7 +174,7 @@ mod tests {
     test_types_ko!(
         unary_neg_boolean,
         "- false",
-        TypeEngineError::CannotApplyUnaryOperatorToType {
+        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
             operator: UnaryOperator::Neg,
             operand_type: Type::Boolean
         }
@@ -183,7 +183,7 @@ mod tests {
     test_types_ko!(
         unary_not_int,
         "! 3",
-        TypeEngineError::CannotApplyUnaryOperatorToType {
+        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
             operator: UnaryOperator::Not,
             operand_type: Type::Int
         }
@@ -191,7 +191,7 @@ mod tests {
     test_types_ko!(
         unary_not_double,
         "! 3.14",
-        TypeEngineError::CannotApplyUnaryOperatorToType {
+        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
             operator: UnaryOperator::Not,
             operand_type: Type::Double
         }
@@ -202,7 +202,7 @@ mod tests {
     test_types_ko!(
         unary_bitwise_not_double,
         "~ 3.14",
-        TypeEngineError::CannotApplyUnaryOperatorToType {
+        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
             operator: UnaryOperator::BitwiseNot,
             operand_type: Type::Double
         }
@@ -210,7 +210,7 @@ mod tests {
     test_types_ko!(
         unary_bitwise_not_boolean,
         "~ false",
-        TypeEngineError::CannotApplyUnaryOperatorToType {
+        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
             operator: UnaryOperator::BitwiseNot,
             operand_type: Type::Boolean
         }
@@ -221,7 +221,7 @@ mod tests {
     test_types_ko!(
         binary_add_int_double,
         "1 + 3.14",
-        TypeEngineError::CannotApplyBinaryOperatorToType {
+        SemanticAnalysisError::CannotApplyBinaryOperatorToType {
             operator: BinaryOperator::Add,
             left_type: Type::Int,
             right_type: Type::Double,
