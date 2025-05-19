@@ -10,6 +10,6 @@ pub use ast::BinaryOperator;
 pub use ast::Expression;
 pub use ast::LiteralValue;
 pub use ast::UnaryOperator;
-pub use parser::parse;
+pub use parser::parse_as_expression;
 pub use symbols::StringId;
 pub use symbols::StringInterner;

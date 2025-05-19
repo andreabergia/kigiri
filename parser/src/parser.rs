@@ -1,5 +1,8 @@
-use crate::ast::{Ast, BinaryOperator, Expression, UnaryOperator};
+use crate::ast::{
+    Ast, BinaryOperator, Block, Expression, LetInitializer, Statement, UnaryOperator,
+};
 use crate::grammar::{Grammar, Rule};
+use crate::symbols::get_or_create_symbol;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
 use pest::Parser;
@@ -85,12 +88,64 @@ fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Express
         .parse(rule.into_inner())
 }
 
+fn parse_let_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Statement<'ast> {
+    let mut iter = rule.into_inner();
+    let mut initializers = ast.statement_let_initializers();
+    loop {
+        let Some(id) = iter.next() else {
+            break;
+        };
+        let id = get_or_create_symbol(id.as_str());
+
+        let expression = parse_expression(ast, iter.next().unwrap());
+        initializers.push(LetInitializer {
+            name: id,
+            value: expression,
+        })
+    }
+    ast.statement_let(initializers)
+}
+
+fn parse_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Statement<'ast> {
+    let pair = rule.into_inner().next().unwrap();
+    match pair.as_rule() {
+        Rule::letStatement => parse_let_statement(ast, pair),
+        Rule::assignmentStatement => todo!(),
+        Rule::returnStatement => {
+            let expression = parse_expression(ast, pair);
+            ast.statement_return(expression)
+        }
+        Rule::expression => {
+            let expression = parse_expression(ast, pair);
+            ast.statement_expression(expression)
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn parse_block<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Block<'ast> {
+    let mut statements = ast.statements();
+    for pair in rule.into_inner() {
+        match pair.as_rule() {
+            Rule::statement => statements.push(parse_statement(ast, pair)),
+            Rule::block => statements.push(ast.nested_block(parse_block(ast, pair))),
+            _ => unreachable!(),
+        }
+    }
+    ast.block_from_statements(statements)
+}
+
 pub fn parse_as_expression<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression<'ast> {
     let pair = Grammar::parse(Rule::expression, text)
         .unwrap()
         .next()
         .unwrap();
     parse_expression(ast, pair)
+}
+
+pub fn parse<'ast>(ast: &'ast Ast, text: &str) -> &'ast Block<'ast> {
+    let pair = Grammar::parse(Rule::block, text).unwrap().next().unwrap();
+    parse_block(ast, pair)
 }
 
 #[cfg(test)]
@@ -108,6 +163,17 @@ mod tests {
                 let ast = Ast::default();
                 let expression = parse_as_expression(&ast, $source);
                 assert_eq!(expression.to_string(), $ast);
+            }
+        };
+    }
+
+    macro_rules! test_block {
+        ($name: ident, $source: expr, $ast: expr) => {
+            #[test]
+            fn $name() {
+                let ast = Ast::default();
+                let block = parse(&ast, $source);
+                assert_eq!(block.to_string(), $ast);
             }
         };
     }
@@ -157,4 +223,35 @@ mod tests {
     test_expression!(precedence_23, "1 && ! 2", "(&& 1i (! 2i))");
 
     test_expression!(parenthesis, "(1 + 2) * 3", "(* (+ 1i 2i) 3i)");
+
+    test_block!(
+        expression_statement,
+        r"{
+   1;
+}",
+        r"{ #0
+  1i;
+}
+"
+    );
+    test_block!(
+        return_statement,
+        r"{
+   return 1;
+}",
+        r"{ #0
+  return 1i;
+}
+"
+    );
+    test_block!(
+        let_statement_initializer,
+        r"{
+   let a = 1;
+}",
+        r"{ #0
+  let a = 1i;
+}
+"
+    );
 }

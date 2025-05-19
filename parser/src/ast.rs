@@ -1,7 +1,7 @@
-use crate::symbols::{StringId, get_or_create_symbol, resolve_symbol};
+use crate::symbols::{get_or_create_symbol, resolve_symbol, StringId};
+use bumpalo::collections::Vec as BumpVec;
+use std::cell::Cell;
 use std::fmt::{Display, Formatter};
-//
-//
 // #[derive(Debug, PartialEq)]
 // pub struct Function<'input> {
 //     pub name: &'input str,
@@ -10,23 +10,99 @@ use std::fmt::{Display, Formatter};
 // }
 //
 // pub type Program<'input> = Vec<Function<'input>>;
-//
-// #[derive(Debug, PartialEq)]
-// pub enum BlockElement<'input> {
-//     LetStatement {
-//         name: &'input str,
-//         expression: Expression<'input>,
-//     },
-//     AssignmentStatement {
-//         name: &'input str,
-//         expression: Expression<'input>,
-//     },
-//     ReturnStatement(Expression<'input>),
-//     NestedBlock(Block<'input>),
-// }
-//
-// pub type Block<'input> = Vec<BlockElement<'input>>;
-//
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+pub struct BlockId(pub u32);
+
+impl BlockId {
+    pub fn next(self) -> BlockId {
+        BlockId(self.0 + 1)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Block<'a> {
+    pub id: BlockId,
+    pub statements: BumpVec<'a, &'a Statement<'a>>,
+}
+
+impl Display for Block<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{{ #{}", self.id.0)?;
+        for statement in &self.statements {
+            writeln!(f, "  {}", statement)?;
+        }
+        writeln!(f, "}}")
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Statement<'a> {
+    Let {
+        initializers: BumpVec<'a, LetInitializer<'a>>,
+    },
+    Assignment {
+        name: StringId,
+        expression: &'a Expression<'a>,
+    },
+    Return {
+        expression: &'a Expression<'a>,
+    },
+    Expression {
+        expression: &'a Expression<'a>,
+    },
+    NestedBlock {
+        block: &'a Block<'a>,
+    },
+}
+
+impl Display for Statement<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Statement::Let { initializers } => {
+                write!(f, "let ")?;
+                let mut first = true;
+                for i in initializers.iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(
+                        f,
+                        "{} = {}",
+                        resolve_symbol(i.name).expect("invalid let initializer"),
+                        i.value
+                    )?;
+                    first = false;
+                }
+                write!(f, ";")
+            }
+            Statement::Assignment { name, expression } => {
+                write!(
+                    f,
+                    "{} = {};",
+                    resolve_symbol(*name).expect("invalid assignment name"),
+                    expression
+                )
+            }
+            Statement::Return { expression } => {
+                write!(f, "return {};", expression)
+            }
+            Statement::Expression { expression } => {
+                write!(f, "{};", expression)
+            }
+            Statement::NestedBlock { block } => {
+                write!(f, "{}", block)
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct LetInitializer<'a> {
+    pub name: StringId,
+    pub value: &'a Expression<'a>,
+}
+
 // #[derive(Debug, PartialEq)]
 // pub struct FunctionCall<'input> {
 //     pub name: &'input str,
@@ -199,6 +275,7 @@ impl Display for Expression<'_> {
 #[derive(Default)]
 pub struct Ast {
     arena: bumpalo::Bump,
+    next_block_id: Cell<BlockId>,
 }
 
 impl Ast {
@@ -250,6 +327,63 @@ impl Ast {
             left,
             right,
         })
+    }
+
+    pub fn statements(&self) -> BumpVec<&Statement> {
+        BumpVec::new_in(&self.arena)
+    }
+
+    pub fn block_from_statements<'s, 'v>(
+        &'s self,
+        statements: BumpVec<'v, &'v Statement>,
+    ) -> &'s Block<'s>
+    where
+        'v: 's,
+    {
+        let block_id = self.next_block_id.get();
+        self.next_block_id.set(block_id.next());
+        self.alloc(Block {
+            id: block_id,
+            statements,
+        })
+    }
+
+    pub fn nested_block<'s, 'b>(&'s self, block: &'b Block<'b>) -> &'s Statement<'s>
+    where
+        'b: 's,
+    {
+        self.alloc(Statement::NestedBlock { block })
+    }
+
+    pub fn statement_expression<'s, 'e>(
+        &'s self,
+        expression: &'e Expression<'e>,
+    ) -> &'s Statement<'s>
+    where
+        'e: 's,
+    {
+        self.alloc(Statement::Expression { expression })
+    }
+
+    pub fn statement_return<'s, 'e>(&'s self, expression: &'e Expression<'e>) -> &'s Statement<'s>
+    where
+        'e: 's,
+    {
+        self.alloc(Statement::Return { expression })
+    }
+
+    pub fn statement_let_initializers(&self) -> BumpVec<LetInitializer> {
+        BumpVec::new_in(&self.arena)
+    }
+
+    pub fn statement_let<'s, 'e>(
+        &'s self,
+        initializers: BumpVec<'e, LetInitializer<'e>>,
+    ) -> &'s Statement<'s>
+    where
+        'e: 's,
+    {
+        self.alloc(Statement::Let { initializers })
     }
 }
 
