@@ -113,15 +113,18 @@ mod tests {
         assert_can_be_parsed_as("1 + 2;", Rule::statement);
     }
 
-    // #[test]
-    // fn grammar_can_parse_function() {
-    //     assert_can_be_parsed_as("fn main() { let x = y; }", Rule::functionDeclaration);
-    //     assert_can_be_parsed_as("fn f(a) {}", Rule::functionDeclaration);
-    //     assert_can_be_parsed_as("fn f(a, b, c, d, e) {}", Rule::functionDeclaration);
-    // }
+    #[test]
+    fn grammar_can_parse_function() {
+        assert_can_be_parsed_as("fn main() { }", Rule::functionDeclaration);
+        assert_can_be_parsed_as("fn f(a: int) -> int {}", Rule::functionDeclaration);
+        assert_can_be_parsed_as(
+            "fn f(a: int, b: double) -> string {}",
+            Rule::functionDeclaration,
+        );
+    }
 
-    // #[test]
-    // fn grammar_can_parse_program() {
-    //     assert_can_be_parsed_as("fn main() { }\nfn foo() { let x = 1; }", Rule::program);
-    // }
+    #[test]
+    fn grammar_can_parse_module() {
+        assert_can_be_parsed_as("fn main() { }\nfn foo() { let x = 1; }", Rule::module);
+    }
 }

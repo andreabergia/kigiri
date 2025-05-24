@@ -1,8 +1,10 @@
 use crate::ast::{
-    Ast, BinaryOperator, Block, Expression, LetInitializer, Statement, UnaryOperator,
+    Ast, BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration,
+    FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator,
 };
 use crate::grammar::{Grammar, Rule};
 use crate::symbols::get_or_create_symbol;
+use bumpalo::collections::Vec as BumpVec;
 use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
@@ -149,6 +151,77 @@ fn parse_block<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Block<'ast> 
     ast.block_from_statements(block_id, statements)
 }
 
+fn parse_function_declaration_arguments<'ast>(
+    ast: &'ast Ast,
+    rule: Pair<'_, Rule>,
+) -> BumpVec<'ast, FunctionArgument> {
+    let mut arguments = ast.function_arguments();
+
+    for arg in rule.into_inner() {
+        let mut arg = arg.into_inner();
+        let name = arg.next().expect("argument name").as_str();
+        let arg_type = arg.next().expect("argument type").as_str();
+        arguments.push(FunctionArgument {
+            name: get_or_create_symbol(name),
+            arg_type: get_or_create_symbol(arg_type),
+        })
+    }
+
+    arguments
+}
+
+fn parse_function_declaration<'ast>(
+    ast: &'ast Ast,
+    rule: Pair<'_, Rule>,
+) -> &'ast FunctionDeclaration<'ast> {
+    let mut rule_iter = rule.into_inner();
+    let name = rule_iter.next().expect("function name").as_str();
+
+    let arguments_rule = rule_iter.next().expect("function arguments");
+    let arguments = parse_function_declaration_arguments(ast, arguments_rule);
+
+    let next = rule_iter.next().expect("function return type or body");
+    let (return_type, body_rule) = if let Rule::functionReturnType = next.as_rule() {
+        let return_type = next.into_inner().next().expect("return type").as_str();
+        (
+            Some(get_or_create_symbol(return_type)),
+            rule_iter.next().expect("function body"),
+        )
+    } else {
+        (None, next)
+    };
+
+    let body = parse_block(ast, body_rule);
+
+    assert!(rule_iter.next().is_none());
+
+    ast.function_declaration(name, return_type, arguments, body)
+}
+
+fn parse_module<'ast>(
+    ast: &'ast Ast,
+    module_name: &str,
+    rule: Pair<'_, Rule>,
+) -> &'ast Module<'ast> {
+    let mut functions = ast.functions();
+    let mut function_signatures = FunctionSignaturesByName::default();
+
+    let rule_inner = rule.into_inner();
+    for inner in rule_inner.into_iter() {
+        match inner.as_rule() {
+            Rule::EOI => continue,
+            Rule::functionDeclaration => {
+                let fun = parse_function_declaration(ast, inner);
+                function_signatures.insert(fun.signature.name, fun.signature);
+                functions.push(fun);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    ast.module(module_name, functions, function_signatures)
+}
+
 pub fn parse_as_expression<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression<'ast> {
     let pair = Grammar::parse(Rule::expression, text)
         .unwrap()
@@ -157,9 +230,14 @@ pub fn parse_as_expression<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression
     parse_expression(ast, pair)
 }
 
-pub fn parse<'ast>(ast: &'ast Ast, text: &str) -> &'ast Block<'ast> {
+fn parse_as_block<'ast>(ast: &'ast Ast, text: &str) -> &'ast Block<'ast> {
     let pair = Grammar::parse(Rule::block, text).unwrap().next().unwrap();
     parse_block(ast, pair)
+}
+
+pub fn parse<'ast>(ast: &'ast Ast, module_name: &str, text: &str) -> &'ast Module<'ast> {
+    let pair = Grammar::parse(Rule::module, text).unwrap().next().unwrap();
+    parse_module(ast, module_name, pair)
 }
 
 #[cfg(test)]
@@ -186,7 +264,7 @@ mod tests {
             #[test]
             fn $name() {
                 let ast = Ast::default();
-                let block = parse(&ast, $source);
+                let block = parse_as_block(&ast, $source);
                 assert_eq!(block.to_string(), $ast);
             }
         };
@@ -314,4 +392,53 @@ a = 1i;
 }
 }"
     );
+
+    #[test]
+    fn module_fn_with_return_type() {
+        let ast = Ast::default();
+        let module = parse(
+            &ast,
+            "test",
+            r"
+fn add(x: int, y: int) -> int {
+    return x + y;
+}
+",
+        );
+        assert_eq!(
+            module.to_string(),
+            r"module test
+
+fn add(
+    x: int,
+    y: int,
+) -> int
+{ #0
+return (+ x y);
+}
+"
+        );
+    }
+
+    #[test]
+    fn module_fn_no_return_type() {
+        let ast = Ast::default();
+        let module = parse(
+            &ast,
+            "test",
+            r"
+fn foo() {}
+",
+        );
+        assert_eq!(
+            module.to_string(),
+            r"module test
+
+fn foo(
+) -> void
+{ #0
+}
+"
+        );
+    }
 }

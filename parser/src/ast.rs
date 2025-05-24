@@ -1,39 +1,44 @@
-use crate::symbols::{StringId, get_or_create_symbol, resolve_symbol};
+use crate::symbols::{get_or_create_symbol, resolve_symbol, StringId};
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-// #[derive(Debug, PartialEq)]
-// pub struct Function<'input> {
-//     pub name: &'input str,
-//     pub args: Vec<&'input str>,
-//     pub block: Block<'input>,
-// }
-//
-// pub type Program<'input> = Vec<Function<'input>>;
+
+pub type FunctionSignaturesByName<'a> = HashMap<StringId, &'a FunctionSignature<'a>>;
+
+#[derive(Debug, PartialEq)]
+pub struct Module<'a> {
+    pub name: StringId,
+    pub functions: BumpVec<'a, &'a FunctionDeclaration<'a>>,
+    pub function_signatures: FunctionSignaturesByName<'a>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionDeclaration<'a> {
+    pub signature: &'a FunctionSignature<'a>,
+    pub body: &'a Block<'a>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionSignature<'a> {
+    pub name: StringId,
+    pub return_type: Option<StringId>,
+    pub arguments: BumpVec<'a, FunctionArgument>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionArgument {
+    pub name: StringId,
+    pub arg_type: StringId,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct BlockId(pub u32);
-
-impl BlockId {
-    pub fn next(self) -> BlockId {
-        BlockId(self.0 + 1)
-    }
-}
 
 #[derive(Debug, PartialEq)]
 pub struct Block<'a> {
     pub id: BlockId,
     pub statements: BumpVec<'a, &'a Statement<'a>>,
-}
-
-impl Display for Block<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{{ #{}", self.id.0)?;
-        for statement in &self.statements {
-            writeln!(f, "{}", statement)?;
-        }
-        write!(f, "}}")
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -54,6 +59,137 @@ pub enum Statement<'a> {
     NestedBlock {
         block: &'a Block<'a>,
     },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct LetInitializer<'a> {
+    pub name: StringId,
+    pub value: Option<&'a Expression<'a>>,
+}
+
+// #[derive(Debug, PartialEq)]
+// pub struct FunctionCall<'input> {
+//     pub name: &'input str,
+//     pub args: Vec<Expression<'input>>,
+// }
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum UnaryOperator {
+    Neg,
+    Not,
+    BitwiseNot,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Exp,
+    Eq,
+    Neq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    And,
+    Or,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseShl,
+    BitwiseShr,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum LiteralValue {
+    Integer(i64),
+    Double(f64),
+    Boolean(bool),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Expression<'a> {
+    Identifier {
+        symbol_id: StringId,
+    },
+    Literal(LiteralValue),
+    Unary {
+        operator: UnaryOperator,
+        operand: &'a Expression<'a>,
+    },
+    Binary {
+        operator: BinaryOperator,
+        left: &'a Expression<'a>,
+        right: &'a Expression<'a>,
+    },
+    // FunctionCall(FunctionCall<'input>),
+}
+
+impl Display for Module<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "module {}",
+            resolve_symbol(self.name).expect("module name")
+        )?;
+        writeln!(f)?;
+        for function in &self.functions {
+            write!(f, "{}", function)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for FunctionDeclaration<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "fn {}(",
+            resolve_symbol(self.signature.name).expect("function name")
+        )?;
+        for arg in self.signature.arguments.iter() {
+            writeln!(f, "    {},", arg)?;
+        }
+        writeln!(
+            f,
+            ") -> {}",
+            match self.signature.return_type {
+                Some(return_type) => resolve_symbol(return_type).expect("return type"),
+                None => "void",
+            }
+        )?;
+        writeln!(f, "{}", self.body)
+    }
+}
+
+impl Display for FunctionArgument {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: {}",
+            resolve_symbol(self.name).expect("argument name"),
+            resolve_symbol(self.arg_type).expect("argument type")
+        )
+    }
+}
+
+impl BlockId {
+    pub fn next(self) -> BlockId {
+        BlockId(self.0 + 1)
+    }
+}
+
+impl Display for Block<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{{ #{}", self.id.0)?;
+        for statement in &self.statements {
+            writeln!(f, "{}", statement)?;
+        }
+        write!(f, "}}")
+    }
 }
 
 impl Display for Statement<'_> {
@@ -101,25 +237,6 @@ impl Display for Statement<'_> {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct LetInitializer<'a> {
-    pub name: StringId,
-    pub value: Option<&'a Expression<'a>>,
-}
-
-// #[derive(Debug, PartialEq)]
-// pub struct FunctionCall<'input> {
-//     pub name: &'input str,
-//     pub args: Vec<Expression<'input>>,
-// }
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum UnaryOperator {
-    Neg,
-    Not,
-    BitwiseNot,
-}
-
 impl UnaryOperator {
     pub fn name(&self) -> &'static str {
         match self {
@@ -142,29 +259,6 @@ impl Display for UnaryOperator {
             }
         )
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum BinaryOperator {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    Exp,
-    Eq,
-    Neq,
-    Lt,
-    Lte,
-    Gt,
-    Gte,
-    And,
-    Or,
-    BitwiseAnd,
-    BitwiseOr,
-    BitwiseXor,
-    BitwiseShl,
-    BitwiseShr,
 }
 
 impl BinaryOperator {
@@ -223,13 +317,6 @@ impl Display for BinaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum LiteralValue {
-    Integer(i64),
-    Double(f64),
-    Boolean(bool),
-}
-
 impl Display for LiteralValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -238,24 +325,6 @@ impl Display for LiteralValue {
             LiteralValue::Boolean(value) => write!(f, "{}", value),
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Expression<'a> {
-    Identifier {
-        symbol_id: StringId,
-    },
-    Literal(LiteralValue),
-    Unary {
-        operator: UnaryOperator,
-        operand: &'a Expression<'a>,
-    },
-    Binary {
-        operator: BinaryOperator,
-        left: &'a Expression<'a>,
-        right: &'a Expression<'a>,
-    },
-    // FunctionCall(FunctionCall<'input>),
 }
 
 impl Display for Expression<'_> {
@@ -409,6 +478,53 @@ impl Ast {
         self.alloc(Statement::Assignment {
             name: get_or_create_symbol(name),
             expression,
+        })
+    }
+
+    pub fn functions(&self) -> BumpVec<&FunctionDeclaration> {
+        BumpVec::new_in(&self.arena)
+    }
+
+    pub fn module<'s, 'f, 'f2>(
+        &'s self,
+        module_name: &str,
+        functions: BumpVec<'f, &FunctionDeclaration<'f>>,
+        function_signatures: FunctionSignaturesByName<'f2>,
+    ) -> &'s Module<'s>
+    where
+        'f: 's,
+        'f2: 's,
+    {
+        let name = get_or_create_symbol(module_name);
+        self.alloc(Module {
+            name,
+            functions,
+            function_signatures,
+        })
+    }
+
+    pub fn function_arguments(&self) -> BumpVec<FunctionArgument> {
+        BumpVec::new_in(&self.arena)
+    }
+
+    pub fn function_declaration<'s, 'a, 'b>(
+        &'s self,
+        name: &str,
+        return_type: Option<StringId>,
+        arguments: BumpVec<'a, FunctionArgument>,
+        body: &'b Block<'b>,
+    ) -> &'s FunctionDeclaration<'s>
+    where
+        'a: 's,
+        'b: 's,
+    {
+        self.alloc(FunctionDeclaration {
+            signature: self.alloc(FunctionSignature {
+                name: get_or_create_symbol(name),
+                return_type,
+                arguments,
+            }),
+            body,
         })
     }
 }

@@ -1,7 +1,17 @@
-// program = { SOI ~ functionDeclaration+ ~ EOI }
-//
-// functionDeclaration = { "fn" ~ identifier ~ "(" ~ functionDeclarationParameters ~ ")" ~ block }
-// functionDeclarationParameters = { (identifier ~ ("," ~ identifier)*)? }
+module = { SOI ~ functionDeclaration* ~ EOI }
+
+functionDeclaration = {
+    "fn"
+    ~ identifier
+    ~ "(" ~ functionDeclarationArguments ~ ")"
+    ~ functionReturnType?
+    ~ block
+}
+
+functionDeclarationArguments = { (functionDeclarationArgument ~ ("," ~ functionDeclarationArgument)*)? }
+functionDeclarationArgument = { identifier ~ (":" ~ typeName )? }
+functionReturnType = { "->" ~ typeName }
+typeName = _{ identifier }
 
 block = { "{" ~ (statement | block)* ~ "}" }
 
