@@ -555,4 +555,50 @@ mod tests {
         let or = ast.binary(BinaryOperator::Or, lt, true_lit);
         assert_eq!(or.to_string(), "(|| (< (* (+ x 1i) (- 2.1d)) 4.2d) true)");
     }
+
+    #[test]
+    fn format_block() {
+        let ast = Ast::default();
+
+        let block_id = ast.next_block_id();
+        let x = ast.identifier("x");
+        let statement = ast.statement_expression(x);
+        let mut statements = ast.statements();
+        statements.push(statement);
+        let block = ast.block_from_statements(block_id, statements);
+
+        assert_eq!(
+            block.to_string(),
+            r"{ #0
+x;
+}"
+        );
+    }
+
+    #[test]
+    fn format_function() {
+        let ast = Ast::default();
+
+        let block_id = ast.next_block_id();
+        let x = ast.identifier("x");
+        let statements = ast.statements();
+        let block = ast.block_from_statements(block_id, statements);
+
+        let mut args = ast.function_arguments();
+        args.push(FunctionArgument {
+            name: get_or_create_symbol("x"),
+            arg_type: get_or_create_symbol("int"),
+        });
+        let fun = ast.function_declaration("foo", None, args, block);
+
+        assert_eq!(
+            fun.to_string(),
+            r"fn foo(
+    x: int,
+) -> void
+{ #0
+}
+"
+        );
+    }
 }
