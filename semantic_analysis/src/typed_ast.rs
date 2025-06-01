@@ -33,17 +33,17 @@ pub enum TypedStatement<'a> {
     // will be represented as multiple Let typed statements.
     Let {
         symbol: SymbolId,
-        value: Option<TypedExpression<'a>>,
+        value: Option<&'a TypedExpression<'a>>,
     },
     Assignment {
         symbol: SymbolId,
-        value: TypedExpression<'a>,
+        value: &'a TypedExpression<'a>,
     },
     Return {
-        value: Option<TypedExpression<'a>>,
+        value: Option<&'a TypedExpression<'a>>,
     },
     Expression {
-        expression: TypedExpression<'a>,
+        expression: &'a TypedExpression<'a>,
     },
     NestedBlock {
         block: &'a TypedBlock<'a>,

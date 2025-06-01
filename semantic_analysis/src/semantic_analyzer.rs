@@ -1,6 +1,7 @@
 use crate::typed_ast::TypedStatement;
 use crate::{Type, TypedExpression};
-use parser::{BinaryOperator, Expression, UnaryOperator};
+use bumpalo::collections::Vec as BumpVec;
+use parser::{BinaryOperator, Expression, Statement, UnaryOperator};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -27,11 +28,35 @@ impl SemanticAnalyzer {
     fn analyze_statement<'s>(
         &'s self,
         statement: &parser::Statement,
-    ) -> Result<&'s TypedStatement<'s>, SemanticAnalysisError> {
-        // match statement {
+    ) -> Result<BumpVec<'s, &'s TypedStatement<'s>>, SemanticAnalysisError> {
+        match statement {
+            Statement::Let { initializers } => {
+                // let mut vec = BumpVec::with_capacity_in(initializers.len(), &self.arena);
+                // for initializer in initializers {
+                //     let
+                // }
+                todo!()
+            }
+            Statement::Assignment { name, expression } => {
+                todo!()
+            }
+            Statement::Return { expression } => {
+                let value = expression
+                    .map(|expr| self.analyze_expression(expr))
+                    .transpose()?;
 
-        // }
-        todo!()
+                Ok(self.as_bump_vec(TypedStatement::Return { value }))
+            }
+            Statement::Expression { expression } => {
+                let typed_expression = self.analyze_expression(expression)?;
+                Ok(self.as_bump_vec(TypedStatement::Expression {
+                    expression: typed_expression,
+                }))
+            }
+            Statement::NestedBlock { block } => {
+                todo!()
+            }
+        }
     }
 
     pub fn analyze_expression<'s>(
@@ -127,8 +152,15 @@ impl SemanticAnalyzer {
         }
     }
 
+    #[inline]
     fn alloc<T>(&self, value: T) -> &T {
         self.arena.alloc(value)
+    }
+
+    fn as_bump_vec<T>(&self, node: T) -> BumpVec<'_, &T> {
+        let mut vec = BumpVec::with_capacity_in(1, &self.arena);
+        vec.push(self.alloc(node));
+        vec
     }
 }
 
@@ -252,17 +284,15 @@ mod tests {
             let expression = parser::parse_as_block(
                 &ast,
                 r"{
-    x = 42;
+    return 42;
 }",
             );
             let type_engine = SemanticAnalyzer::default();
             let result = type_engine.analyze_statement(expression.statements[0]);
 
             assert_eq!(
-                result
-                    .expect("should have matched types correctly")
-                    .to_string(),
-                "42"
+                result.expect("should have matched types correctly")[0].to_string(),
+                "return 42i"
             );
         }
     }
