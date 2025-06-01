@@ -4,4 +4,5 @@ LLVM backend
 - [ ] float math
 - [ ] cast
 - [ ] variables
-- [ ] start using string interning
+- [x] start using string interning
+- [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed

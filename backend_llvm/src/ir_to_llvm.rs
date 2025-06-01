@@ -1,9 +1,9 @@
 use codegen::{Instruction, InstructionPayload, LiteralValue};
-use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::values::IntValue;
+use inkwell::IntPredicate;
 use parser::{BinaryOperator, UnaryOperator};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -372,9 +372,9 @@ fn ir_to_llvm<'c>(
 mod tests {
     use super::*;
     use codegen::Ir;
-    use codegen::{BasicBlock, build_ir};
+    use codegen::{build_ir, BasicBlock};
     use inkwell::context::Context;
-    use std::io::{Write, stderr};
+    use std::io::{stderr, Write};
     use type_engine::{SemanticAnalyzer, TypedExpression};
 
     // TODO: this needs to not be so duplicated across projects
@@ -385,7 +385,7 @@ mod tests {
         let ast = parser::Ast::default();
         let expression = parser::parse_as_expression(&ast, source);
 
-        let result = type_engine.analyze(expression);
+        let result = type_engine.analyze_expression(expression);
         result.expect("should have passed semantic analysis")
     }
 

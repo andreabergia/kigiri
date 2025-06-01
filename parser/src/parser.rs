@@ -3,11 +3,11 @@ use crate::ast::{
     FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator,
 };
 use crate::grammar::{Grammar, Rule};
-use crate::symbols::get_or_create_symbol;
+use crate::symbols::get_or_create_string;
 use bumpalo::collections::Vec as BumpVec;
-use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -100,7 +100,7 @@ fn parse_let_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Stat
         let mut initializer_rule = initializer_rule.into_inner();
 
         let id = initializer_rule.next().unwrap();
-        let id = get_or_create_symbol(id.as_str());
+        let id = get_or_create_string(id.as_str());
 
         let value = initializer_rule.next().map(|e| parse_expression(ast, e));
 
@@ -162,8 +162,8 @@ fn parse_function_declaration_arguments<'ast>(
         let name = arg.next().expect("argument name").as_str();
         let arg_type = arg.next().expect("argument type").as_str();
         arguments.push(FunctionArgument {
-            name: get_or_create_symbol(name),
-            arg_type: get_or_create_symbol(arg_type),
+            name: get_or_create_string(name),
+            arg_type: get_or_create_string(arg_type),
         })
     }
 
@@ -184,7 +184,7 @@ fn parse_function_declaration<'ast>(
     let (return_type, body_rule) = if let Rule::functionReturnType = next.as_rule() {
         let return_type = next.into_inner().next().expect("return type").as_str();
         (
-            Some(get_or_create_symbol(return_type)),
+            Some(get_or_create_string(return_type)),
             rule_iter.next().expect("function body"),
         )
     } else {
@@ -230,7 +230,7 @@ pub fn parse_as_expression<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression
     parse_expression(ast, pair)
 }
 
-fn parse_as_block<'ast>(ast: &'ast Ast, text: &str) -> &'ast Block<'ast> {
+pub fn parse_as_block<'ast>(ast: &'ast Ast, text: &str) -> &'ast Block<'ast> {
     let pair = Grammar::parse(Rule::block, text).unwrap().next().unwrap();
     parse_block(ast, pair)
 }

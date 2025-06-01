@@ -5,11 +5,10 @@ mod grammar;
 mod parser;
 mod symbols;
 
-pub use ast::Ast;
-pub use ast::BinaryOperator;
-pub use ast::Expression;
-pub use ast::LiteralValue;
-pub use ast::UnaryOperator;
+pub use ast::*;
+pub use parser::parse;
+pub use parser::parse_as_block;
 pub use parser::parse_as_expression;
+pub use symbols::resolve_string_id;
 pub use symbols::StringId;
 pub use symbols::StringInterner;

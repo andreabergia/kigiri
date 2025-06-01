@@ -107,7 +107,7 @@ mod tests {
         let ast = parser::Ast::default();
         let expression = parser::parse_as_expression(&ast, source);
 
-        let result = type_engine.analyze(expression);
+        let result = type_engine.analyze_expression(expression);
         result.expect("should have passed semantic analysis")
     }
 

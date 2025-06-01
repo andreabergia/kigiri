@@ -1,4 +1,4 @@
-use crate::symbols::{get_or_create_symbol, resolve_symbol, StringId};
+use crate::symbols::{get_or_create_string, resolve_string_id, StringId};
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -133,7 +133,7 @@ impl Display for Module<'_> {
         writeln!(
             f,
             "module {}",
-            resolve_symbol(self.name).expect("module name")
+            resolve_string_id(self.name).expect("module name")
         )?;
         writeln!(f)?;
         for function in &self.functions {
@@ -148,7 +148,7 @@ impl Display for FunctionDeclaration<'_> {
         writeln!(
             f,
             "fn {}(",
-            resolve_symbol(self.signature.name).expect("function name")
+            resolve_string_id(self.signature.name).expect("function name")
         )?;
         for arg in self.signature.arguments.iter() {
             writeln!(f, "    {},", arg)?;
@@ -157,7 +157,7 @@ impl Display for FunctionDeclaration<'_> {
             f,
             ") -> {}",
             match self.signature.return_type {
-                Some(return_type) => resolve_symbol(return_type).expect("return type"),
+                Some(return_type) => resolve_string_id(return_type).expect("return type"),
                 None => "void",
             }
         )?;
@@ -170,8 +170,8 @@ impl Display for FunctionArgument {
         write!(
             f,
             "{}: {}",
-            resolve_symbol(self.name).expect("argument name"),
-            resolve_symbol(self.arg_type).expect("argument type")
+            resolve_string_id(self.name).expect("argument name"),
+            resolve_string_id(self.arg_type).expect("argument type")
         )
     }
 }
@@ -202,7 +202,7 @@ impl Display for Statement<'_> {
                     if !first {
                         write!(f, ", ")?;
                     }
-                    let name = resolve_symbol(i.name).expect("invalid let initializer");
+                    let name = resolve_string_id(i.name).expect("invalid let initializer");
                     if let Some(value) = i.value {
                         write!(f, "{} = {}", name, value)?;
                     } else {
@@ -216,7 +216,7 @@ impl Display for Statement<'_> {
                 write!(
                     f,
                     "{} = {};",
-                    resolve_symbol(*name).expect("invalid assignment name"),
+                    resolve_string_id(*name).expect("invalid assignment name"),
                     expression
                 )
             }
@@ -331,7 +331,7 @@ impl Display for Expression<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Identifier { symbol_id } => {
-                let symbol = resolve_symbol(*symbol_id).expect("invalid symbol!");
+                let symbol = resolve_string_id(*symbol_id).expect("invalid symbol!");
                 write!(f, "{}", symbol)
             }
             Expression::Literal(value) => write!(f, "{}", value),
@@ -357,7 +357,7 @@ impl Ast {
     }
 
     pub fn identifier(&self, symbol: &str) -> &Expression {
-        let id = get_or_create_symbol(symbol);
+        let id = get_or_create_string(symbol);
         self.alloc(Expression::Identifier { symbol_id: id })
     }
 
@@ -476,7 +476,7 @@ impl Ast {
         'e: 's,
     {
         self.alloc(Statement::Assignment {
-            name: get_or_create_symbol(name),
+            name: get_or_create_string(name),
             expression,
         })
     }
@@ -495,7 +495,7 @@ impl Ast {
         'f: 's,
         'f2: 's,
     {
-        let name = get_or_create_symbol(module_name);
+        let name = get_or_create_string(module_name);
         self.alloc(Module {
             name,
             functions,
@@ -520,7 +520,7 @@ impl Ast {
     {
         self.alloc(FunctionDeclaration {
             signature: self.alloc(FunctionSignature {
-                name: get_or_create_symbol(name),
+                name: get_or_create_string(name),
                 return_type,
                 arguments,
             }),
@@ -586,8 +586,8 @@ x;
 
         let mut args = ast.function_arguments();
         args.push(FunctionArgument {
-            name: get_or_create_symbol("x"),
-            arg_type: get_or_create_symbol("int"),
+            name: get_or_create_string("x"),
+            arg_type: get_or_create_string("int"),
         });
         let fun = ast.function_declaration("foo", None, args, block);
 

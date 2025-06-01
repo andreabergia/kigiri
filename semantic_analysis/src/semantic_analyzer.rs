@@ -1,3 +1,4 @@
+use crate::typed_ast::TypedStatement;
 use crate::{Type, TypedExpression};
 use parser::{BinaryOperator, Expression, UnaryOperator};
 use thiserror::Error;
@@ -23,11 +24,21 @@ pub struct SemanticAnalyzer {
 }
 
 impl SemanticAnalyzer {
-    pub fn analyze<'s>(
+    fn analyze_statement<'s>(
         &'s self,
-        root: &Expression,
+        statement: &parser::Statement,
+    ) -> Result<&'s TypedStatement<'s>, SemanticAnalysisError> {
+        // match statement {
+
+        // }
+        todo!()
+    }
+
+    pub fn analyze_expression<'s>(
+        &'s self,
+        expr: &Expression,
     ) -> Result<&'s TypedExpression<'s>, SemanticAnalysisError> {
-        match root {
+        match expr {
             Expression::Identifier { symbol_id } => todo!(),
 
             // Literals will never fail
@@ -38,7 +49,7 @@ impl SemanticAnalyzer {
 
             // Unary operators - can fail!
             Expression::Unary { operator, operand } => {
-                let typed_operand = self.analyze(operand)?;
+                let typed_operand = self.analyze_expression(operand)?;
                 let operand_type = typed_operand.resolved_type();
                 if (Self::unary_op_is_allowed(operator.clone(), operand_type.clone())) {
                     Ok(self.alloc(TypedExpression::Unary {
@@ -60,8 +71,8 @@ impl SemanticAnalyzer {
                 left,
                 right,
             } => {
-                let typed_left = self.analyze(left)?;
-                let typed_right = self.analyze(right)?;
+                let typed_left = self.analyze_expression(left)?;
+                let typed_right = self.analyze_expression(right)?;
                 let left_type = typed_left.resolved_type();
                 let right_type = typed_right.resolved_type();
                 if Self::bin_op_is_allowed(operator.clone(), left_type.clone(), right_type.clone())
@@ -125,107 +136,134 @@ impl SemanticAnalyzer {
 mod tests {
     use super::*;
 
-    /// Generates a test case to verify the typed AST produced by a given
-    /// source expression. The typed AST is passed as its string representation.
-    macro_rules! test_types_ok {
-        ($name: ident, $source: expr, $typed_ast: expr) => {
-            #[test]
-            fn $name() {
-                let ast = parser::Ast::default();
-                let expression = parser::parse_as_expression(&ast, $source);
-                let type_engine = SemanticAnalyzer::default();
-                let result = type_engine.analyze(expression);
-                assert_eq!(
-                    result
-                        .expect("should have matched types correctly")
-                        .to_string(),
-                    $typed_ast
-                );
+    mod expressions {
+        use super::*;
+
+        /// Generates a test case to verify the typed AST produced by a given
+        /// source expression. The typed AST is passed as its string representation.
+        macro_rules! test_ok {
+            ($name: ident, $source: expr, $typed_ast: expr) => {
+                #[test]
+                fn $name() {
+                    let ast = parser::Ast::default();
+                    let expression = parser::parse_as_expression(&ast, $source);
+                    let type_engine = SemanticAnalyzer::default();
+                    let result = type_engine.analyze_expression(expression);
+                    assert_eq!(
+                        result
+                            .expect("should have matched types correctly")
+                            .to_string(),
+                        $typed_ast
+                    );
+                }
+            };
+        }
+
+        macro_rules! test_ko {
+            ($name: ident, $source: expr, $expected_error: expr) => {
+                #[test]
+                fn $name() {
+                    let ast = parser::Ast::default();
+                    let expression = parser::parse_as_expression(&ast, $source);
+                    let type_engine = SemanticAnalyzer::default();
+                    let result = type_engine.analyze_expression(expression);
+                    assert_eq!(
+                        result.expect_err("should have failed to match types"),
+                        $expected_error
+                    );
+                }
+            };
+        }
+
+        // Literals
+
+        test_ok!(literal_int, "1", "1i");
+        test_ok!(literal_double, "3.14", "3.14d");
+        test_ok!(literal_boolean, "true", "true");
+
+        // Unary
+
+        test_ok!(unary_neg_int, "- 3", "(-i 3i)");
+        test_ok!(unary_neg_double, "- 3.14", "(-d 3.14d)");
+        test_ko!(
+            unary_neg_boolean,
+            "- false",
+            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
+                operator: UnaryOperator::Neg,
+                operand_type: Type::Boolean
             }
-        };
+        );
+
+        test_ko!(
+            unary_not_int,
+            "! 3",
+            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
+                operator: UnaryOperator::Not,
+                operand_type: Type::Int
+            }
+        );
+        test_ko!(
+            unary_not_double,
+            "! 3.14",
+            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
+                operator: UnaryOperator::Not,
+                operand_type: Type::Double
+            }
+        );
+        test_ok!(unary_not_boolean, "! false", "(!b false)");
+
+        test_ok!(unary_bitwise_not_int, "~ 3", "(~i 3i)");
+        test_ko!(
+            unary_bitwise_not_double,
+            "~ 3.14",
+            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
+                operator: UnaryOperator::BitwiseNot,
+                operand_type: Type::Double
+            }
+        );
+        test_ko!(
+            unary_bitwise_not_boolean,
+            "~ false",
+            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
+                operator: UnaryOperator::BitwiseNot,
+                operand_type: Type::Boolean
+            }
+        );
+
+        test_ok!(binary_add_int, "1 + 2", "(+i 1i 2i)");
+        test_ok!(binary_add_double, "1.0 + 2.0", "(+d 1d 2d)");
+        test_ko!(
+            binary_add_int_double,
+            "1 + 3.14",
+            SemanticAnalysisError::CannotApplyBinaryOperatorToType {
+                operator: BinaryOperator::Add,
+                left_type: Type::Int,
+                right_type: Type::Double,
+            }
+        );
     }
 
-    macro_rules! test_types_ko {
-        ($name: ident, $source: expr, $expected_error: expr) => {
-            #[test]
-            fn $name() {
-                let ast = parser::Ast::default();
-                let expression = parser::parse_as_expression(&ast, $source);
-                let type_engine = SemanticAnalyzer::default();
-                let result = type_engine.analyze(expression);
-                assert_eq!(
-                    result.expect_err("should have failed to match types"),
-                    $expected_error
-                );
-            }
-        };
+    mod statements {
+        use super::*;
+
+        #[test]
+        fn assign() {
+            let ast = parser::Ast::default();
+            let expression = parser::parse_as_block(
+                &ast,
+                r"{
+    x = 42;
+}",
+            );
+            let type_engine = SemanticAnalyzer::default();
+            let result = type_engine.analyze_statement(expression.statements[0]);
+
+            assert_eq!(
+                result
+                    .expect("should have matched types correctly")
+                    .to_string(),
+                "42"
+            );
+        }
     }
-
-    // Literals
-
-    test_types_ok!(literal_int, "1", "1i");
-    test_types_ok!(literal_double, "3.14", "3.14d");
-    test_types_ok!(literal_boolean, "true", "true");
-
-    // Unary
-
-    test_types_ok!(unary_neg_int, "- 3", "(-i 3i)");
-    test_types_ok!(unary_neg_double, "- 3.14", "(-d 3.14d)");
-    test_types_ko!(
-        unary_neg_boolean,
-        "- false",
-        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-            operator: UnaryOperator::Neg,
-            operand_type: Type::Boolean
-        }
-    );
-
-    test_types_ko!(
-        unary_not_int,
-        "! 3",
-        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-            operator: UnaryOperator::Not,
-            operand_type: Type::Int
-        }
-    );
-    test_types_ko!(
-        unary_not_double,
-        "! 3.14",
-        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-            operator: UnaryOperator::Not,
-            operand_type: Type::Double
-        }
-    );
-    test_types_ok!(unary_not_boolean, "! false", "(!b false)");
-
-    test_types_ok!(unary_bitwise_not_int, "~ 3", "(~i 3i)");
-    test_types_ko!(
-        unary_bitwise_not_double,
-        "~ 3.14",
-        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-            operator: UnaryOperator::BitwiseNot,
-            operand_type: Type::Double
-        }
-    );
-    test_types_ko!(
-        unary_bitwise_not_boolean,
-        "~ false",
-        SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-            operator: UnaryOperator::BitwiseNot,
-            operand_type: Type::Boolean
-        }
-    );
-
-    test_types_ok!(binary_add_int, "1 + 2", "(+i 1i 2i)");
-    test_types_ok!(binary_add_double, "1.0 + 2.0", "(+d 1d 2d)");
-    test_types_ko!(
-        binary_add_int_double,
-        "1 + 3.14",
-        SemanticAnalysisError::CannotApplyBinaryOperatorToType {
-            operator: BinaryOperator::Add,
-            left_type: Type::Int,
-            right_type: Type::Double,
-        }
-    );
-    // TODO: more test cases
 }
