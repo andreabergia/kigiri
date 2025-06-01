@@ -101,16 +101,6 @@ pub enum TypedExpression<'a> {
     },
 }
 
-impl SymbolIdSequencer {
-    pub fn next(&mut self) -> SymbolId {
-        let id = SymbolId(self.next_id);
-        self.next_id += 1;
-        id
-    }
-}
-
-static SYMBOL_ID_SEQUENCER: LazyLock<SymbolIdSequencer> = LazyLock::new(SymbolIdSequencer::default);
-
 // Impls
 
 // TODO: need to avoid using Display and use some custom "to_string" stuff that handles
@@ -119,9 +109,9 @@ static SYMBOL_ID_SEQUENCER: LazyLock<SymbolIdSequencer> = LazyLock::new(SymbolId
 
 impl Display for TypedBlock<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ #{}", self.id.0)?;
+        writeln!(f, "{{ #{}", self.id.0)?;
         for statement in &self.statements {
-            writeln!(f, "{}", statement)?;
+            writeln!(f, "  {}", statement)?;
         }
         write!(f, "}}")
     }
@@ -150,23 +140,23 @@ impl Display for TypedStatement<'_> {
         match self {
             TypedStatement::Let { symbol, value } => {
                 if let Some(value) = value {
-                    write!(f, "let {} = {}", symbol, value)
+                    write!(f, "let {} = {};", symbol, value)
                 } else {
-                    write!(f, "let {}", symbol)
+                    write!(f, "let {};", symbol)
                 }
             }
             TypedStatement::Assignment { symbol, value } => {
-                write!(f, "{} = {}", symbol, value)
+                write!(f, "{} = {};", symbol, value)
             }
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
-                    write!(f, "return {}", value)
+                    write!(f, "return {};", value)
                 } else {
-                    write!(f, "return")
+                    write!(f, "return;")
                 }
             }
             TypedStatement::Expression { expression } => {
-                write!(f, "{}", expression)
+                write!(f, "{};", expression)
             }
             TypedStatement::NestedBlock { block } => {
                 write!(f, "{}", block)
@@ -216,6 +206,42 @@ impl Display for TypedExpression<'_> {
     }
 }
 
+impl SymbolIdSequencer {
+    pub fn next(&mut self) -> SymbolId {
+        let id = SymbolId(self.next_id);
+        self.next_id += 1;
+        id
+    }
+}
+
+static SYMBOL_ID_SEQUENCER: LazyLock<SymbolIdSequencer> = LazyLock::new(SymbolIdSequencer::default);
+
+impl<'a> SymbolTable<'a> {
+    pub fn new(parent: Option<&'a SymbolTable<'a>>) -> Self {
+        Self {
+            symbols_by_id: HashMap::new(),
+            parent,
+        }
+    }
+
+    // pub fn add_symbol(&mut self, id: StringId, symbol_type: Type) -> SymbolId {
+    //     let symbol = Symbol {
+    //         id,
+    //         symbol_type,
+    //     };
+    //     let symbol_id = SYMBOL_ID_SEQUENCER.next();
+    //     self.symbols_by_id.insert(symbol_id, symbol);
+    //     symbol_id
+    // }
+    //
+    // pub fn get_symbol(&self, id: SymbolId) -> Option<&Symbol> {
+    //     self.symbols_by_id.get(&id).or_else(|| {
+    //         self.parent
+    //             .and_then(|parent| parent.get_symbol(id))
+    //     })
+    // }
+}
+
 impl TypedExpression<'_> {
     pub fn resolved_type(&self) -> Type {
         match self {
@@ -230,6 +256,7 @@ impl TypedExpression<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bumpalo::Bump;
 
     #[test]
     fn display_contains_type_after_operator() {
@@ -246,5 +273,27 @@ mod tests {
             },
         };
         assert_eq!(format!("{}", typed_expression), "(+i 1i 2i)");
+    }
+
+    #[test]
+    fn display_block() {
+        let arena = Bump::new();
+        let mut block = TypedBlock {
+            id: BlockId(1),
+            statements: BumpVec::new_in(&arena),
+            symbol_table: &SymbolTable::new(None),
+        };
+        block.statements.push(arena.alloc(TypedStatement::Return {
+            value: Some(arena.alloc(TypedExpression::Literal {
+                resolved_type: Type::Int,
+                value: LiteralValue::Integer(1),
+            })),
+        }));
+        assert_eq!(
+            block.to_string(),
+            r"{ #1
+  return 1i;
+}"
+        );
     }
 }

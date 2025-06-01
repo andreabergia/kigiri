@@ -1,4 +1,4 @@
-use crate::typed_ast::TypedStatement;
+use crate::typed_ast::{SymbolTable, TypedBlock, TypedStatement};
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, Expression, Statement, UnaryOperator};
@@ -25,10 +25,27 @@ pub struct SemanticAnalyzer {
 }
 
 impl SemanticAnalyzer {
-    fn analyze_statement<'s>(
-        &'s self,
-        statement: &parser::Statement,
-    ) -> Result<BumpVec<'s, &'s TypedStatement<'s>>, SemanticAnalysisError> {
+    fn analyze_block<'a>(
+        &'a self,
+        block: &parser::Block,
+        parent_symbol_table: &'a SymbolTable<'a>,
+    ) -> Result<&'a TypedBlock<'a>, SemanticAnalysisError> {
+        let mut statements = BumpVec::with_capacity_in(block.statements.len(), &self.arena);
+        for statement in &block.statements {
+            statements.extend(self.analyze_statement(statement, parent_symbol_table)?);
+        }
+        Ok(self.alloc(TypedBlock {
+            id: block.id,
+            statements,
+            symbol_table: parent_symbol_table,
+        }))
+    }
+
+    fn analyze_statement<'a>(
+        &'a self,
+        statement: &Statement,
+        symbol_table: &'a SymbolTable<'a>,
+    ) -> Result<BumpVec<'a, &'a TypedStatement<'a>>, SemanticAnalysisError> {
         match statement {
             Statement::Let { initializers } => {
                 // let mut vec = BumpVec::with_capacity_in(initializers.len(), &self.arena);
@@ -59,10 +76,10 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub fn analyze_expression<'s>(
-        &'s self,
+    pub fn analyze_expression<'a>(
+        &'a self,
         expr: &Expression,
-    ) -> Result<&'s TypedExpression<'s>, SemanticAnalysisError> {
+    ) -> Result<&'a TypedExpression<'a>, SemanticAnalysisError> {
         match expr {
             Expression::Identifier { symbol_id } => todo!(),
 
@@ -162,6 +179,10 @@ impl SemanticAnalyzer {
         vec.push(self.alloc(node));
         vec
     }
+
+    fn symbol_table<'a>(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
+        self.alloc(SymbolTable::new(parent))
+    }
 }
 
 #[cfg(test)]
@@ -179,8 +200,8 @@ mod tests {
                 fn $name() {
                     let ast = parser::Ast::default();
                     let expression = parser::parse_as_expression(&ast, $source);
-                    let type_engine = SemanticAnalyzer::default();
-                    let result = type_engine.analyze_expression(expression);
+                    let analyzer = SemanticAnalyzer::default();
+                    let result = analyzer.analyze_expression(expression);
                     assert_eq!(
                         result
                             .expect("should have matched types correctly")
@@ -197,8 +218,8 @@ mod tests {
                 fn $name() {
                     let ast = parser::Ast::default();
                     let expression = parser::parse_as_expression(&ast, $source);
-                    let type_engine = SemanticAnalyzer::default();
-                    let result = type_engine.analyze_expression(expression);
+                    let analyzer = SemanticAnalyzer::default();
+                    let result = analyzer.analyze_expression(expression);
                     assert_eq!(
                         result.expect_err("should have failed to match types"),
                         $expected_error
@@ -275,24 +296,29 @@ mod tests {
         );
     }
 
-    mod statements {
+    mod blocks {
         use super::*;
 
         #[test]
-        fn assign() {
+        fn return_expr() {
             let ast = parser::Ast::default();
-            let expression = parser::parse_as_block(
+            let block = parser::parse_as_block(
                 &ast,
                 r"{
     return 42;
 }",
             );
-            let type_engine = SemanticAnalyzer::default();
-            let result = type_engine.analyze_statement(expression.statements[0]);
+            let analyzer = SemanticAnalyzer::default();
+            let symbol_table = analyzer.symbol_table(None);
+            let result = analyzer.analyze_block(block, symbol_table);
 
             assert_eq!(
-                result.expect("should have matched types correctly")[0].to_string(),
-                "return 42i"
+                result
+                    .expect("should have matched types correctly")
+                    .to_string(),
+                r"{ #0
+  return 42i;
+}"
             );
         }
     }
