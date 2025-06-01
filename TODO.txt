@@ -1,8 +1,13 @@
+Parser
+- [ ] remove support for untyped `let` (let's make value mandatory for the moment)
+- [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
+
 LLVM backend
 - [ ] rather than a hash map for the values, add an index to IR instructions and use an array
 - [ ] function calls
 - [ ] float math
 - [ ] cast
 - [ ] variables
-- [x] start using string interning
-- [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
+
+Language as a whole
+- [ ] let without initializer, but with type, with checks that it gets initialized before use

@@ -32,7 +32,7 @@ impl SemanticAnalyzer {
     ) -> Result<&'a TypedBlock<'a>, SemanticAnalysisError> {
         let mut statements = BumpVec::with_capacity_in(block.statements.len(), &self.arena);
         for statement in &block.statements {
-            statements.extend(self.analyze_statement(statement, parent_symbol_table)?);
+            self.analyze_statement(statement, &mut statements, parent_symbol_table)?;
         }
         Ok(self.alloc(TypedBlock {
             id: block.id,
@@ -44,15 +44,24 @@ impl SemanticAnalyzer {
     fn analyze_statement<'a>(
         &'a self,
         statement: &Statement,
+        statements: &mut BumpVec<'a, &'a TypedStatement<'a>>,
         symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<BumpVec<'a, &'a TypedStatement<'a>>, SemanticAnalysisError> {
+    ) -> Result<(), SemanticAnalysisError> {
         match statement {
             Statement::Let { initializers } => {
-                // let mut vec = BumpVec::with_capacity_in(initializers.len(), &self.arena);
-                // for initializer in initializers {
-                //     let
-                // }
-                todo!()
+                for initializer in initializers {
+                    let value = initializer
+                        .value
+                        .map(|e| self.analyze_expression(e))
+                        .transpose()?;
+
+                    let symbol = symbol_table.add_symbol(
+                        &self.arena,
+                        initializer.name,
+                        value.unwrap().resolved_type(),
+                    );
+                    statements.push(self.alloc(TypedStatement::Let { symbol, value }));
+                }
             }
             Statement::Assignment { name, expression } => {
                 todo!()
@@ -61,19 +70,19 @@ impl SemanticAnalyzer {
                 let value = expression
                     .map(|expr| self.analyze_expression(expr))
                     .transpose()?;
-
-                Ok(self.as_bump_vec(TypedStatement::Return { value }))
+                statements.push(self.alloc(TypedStatement::Return { value }));
             }
             Statement::Expression { expression } => {
                 let typed_expression = self.analyze_expression(expression)?;
-                Ok(self.as_bump_vec(TypedStatement::Expression {
+                statements.push(self.alloc(TypedStatement::Expression {
                     expression: typed_expression,
                 }))
             }
             Statement::NestedBlock { block } => {
                 todo!()
             }
-        }
+        };
+        Ok(())
     }
 
     pub fn analyze_expression<'a>(
@@ -181,7 +190,7 @@ impl SemanticAnalyzer {
     }
 
     fn symbol_table<'a>(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
-        self.alloc(SymbolTable::new(parent))
+        self.alloc(SymbolTable::new(&self.arena, parent))
     }
 }
 
@@ -298,6 +307,7 @@ mod tests {
 
     mod blocks {
         use super::*;
+        use parser::resolve_string_id;
 
         #[test]
         fn return_expr() {
@@ -320,6 +330,43 @@ mod tests {
   return 42i;
 }"
             );
+        }
+
+        #[test]
+        fn let_single() {
+            let ast = parser::Ast::default();
+            let block = parser::parse_as_block(
+                &ast,
+                r"{
+    let a = 42;
+}",
+            );
+
+            let analyzer = SemanticAnalyzer::default();
+            let symbol_table = analyzer.symbol_table(None);
+            let result = analyzer.analyze_block(block, symbol_table);
+            let result = result.expect("should have matched types correctly");
+
+            assert_eq!(1, result.statements.len());
+            let let_statement = result.statements.get(0).unwrap();
+            match let_statement {
+                TypedStatement::Let { symbol, value } => {
+                    let symbol = symbol_table
+                        .lookup(*symbol)
+                        .expect("should have found symbol");
+                    assert_eq!(resolve_string_id(symbol.id).unwrap(), "a");
+                    assert_eq!(symbol.symbol_type, Type::Int);
+                }
+                _ => panic!("Expected a let statement"),
+            }
+
+            // TODO
+            //             assert_eq!(
+            //                 result.to_string(),
+            //                 r"{ #0
+            //   let a:i = 42i;
+            // }"
+            //             );
         }
     }
 }

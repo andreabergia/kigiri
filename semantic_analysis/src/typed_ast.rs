@@ -1,9 +1,12 @@
 use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
+use bumpalo::Bump;
 use parser::{resolve_string_id, BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator};
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 pub type TypedFunctionSignaturesByName<'a> = HashMap<StringId, &'a TypedFunctionSignature<'a>>;
 
@@ -69,7 +72,8 @@ pub struct SymbolId(pub u32);
 
 #[derive(Debug, PartialEq)]
 pub struct SymbolTable<'a> {
-    symbols_by_id: HashMap<SymbolId, Symbol>,
+    allocated_symbols: RefCell<BumpVec<'a, &'a Symbol>>,
+    symbols_by_id: RefCell<HashMap<SymbolId, &'a Symbol>>,
     parent: Option<&'a SymbolTable<'a>>,
 }
 
@@ -214,26 +218,44 @@ impl SymbolIdSequencer {
     }
 }
 
-static SYMBOL_ID_SEQUENCER: LazyLock<SymbolIdSequencer> = LazyLock::new(SymbolIdSequencer::default);
+static SYMBOL_ID_SEQUENCER: LazyLock<Mutex<SymbolIdSequencer>> =
+    LazyLock::new(|| Mutex::new(SymbolIdSequencer::default()));
+
+fn next_symbol_id() -> SymbolId {
+    SYMBOL_ID_SEQUENCER
+        .lock()
+        .expect("should be able to lock the sequencer")
+        .next()
+}
 
 impl<'a> SymbolTable<'a> {
-    pub fn new(parent: Option<&'a SymbolTable<'a>>) -> Self {
+    pub fn new(arena: &'a Bump, parent: Option<&'a SymbolTable<'a>>) -> Self {
         Self {
-            symbols_by_id: HashMap::new(),
+            allocated_symbols: RefCell::new(BumpVec::new_in(arena)),
+            symbols_by_id: RefCell::new(HashMap::new()),
             parent,
         }
     }
 
-    // pub fn add_symbol(&mut self, id: StringId, symbol_type: Type) -> SymbolId {
-    //     let symbol = Symbol {
-    //         id,
-    //         symbol_type,
-    //     };
-    //     let symbol_id = SYMBOL_ID_SEQUENCER.next();
-    //     self.symbols_by_id.insert(symbol_id, symbol);
-    //     symbol_id
-    // }
-    //
+    pub fn add_symbol(&self, allocator: &'a Bump, id: StringId, symbol_type: Type) -> SymbolId {
+        let symbol = allocator.alloc(Symbol { id, symbol_type });
+        let symbol_id = next_symbol_id();
+
+        // This allows for name shadowing!
+        self.allocated_symbols.borrow_mut().push(symbol);
+        self.symbols_by_id.borrow_mut().insert(symbol_id, symbol);
+
+        symbol_id
+    }
+
+    pub fn lookup(&self, id: SymbolId) -> Option<&Symbol> {
+        self.symbols_by_id
+            .borrow()
+            .get(&id)
+            .cloned()
+            .or_else(|| self.parent.and_then(|parent| parent.lookup(id)))
+    }
+
     // pub fn get_symbol(&self, id: SymbolId) -> Option<&Symbol> {
     //     self.symbols_by_id.get(&id).or_else(|| {
     //         self.parent
@@ -281,7 +303,7 @@ mod tests {
         let mut block = TypedBlock {
             id: BlockId(1),
             statements: BumpVec::new_in(&arena),
-            symbol_table: &SymbolTable::new(None),
+            symbol_table: arena.alloc(SymbolTable::new(&arena, None)),
         };
         block.statements.push(arena.alloc(TypedStatement::Return {
             value: Some(arena.alloc(TypedExpression::Literal {
