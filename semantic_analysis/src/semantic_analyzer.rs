@@ -17,7 +17,7 @@ pub enum SemanticAnalysisError {
         left_type: Type,
         right_type: Type,
     },
-    #[error("symbol not found: {name}")]
+    #[error("symbol not found: \"{name}\"")]
     SymbolNotFound { name: String },
     #[error(
         "invalid assignment to \"{symbol_name}\": symbol has type {symbol_type}, but expression has type {expression_type}"
@@ -362,6 +362,27 @@ mod tests {
             })
         }
 
+        macro_rules! test_ko {
+            ($name: ident, $source: expr, $expected_error: expr) => {
+                #[test]
+                fn $name() {
+                    let ast = parser::Ast::default();
+                    let block = parser::parse_as_block(&ast, $source);
+
+                    let analyzer = SemanticAnalyzer::default();
+                    let symbol_table = analyzer.symbol_table(None);
+                    let result = analyzer.analyze_block(block, symbol_table);
+
+                    assert_eq!(
+                        result
+                            .expect_err("should have failed semantic analysis")
+                            .to_string(),
+                        $expected_error
+                    );
+                }
+            };
+        }
+
         #[test]
         fn return_expr() {
             let analyzer = SemanticAnalyzer::default();
@@ -441,38 +462,20 @@ mod tests {
             //             );
         }
 
-        #[test]
-        fn assignment_type_() {
-            let analyzer = SemanticAnalyzer::default();
-            let err = analyze_block(
-                &analyzer,
-                r"{
+        test_ko!(
+            assignment_symbol_not_found,
+            r"{
+    a = 1;
+}",
+            "symbol not found: \"a\""
+        );
+        test_ko!(
+            assignment_type_mismatch,
+            r"{
     let a = 42;
     a = false;
 }",
-            )
-            .expect_err("should have failed to match types");
-            assert_eq!(
-                err.to_string(),
-                "invalid assignment to \"a\": symbol has type int, but expression has type boolean",
-            );
-        }
-
-        #[test]
-        fn assignment_type_mismatch() {
-            let analyzer = SemanticAnalyzer::default();
-            let err = analyze_block(
-                &analyzer,
-                r"{
-    let a = 42;
-    a = false;
-}",
-            )
-            .expect_err("should have failed to match types");
-            assert_eq!(
-                err.to_string(),
-                "invalid assignment to \"a\": symbol has type int, but expression has type boolean",
-            );
-        }
+            "invalid assignment to \"a\": symbol has type int, but expression has type boolean"
+        );
     }
 }
