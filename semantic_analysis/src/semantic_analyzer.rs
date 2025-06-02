@@ -60,15 +60,12 @@ impl SemanticAnalyzer {
         match statement {
             Statement::Let { initializers } => {
                 for initializer in initializers {
-                    let value = initializer
-                        .value
-                        .map(|e| self.analyze_expression(e))
-                        .transpose()?;
+                    let value = self.analyze_expression(initializer.value)?;
 
                     let symbol = symbol_table.add_symbol(
                         &self.arena,
                         initializer.name,
-                        value.unwrap().resolved_type(),
+                        value.resolved_type(),
                     );
                     statements.push(self.alloc(TypedStatement::Let { symbol, value }));
                 }

@@ -17,7 +17,7 @@ block = { "{" ~ (statement | block)* ~ "}" }
 
 statement = { (letStatement | assignmentStatement | returnStatement | expression) ~ ";" }
 letStatement = { "let" ~ letStatementInitializer ~ ("," ~ letStatementInitializer )* }
-letStatementInitializer = { identifier ~ ("=" ~ expression)? }
+letStatementInitializer = { identifier ~ "=" ~ expression? }
 assignmentStatement = { identifier ~ "=" ~ expression }
 returnStatement = { "return" ~ expression? }
 

@@ -1,6 +1,7 @@
 Parser
-- [ ] remove support for untyped `let` (let's make value mandatory for the moment)
 - [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
+- [ ] tests for nested blocks
+- [ ] better display version of typed stuff
 
 LLVM backend
 - [ ] rather than a hash map for the values, add an index to IR instructions and use an array

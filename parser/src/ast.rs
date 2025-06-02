@@ -64,7 +64,7 @@ pub enum Statement<'a> {
 #[derive(Debug, PartialEq)]
 pub struct LetInitializer<'a> {
     pub name: StringId,
-    pub value: Option<&'a Expression<'a>>,
+    pub value: &'a Expression<'a>,
 }
 
 // #[derive(Debug, PartialEq)]
@@ -203,11 +203,7 @@ impl Display for Statement<'_> {
                         write!(f, ", ")?;
                     }
                     let name = resolve_string_id(i.name).expect("invalid let initializer");
-                    if let Some(value) = i.value {
-                        write!(f, "{} = {}", name, value)?;
-                    } else {
-                        write!(f, "{}", name);
-                    }
+                    write!(f, "{} = {}", name, i.value)?;
                     first = false;
                 }
                 write!(f, ";")

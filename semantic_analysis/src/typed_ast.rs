@@ -36,7 +36,7 @@ pub enum TypedStatement<'a> {
     // will be represented as multiple Let typed statements.
     Let {
         symbol: SymbolId,
-        value: Option<&'a TypedExpression<'a>>,
+        value: &'a TypedExpression<'a>,
     },
     Assignment {
         symbol: SymbolId,
@@ -145,11 +145,7 @@ impl Display for TypedStatement<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TypedStatement::Let { symbol, value } => {
-                if let Some(value) = value {
-                    write!(f, "let {} = {};", symbol, value)
-                } else {
-                    write!(f, "let {};", symbol)
-                }
+                write!(f, "let {} = {};", symbol, value)
             }
             TypedStatement::Assignment { symbol, value } => {
                 write!(f, "{} = {};", symbol, value)

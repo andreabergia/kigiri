@@ -84,8 +84,7 @@ mod tests {
     fn grammar_can_parse_statement_let() {
         assert_can_be_parsed_as("let x = 1", Rule::letStatement);
         assert_can_be_parsed_as("let y_3π = 1 + x", Rule::letStatement);
-        assert_can_be_parsed_as("let a", Rule::letStatement);
-        assert_can_be_parsed_as("let a = 1, b", Rule::letStatement);
+        assert_can_be_parsed_as("let a = 1, b = false", Rule::letStatement);
     }
 
     #[test]
@@ -107,7 +106,7 @@ mod tests {
 
     #[test]
     fn grammar_can_parse_statements() {
-        assert_can_be_parsed_as("let a;", Rule::statement);
+        assert_can_be_parsed_as("let a = 1;", Rule::statement);
         assert_can_be_parsed_as("a = 1;", Rule::statement);
         assert_can_be_parsed_as("return 42;", Rule::statement);
         assert_can_be_parsed_as("1 + 2;", Rule::statement);
