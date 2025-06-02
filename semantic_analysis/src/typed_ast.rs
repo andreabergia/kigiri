@@ -1,7 +1,7 @@
 use crate::types::Type;
-use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
-use parser::{resolve_string_id, BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator};
+use bumpalo::collections::Vec as BumpVec;
+use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;

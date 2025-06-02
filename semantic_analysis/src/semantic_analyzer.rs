@@ -1,7 +1,7 @@
 use crate::typed_ast::{SymbolTable, TypedBlock, TypedStatement};
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
-use parser::{resolve_string_id, BinaryOperator, Expression, Statement, UnaryOperator};
+use parser::{BinaryOperator, Expression, Statement, UnaryOperator, resolve_string_id};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
