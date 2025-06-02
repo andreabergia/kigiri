@@ -62,7 +62,8 @@ pub struct TypedBlock<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Symbol {
-    pub id: StringId,
+    pub id: SymbolId,
+    pub name: StringId,
     pub symbol_type: Type,
     // TODO: declaration location (span)
 }
@@ -74,6 +75,7 @@ pub struct SymbolId(pub u32);
 pub struct SymbolTable<'a> {
     allocated_symbols: RefCell<BumpVec<'a, &'a Symbol>>,
     symbols_by_id: RefCell<HashMap<SymbolId, &'a Symbol>>,
+    symbols_by_name: RefCell<HashMap<StringId, &'a Symbol>>,
     parent: Option<&'a SymbolTable<'a>>,
 }
 
@@ -126,7 +128,7 @@ impl Display for Symbol {
         write!(
             f,
             "{}: {}",
-            resolve_string_id(self.id).expect("symbol name"),
+            resolve_string_id(self.name).expect("symbol name"),
             self.symbol_type
         )
     }
@@ -233,35 +235,46 @@ impl<'a> SymbolTable<'a> {
         Self {
             allocated_symbols: RefCell::new(BumpVec::new_in(arena)),
             symbols_by_id: RefCell::new(HashMap::new()),
+            symbols_by_name: RefCell::new(HashMap::new()),
             parent,
         }
     }
 
-    pub fn add_symbol(&self, allocator: &'a Bump, id: StringId, symbol_type: Type) -> SymbolId {
-        let symbol = allocator.alloc(Symbol { id, symbol_type });
-        let symbol_id = next_symbol_id();
+    pub fn add_symbol(&self, allocator: &'a Bump, name: StringId, symbol_type: Type) -> SymbolId {
+        let id = next_symbol_id();
+        let symbol = allocator.alloc(Symbol {
+            id,
+            name,
+            symbol_type,
+        });
 
         // This allows for name shadowing!
         self.allocated_symbols.borrow_mut().push(symbol);
-        self.symbols_by_id.borrow_mut().insert(symbol_id, symbol);
+        self.symbols_by_name.borrow_mut().insert(name, symbol);
+        self.symbols_by_id.borrow_mut().insert(id, symbol);
 
-        symbol_id
+        id
     }
 
-    pub fn lookup(&self, id: SymbolId) -> Option<&Symbol> {
+    pub fn lookup_by_name(&self, name: StringId) -> Option<&Symbol> {
+        self.symbols_by_name
+            .borrow()
+            .get(&name)
+            .cloned()
+            .or_else(|| self.parent.and_then(|parent| parent.lookup_by_name(name)))
+    }
+
+    pub fn lookup_by_id(&self, id: SymbolId) -> Option<&Symbol> {
         self.symbols_by_id
             .borrow()
             .get(&id)
             .cloned()
-            .or_else(|| self.parent.and_then(|parent| parent.lookup(id)))
+            .or_else(|| self.parent.and_then(|parent| parent.lookup_by_id(id)))
     }
 
-    // pub fn get_symbol(&self, id: SymbolId) -> Option<&Symbol> {
-    //     self.symbols_by_id.get(&id).or_else(|| {
-    //         self.parent
-    //             .and_then(|parent| parent.get_symbol(id))
-    //     })
-    // }
+    pub fn len(&self) -> usize {
+        self.allocated_symbols.borrow().len()
+    }
 }
 
 impl TypedExpression<'_> {

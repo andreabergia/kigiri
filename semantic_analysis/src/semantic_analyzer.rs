@@ -1,7 +1,7 @@
 use crate::typed_ast::{SymbolTable, TypedBlock, TypedStatement};
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, Expression, Statement, UnaryOperator};
+use parser::{resolve_string_id, BinaryOperator, Expression, Statement, UnaryOperator};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -16,6 +16,16 @@ pub enum SemanticAnalysisError {
         operator: BinaryOperator,
         left_type: Type,
         right_type: Type,
+    },
+    #[error("symbol not found: {name}")]
+    SymbolNotFound { name: String },
+    #[error(
+        "invalid assignment to \"{symbol_name}\": symbol has type {symbol_type}, but expression has type {expression_type}"
+    )]
+    MismatchedAssignmentType {
+        symbol_name: String,
+        symbol_type: Type,
+        expression_type: Type,
     },
 }
 
@@ -64,7 +74,32 @@ impl SemanticAnalyzer {
                 }
             }
             Statement::Assignment { name, expression } => {
-                todo!()
+                let symbol_name = resolve_string_id(*name)
+                    .expect("should be able to find string")
+                    .to_owned();
+
+                let symbol = symbol_table.lookup_by_name(*name);
+
+                match symbol {
+                    None => {
+                        return Err(SemanticAnalysisError::SymbolNotFound { name: symbol_name });
+                    }
+                    Some(symbol) => {
+                        let value = self.analyze_expression(expression)?;
+                        if value.resolved_type() != symbol.symbol_type {
+                            return Err(SemanticAnalysisError::MismatchedAssignmentType {
+                                symbol_name,
+                                symbol_type: symbol.symbol_type.clone(),
+                                expression_type: value.resolved_type(),
+                            });
+                        }
+
+                        statements.push(self.alloc(TypedStatement::Assignment {
+                            symbol: symbol.id,
+                            value,
+                        }))
+                    }
+                }
             }
             Statement::Return { expression } => {
                 let value = expression
@@ -309,56 +344,72 @@ mod tests {
         use super::*;
         use parser::resolve_string_id;
 
+        #[derive(Debug)]
+        struct TestAnalysis<'a> {
+            symbol_table: &'a SymbolTable<'a>,
+            typed_block: &'a TypedBlock<'a>,
+        }
+
+        fn analyze_block<'a>(
+            analyzer: &'a SemanticAnalyzer,
+            source: &str,
+        ) -> Result<TestAnalysis<'a>, SemanticAnalysisError> {
+            let ast = parser::Ast::default();
+            let block = parser::parse_as_block(&ast, source);
+            let symbol_table = analyzer.symbol_table(None);
+
+            let typed_block = analyzer.analyze_block(block, symbol_table)?;
+            Ok(TestAnalysis {
+                symbol_table,
+                typed_block,
+            })
+        }
+
         #[test]
         fn return_expr() {
-            let ast = parser::Ast::default();
-            let block = parser::parse_as_block(
-                &ast,
+            let analyzer = SemanticAnalyzer::default();
+            let result = analyze_block(
+                &analyzer,
                 r"{
     return 42;
 }",
-            );
-            let analyzer = SemanticAnalyzer::default();
-            let symbol_table = analyzer.symbol_table(None);
-            let result = analyzer.analyze_block(block, symbol_table);
+            )
+            .expect("should have matched types correctly");
 
             assert_eq!(
-                result
-                    .expect("should have matched types correctly")
-                    .to_string(),
+                result.typed_block.to_string(),
                 r"{ #0
   return 42i;
 }"
             );
+            assert_eq!(0, result.symbol_table.len());
         }
 
         #[test]
         fn let_single() {
-            let ast = parser::Ast::default();
-            let block = parser::parse_as_block(
-                &ast,
+            let analyzer = SemanticAnalyzer::default();
+            let result = analyze_block(
+                &analyzer,
                 r"{
     let a = 42;
 }",
-            );
+            )
+            .expect("should have matched types correctly");
 
-            let analyzer = SemanticAnalyzer::default();
-            let symbol_table = analyzer.symbol_table(None);
-            let result = analyzer.analyze_block(block, symbol_table);
-            let result = result.expect("should have matched types correctly");
-
-            assert_eq!(1, result.statements.len());
-            let let_statement = result.statements.get(0).unwrap();
+            assert_eq!(1, result.typed_block.statements.len());
+            let let_statement = result.typed_block.statements.first().unwrap();
             match let_statement {
                 TypedStatement::Let { symbol, value } => {
-                    let symbol = symbol_table
-                        .lookup(*symbol)
+                    let symbol = result
+                        .symbol_table
+                        .lookup_by_id(*symbol)
                         .expect("should have found symbol");
-                    assert_eq!(resolve_string_id(symbol.id).unwrap(), "a");
+                    assert_eq!(resolve_string_id(symbol.name).unwrap(), "a");
                     assert_eq!(symbol.symbol_type, Type::Int);
                 }
                 _ => panic!("Expected a let statement"),
             }
+            assert_eq!(result.symbol_table.len(), 1);
 
             // TODO
             //             assert_eq!(
@@ -367,6 +418,64 @@ mod tests {
             //   let a:i = 42i;
             // }"
             //             );
+        }
+
+        #[test]
+        fn assignment_valid() {
+            let analyzer = SemanticAnalyzer::default();
+            let result = analyze_block(
+                &analyzer,
+                r"{
+    let a = 42;
+    a = 43;
+}",
+            )
+            .expect("should have matched types correctly");
+
+            assert_eq!(2, result.typed_block.statements.len());
+            assert_eq!(result.symbol_table.len(), 1);
+
+            // TODO
+            //             assert_eq!(
+            //                 result.to_string(),
+            //                 r"{ #0
+            //   let a:i = 42i;
+            // }"
+            //             );
+        }
+
+        #[test]
+        fn assignment_type_() {
+            let analyzer = SemanticAnalyzer::default();
+            let err = analyze_block(
+                &analyzer,
+                r"{
+    let a = 42;
+    a = false;
+}",
+            )
+            .expect_err("should have failed to match types");
+            assert_eq!(
+                err.to_string(),
+                "invalid assignment to \"a\": symbol has type int, but expression has type boolean",
+            );
+        }
+
+        #[test]
+        fn assignment_type_mismatch() {
+            let analyzer = SemanticAnalyzer::default();
+            let err = analyze_block(
+                &analyzer,
+                r"{
+    let a = 42;
+    a = false;
+}",
+            )
+            .expect_err("should have failed to match types");
+            assert_eq!(
+                err.to_string(),
+                "invalid assignment to \"a\": symbol has type int, but expression has type boolean",
+            );
         }
     }
 }
