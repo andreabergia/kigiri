@@ -383,6 +383,16 @@ mod tests {
         }
 
         test_ok!(
+            return_void,
+            r"{
+    return;
+}",
+            r"{ #0
+  return;
+}
+"
+        );
+        test_ok!(
             return_expr,
             r"{
     return 42;
@@ -392,7 +402,16 @@ mod tests {
 }
 "
         );
-
+        test_ok!(
+            single_expression,
+            r"{
+    1 + 2;
+}",
+            r"{ #0
+  (+i 1i 2i);
+}
+"
+        );
         test_ok!(
             let_single,
             r"{
@@ -403,7 +422,30 @@ mod tests {
 }
 "
         );
-
+        test_ok!(
+            let_multiple,
+            r"{
+    let a = 42, b = true, c = 3.14;
+}",
+            r"{ #0
+  let a: int = 42i;
+  let b: boolean = true;
+  let c: double = 3.14d;
+}
+"
+        );
+        test_ok!(
+            let_can_redeclare_symbols,
+            r"{
+    let a = 42;
+    let a = true;
+}",
+            r"{ #0
+  let a: int = 42i;
+  let a: boolean = true;
+}
+"
+        );
         test_ok!(
             assignment_valid,
             r"{
