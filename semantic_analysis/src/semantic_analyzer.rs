@@ -339,7 +339,6 @@ mod tests {
 
     mod blocks {
         use super::*;
-        use parser::resolve_string_id;
 
         #[derive(Debug)]
         struct TestAnalysis<'a> {
@@ -398,7 +397,8 @@ mod tests {
                 result.typed_block.to_string(),
                 r"{ #0
   return 42i;
-}"
+}
+"
             );
             assert_eq!(0, result.symbol_table.len());
         }
@@ -414,28 +414,13 @@ mod tests {
             )
             .expect("should have matched types correctly");
 
-            assert_eq!(1, result.typed_block.statements.len());
-            let let_statement = result.typed_block.statements.first().unwrap();
-            match let_statement {
-                TypedStatement::Let { symbol, value } => {
-                    let symbol = result
-                        .symbol_table
-                        .lookup_by_id(*symbol)
-                        .expect("should have found symbol");
-                    assert_eq!(resolve_string_id(symbol.name).unwrap(), "a");
-                    assert_eq!(symbol.symbol_type, Type::Int);
-                }
-                _ => panic!("Expected a let statement"),
-            }
-            assert_eq!(result.symbol_table.len(), 1);
-
-            // TODO
-            //             assert_eq!(
-            //                 result.to_string(),
-            //                 r"{ #0
-            //   let a:i = 42i;
-            // }"
-            //             );
+            assert_eq!(
+                result.typed_block.to_string(),
+                r"{ #0
+  let a: int = 42i;
+}
+"
+            );
         }
 
         #[test]
@@ -453,13 +438,14 @@ mod tests {
             assert_eq!(2, result.typed_block.statements.len());
             assert_eq!(result.symbol_table.len(), 1);
 
-            // TODO
-            //             assert_eq!(
-            //                 result.to_string(),
-            //                 r"{ #0
-            //   let a:i = 42i;
-            // }"
-            //             );
+            assert_eq!(
+                result.typed_block.to_string(),
+                r"{ #0
+  let a: int = 42i;
+  a = 43i;
+}
+"
+            );
         }
 
         test_ko!(

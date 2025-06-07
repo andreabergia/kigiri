@@ -107,62 +107,95 @@ pub enum TypedExpression<'a> {
     },
 }
 
-// Impls
-
-// TODO: need to avoid using Display and use some custom "to_string" stuff that handles
-//  - the symbol table
-//  - indentation level
+// Display
 
 impl Display for TypedBlock<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{{ #{}", self.id.0)?;
-        for statement in &self.statements {
-            writeln!(f, "  {}", statement)?;
+        self.fmt_with_context(
+            f,
+            DisplayTypedAstContext {
+                indent: "".to_owned(),
+                symbol_table: self.symbol_table,
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DisplayTypedAstContext<'a> {
+    indent: String,
+    symbol_table: &'a SymbolTable<'a>,
+}
+
+impl DisplayTypedAstContext<'_> {
+    fn indented(&self) -> Self {
+        Self {
+            indent: format!("{}  ", self.indent),
+            symbol_table: self.symbol_table,
         }
-        write!(f, "}}")
+    }
+}
+
+impl TypedBlock<'_> {
+    fn fmt_with_context(
+        &self,
+        f: &mut Formatter<'_>,
+        mut context: DisplayTypedAstContext,
+    ) -> std::fmt::Result {
+        writeln!(f, "{}{{ #{}", context.indent, self.id.0)?;
+        for statement in &self.statements {
+            statement.fmt_with_context(f, &context)?;
+        }
+        writeln!(f, "{}}}", context.indent)
+    }
+}
+
+impl Symbol {
+    fn name(&self) -> &str {
+        resolve_string_id(self.name).expect("symbol name")
     }
 }
 
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}: {}",
-            resolve_string_id(self.name).expect("symbol name"),
-            self.symbol_type
-        )
+        write!(f, "{}: {}", self.name(), self.symbol_type)
     }
 }
 
-// TODO: remove
-impl Display for SymbolId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Display for TypedStatement<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl TypedStatement<'_> {
+    fn fmt_with_context(
+        &self,
+        f: &mut Formatter<'_>,
+        mut context: &DisplayTypedAstContext,
+    ) -> std::fmt::Result {
         match self {
             TypedStatement::Let { symbol, value } => {
-                write!(f, "let {} = {};", symbol, value)
+                let symbol = context.symbol_table.lookup_by_id(*symbol);
+                if let Some(symbol) = symbol {
+                    writeln!(f, "{}  let {} = {};", context.indent, symbol, value)
+                } else {
+                    Err(std::fmt::Error)
+                }
             }
             TypedStatement::Assignment { symbol, value } => {
-                write!(f, "{} = {};", symbol, value)
+                let symbol = context.symbol_table.lookup_by_id(*symbol);
+                if let Some(symbol) = symbol {
+                    writeln!(f, "{}  {} = {};", context.indent, symbol.name(), value)
+                } else {
+                    Err(std::fmt::Error)
+                }
             }
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
-                    write!(f, "return {};", value)
+                    writeln!(f, "{}  return {};", context.indent, value)
                 } else {
-                    write!(f, "return;")
+                    writeln!(f, "{}  return;", context.indent,)
                 }
             }
             TypedStatement::Expression { expression } => {
-                write!(f, "{};", expression)
+                writeln!(f, "{}  {};", context.indent, expression)
             }
-            TypedStatement::NestedBlock { block } => {
-                write!(f, "{}", block)
-            }
+            TypedStatement::NestedBlock { block } => block.fmt_with_context(f, context.indented()),
         }
     }
 }
@@ -207,6 +240,8 @@ impl Display for TypedExpression<'_> {
         }
     }
 }
+
+// Impls
 
 impl SymbolIdSequencer {
     pub fn next(&mut self) -> SymbolId {
@@ -309,22 +344,55 @@ mod tests {
     #[test]
     fn display_block() {
         let arena = Bump::new();
-        let mut block = TypedBlock {
+        let block = make_block_with_return_1i(&arena);
+        assert_eq!(
+            block.to_string(),
+            r"{ #1
+  return 1i;
+}
+"
+        );
+    }
+
+    fn make_block_with_return_1i(arena: &Bump) -> &TypedBlock {
+        let mut block = arena.alloc(TypedBlock {
             id: BlockId(1),
-            statements: BumpVec::new_in(&arena),
-            symbol_table: arena.alloc(SymbolTable::new(&arena, None)),
-        };
+            statements: BumpVec::new_in(arena),
+            symbol_table: arena.alloc(SymbolTable::new(arena, None)),
+        });
         block.statements.push(arena.alloc(TypedStatement::Return {
             value: Some(arena.alloc(TypedExpression::Literal {
                 resolved_type: Type::Int,
                 value: LiteralValue::Integer(1),
             })),
         }));
+        block
+    }
+
+    #[test]
+    fn display_block_nested() {
+        let arena = Bump::new();
+
+        let outer_symbol_table = arena.alloc(SymbolTable::new(&arena, None));
+        let mut outer = TypedBlock {
+            id: BlockId(2),
+            statements: BumpVec::new_in(&arena),
+            symbol_table: outer_symbol_table,
+        };
+
+        let mut inner = make_block_with_return_1i(&arena);
+        outer
+            .statements
+            .push(arena.alloc(TypedStatement::NestedBlock { block: inner }));
+
         assert_eq!(
-            block.to_string(),
-            r"{ #1
-  return 1i;
-}"
+            outer.to_string(),
+            r"{ #2
+  { #1
+    return 1i;
+  }
+}
+"
         );
     }
 }
