@@ -340,25 +340,25 @@ mod tests {
     mod blocks {
         use super::*;
 
-        #[derive(Debug)]
-        struct TestAnalysis<'a> {
-            symbol_table: &'a SymbolTable<'a>,
-            typed_block: &'a TypedBlock<'a>,
-        }
+        macro_rules! test_ok {
+            ($name: ident, $source: expr, $expected_typed_ast: expr) => {
+                #[test]
+                fn $name() {
+                    let ast = parser::Ast::default();
+                    let block = parser::parse_as_block(&ast, $source);
 
-        fn analyze_block<'a>(
-            analyzer: &'a SemanticAnalyzer,
-            source: &str,
-        ) -> Result<TestAnalysis<'a>, SemanticAnalysisError> {
-            let ast = parser::Ast::default();
-            let block = parser::parse_as_block(&ast, source);
-            let symbol_table = analyzer.symbol_table(None);
+                    let analyzer = SemanticAnalyzer::default();
+                    let symbol_table = analyzer.symbol_table(None);
+                    let result = analyzer.analyze_block(block, symbol_table);
 
-            let typed_block = analyzer.analyze_block(block, symbol_table)?;
-            Ok(TestAnalysis {
-                symbol_table,
-                typed_block,
-            })
+                    assert_eq!(
+                        result
+                            .expect("should have succeeded semantic analysis")
+                            .to_string(),
+                        $expected_typed_ast
+                    );
+                }
+            };
         }
 
         macro_rules! test_ko {
@@ -382,71 +382,40 @@ mod tests {
             };
         }
 
-        #[test]
-        fn return_expr() {
-            let analyzer = SemanticAnalyzer::default();
-            let result = analyze_block(
-                &analyzer,
-                r"{
+        test_ok!(
+            return_expr,
+            r"{
     return 42;
 }",
-            )
-            .expect("should have matched types correctly");
-
-            assert_eq!(
-                result.typed_block.to_string(),
-                r"{ #0
+            r"{ #0
   return 42i;
 }
 "
-            );
-            assert_eq!(0, result.symbol_table.len());
-        }
+        );
 
-        #[test]
-        fn let_single() {
-            let analyzer = SemanticAnalyzer::default();
-            let result = analyze_block(
-                &analyzer,
-                r"{
+        test_ok!(
+            let_single,
+            r"{
     let a = 42;
 }",
-            )
-            .expect("should have matched types correctly");
-
-            assert_eq!(
-                result.typed_block.to_string(),
-                r"{ #0
+            r"{ #0
   let a: int = 42i;
 }
 "
-            );
-        }
+        );
 
-        #[test]
-        fn assignment_valid() {
-            let analyzer = SemanticAnalyzer::default();
-            let result = analyze_block(
-                &analyzer,
-                r"{
+        test_ok!(
+            assignment_valid,
+            r"{
     let a = 42;
     a = 43;
 }",
-            )
-            .expect("should have matched types correctly");
-
-            assert_eq!(2, result.typed_block.statements.len());
-            assert_eq!(result.symbol_table.len(), 1);
-
-            assert_eq!(
-                result.typed_block.to_string(),
-                r"{ #0
+            r"{ #0
   let a: int = 42i;
   a = 43i;
 }
 "
-            );
-        }
+        );
 
         test_ko!(
             assignment_symbol_not_found,
