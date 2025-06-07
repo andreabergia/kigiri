@@ -111,7 +111,9 @@ impl SemanticAnalyzer {
                 }))
             }
             Statement::NestedBlock { block } => {
-                todo!()
+                let nested_symbol_table = self.symbol_table(Some(symbol_table));
+                let typed_block = self.analyze_block(block, nested_symbol_table)?;
+                statements.push(self.alloc(TypedStatement::NestedBlock { block: typed_block }));
             }
         };
         Ok(())
@@ -458,6 +460,36 @@ mod tests {
 }
 "
         );
+        test_ok!(
+            nested_block_basic,
+            r"{
+  {
+    1 + 2;
+  }
+}",
+            r"{ #0
+  { #1
+    (+i 1i 2i);
+  }
+}
+"
+        );
+        test_ok!(
+            nested_block_can_resolve_variables_declared_in_outer,
+            r"{
+  let a = 1;
+  {
+    a = 2;
+  }
+}",
+            r"{ #0
+  let a: int = 1i;
+  { #1
+    a = 2i;
+  }
+}
+"
+        );
 
         test_ko!(
             assignment_symbol_not_found,
@@ -473,6 +505,16 @@ mod tests {
     a = false;
 }",
             "invalid assignment to \"a\": symbol has type int, but expression has type boolean"
+        );
+        test_ko!(
+            variables_declared_in_nested_block_cannot_be_accessed_in_outer,
+            r"{
+  {
+    let a = 1;
+  }
+  a = 2;
+}",
+            "symbol not found: \"a\""
         );
     }
 }
