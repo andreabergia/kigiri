@@ -332,10 +332,6 @@ impl<'a> SymbolTable<'a> {
             .cloned()
             .or_else(|| self.parent.and_then(|parent| parent.lookup_by_id(id)))
     }
-
-    pub fn len(&self) -> usize {
-        self.allocated_symbols.borrow().len()
-    }
 }
 
 impl TypedExpression<'_> {

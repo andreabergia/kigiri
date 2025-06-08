@@ -231,12 +231,6 @@ impl SemanticAnalyzer {
         self.arena.alloc(value)
     }
 
-    fn as_bump_vec<T>(&self, node: T) -> BumpVec<'_, &T> {
-        let mut vec = BumpVec::with_capacity_in(1, &self.arena);
-        vec.push(self.alloc(node));
-        vec
-    }
-
     pub fn symbol_table<'a>(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
         self.alloc(SymbolTable::new(&self.arena, parent))
     }
