@@ -113,7 +113,7 @@ pub enum LiteralValue {
 #[derive(Debug, PartialEq)]
 pub enum Expression<'a> {
     Identifier {
-        symbol_id: StringId,
+        name: StringId,
     },
     Literal(LiteralValue),
     Unary {
@@ -326,7 +326,7 @@ impl Display for LiteralValue {
 impl Display for Expression<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Identifier { symbol_id } => {
+            Expression::Identifier { name: symbol_id } => {
                 let symbol = resolve_string_id(*symbol_id).expect("invalid symbol!");
                 write!(f, "{}", symbol)
             }
@@ -354,7 +354,7 @@ impl Ast {
 
     pub fn identifier(&self, symbol: &str) -> &Expression {
         let id = get_or_create_string(symbol);
-        self.alloc(Expression::Identifier { symbol_id: id })
+        self.alloc(Expression::Identifier { name: id })
     }
 
     pub fn literal_integer(&self, value: i64) -> &Expression {

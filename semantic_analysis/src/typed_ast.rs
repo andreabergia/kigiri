@@ -1,7 +1,7 @@
 use crate::types::Type;
-use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
+use bumpalo::Bump;
+use parser::{resolve_string_id, BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -86,10 +86,10 @@ pub(crate) struct SymbolIdSequencer {
 
 #[derive(Debug, PartialEq)]
 pub enum TypedExpression<'a> {
-    // Identifier {
-    //     resolved_type: Type,
-    //     symbol_id: SymbolId,
-    // },
+    Identifier {
+        resolved_type: Type,
+        symbol_id: SymbolId,
+    },
     Literal {
         resolved_type: Type,
         value: LiteralValue,
@@ -172,7 +172,9 @@ impl TypedStatement<'_> {
             TypedStatement::Let { symbol, value } => {
                 let symbol = context.symbol_table.lookup_by_id(*symbol);
                 if let Some(symbol) = symbol {
-                    writeln!(f, "{}  let {} = {};", context.indent, symbol, value)
+                    write!(f, "{}  let {} = ", context.indent, symbol)?;
+                    value.fmt_with_symbol_table(f, context.symbol_table)?;
+                    writeln!(f, ";")
                 } else {
                     Err(std::fmt::Error)
                 }
@@ -180,63 +182,91 @@ impl TypedStatement<'_> {
             TypedStatement::Assignment { symbol, value } => {
                 let symbol = context.symbol_table.lookup_by_id(*symbol);
                 if let Some(symbol) = symbol {
-                    writeln!(f, "{}  {} = {};", context.indent, symbol.name(), value)
+                    write!(f, "{}  {} = ", context.indent, symbol.name())?;
+                    value.fmt_with_symbol_table(f, context.symbol_table)?;
+                    writeln!(f, ";")
                 } else {
                     Err(std::fmt::Error)
                 }
             }
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
-                    writeln!(f, "{}  return {};", context.indent, value)
+                    write!(f, "{}  return ", context.indent)?;
+                    value.fmt_with_symbol_table(f, context.symbol_table)?;
                 } else {
-                    writeln!(f, "{}  return;", context.indent,)
+                    write!(f, "{}  return", context.indent,)?;
                 }
+                writeln!(f, ";")
             }
             TypedStatement::Expression { expression } => {
-                writeln!(f, "{}  {};", context.indent, expression)
+                write!(f, "{}  ", context.indent)?;
+                expression.fmt_with_symbol_table(f, context.symbol_table)?;
+                writeln!(f, ";")
             }
             TypedStatement::NestedBlock { block } => block.fmt_with_context(f, context.indented()),
         }
     }
 }
 
-impl Display for TypedExpression<'_> {
+struct TypedExpressionSymbolTableDisplayHelper<'e, 's, 't> {
+    expression: &'e TypedExpression<'e>,
+    symbol_table: &'s SymbolTable<'t>,
+}
+
+impl Display for TypedExpressionSymbolTableDisplayHelper<'_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.expression.fmt_with_symbol_table(f, self.symbol_table)
+    }
+}
+
+impl TypedExpression<'_> {
+    pub fn to_string_with_symbol_table(&self, symbol_table: &SymbolTable<'_>) -> String {
+        TypedExpressionSymbolTableDisplayHelper {
+            expression: self,
+            symbol_table,
+        }
+        .to_string()
+    }
+
+    fn fmt_with_symbol_table(
+        &self,
+        f: &mut Formatter<'_>,
+        symbol_table: &SymbolTable<'_>,
+    ) -> std::fmt::Result {
         match self {
-            // Expression::Identifier {
-            //     symbol_id,
-            // } => {
-            //     let string_interner = string_interner.borrow();
-            //     let symbol = string_interner
-            //         .resolve(*symbol_id)
-            //         .expect("invalid symbol!");
-            //     write!(f, "{}", symbol)
-            // }
-            TypedExpression::Literal { value, .. } => write!(f, "{}", value),
+            TypedExpression::Identifier {
+                resolved_type,
+                symbol_id,
+            } => match symbol_table.lookup_by_id(*symbol_id) {
+                None => Err(std::fmt::Error),
+                Some(symbol) => {
+                    write!(f, "{}", symbol.name())
+                }
+            },
+            TypedExpression::Literal { value, .. } => {
+                write!(f, "{}", value)
+            }
             TypedExpression::Unary {
                 resolved_type,
                 operator,
                 operand,
-            } => write!(
-                f,
-                "({}{} {})",
-                operator,
-                resolved_type.to_string_short(),
-                operand
-            ),
+            } => {
+                write!(f, "({}{} ", operator, resolved_type.to_string_short(),);
+                operand.fmt_with_symbol_table(f, symbol_table)?;
+                write!(f, ")")
+            }
             TypedExpression::Binary {
                 resolved_type,
                 operator,
                 left,
                 right,
-            } => write!(
-                f,
-                "({}{} {} {})",
-                operator,
-                resolved_type.to_string_short(),
-                left,
-                right
-            ),
+            } => {
+                write!(f, "({}{} ", operator, resolved_type.to_string_short());
+                left.fmt_with_symbol_table(f, symbol_table)?;
+                write!(f, " ")?;
+                right.fmt_with_symbol_table(f, symbol_table)?;
+                write!(f, ")")
+            }
         }
     }
 }
@@ -311,7 +341,7 @@ impl<'a> SymbolTable<'a> {
 impl TypedExpression<'_> {
     pub fn resolved_type(&self) -> Type {
         match self {
-            // Expression::Identifier { resolved_type, .. } => *resolved_type,
+            TypedExpression::Identifier { resolved_type, .. } => resolved_type.clone(),
             TypedExpression::Literal { resolved_type, .. } => resolved_type.clone(),
             TypedExpression::Unary { resolved_type, .. } => resolved_type.clone(),
             TypedExpression::Binary { resolved_type, .. } => resolved_type.clone(),
@@ -338,7 +368,14 @@ mod tests {
                 value: LiteralValue::Integer(2),
             },
         };
-        assert_eq!(format!("{}", typed_expression), "(+i 1i 2i)");
+
+        let arena = Bump::new();
+        let symbol_table = SymbolTable::new(&arena, None);
+
+        assert_eq!(
+            typed_expression.to_string_with_symbol_table(&symbol_table),
+            "(+i 1i 2i)"
+        );
     }
 
     #[test]

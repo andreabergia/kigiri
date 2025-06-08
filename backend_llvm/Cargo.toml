@@ -7,5 +7,5 @@ edition = "2024"
 inkwell = { workspace = true }
 thiserror = { workspace = true }
 parser = { path = "../parser" }
-type_engine = { path = "../semantic_analysis" }
+semantic_analysis = { path = "../semantic_analysis" }
 codegen = { path = "../codegen" }

@@ -1,8 +1,8 @@
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, LiteralValue, UnaryOperator};
+use semantic_analysis::Type;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
-use type_engine::Type;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InstructionType {

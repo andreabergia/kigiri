@@ -15,8 +15,8 @@ dependencies = [
  "codegen",
  "inkwell",
  "parser",
+ "semantic_analysis",
  "thiserror 2.0.12",
- "type_engine",
 ]
 
 [[package]]
@@ -55,7 +55,7 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "parser",
- "type_engine",
+ "semantic_analysis",
 ]
 
 [[package]]
@@ -261,6 +261,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53a49587ad06b26609c52e423de037e7f57f20d53535d66e08c695f347df952a"
 
 [[package]]
+name = "semantic_analysis"
+version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "parser",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -362,15 +371,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "type_engine"
-version = "0.1.0"
-dependencies = [
- "bumpalo",
- "parser",
- "thiserror 2.0.12",
 ]
 
 [[package]]

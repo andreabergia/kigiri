@@ -1,7 +1,7 @@
 use crate::typed_ast::{SymbolTable, TypedBlock, TypedStatement};
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, Expression, Statement, UnaryOperator, resolve_string_id};
+use parser::{resolve_string_id, BinaryOperator, Expression, Statement, UnaryOperator};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -60,7 +60,7 @@ impl SemanticAnalyzer {
         match statement {
             Statement::Let { initializers } => {
                 for initializer in initializers {
-                    let value = self.analyze_expression(initializer.value)?;
+                    let value = self.analyze_expression(initializer.value, symbol_table)?;
 
                     let symbol = symbol_table.add_symbol(
                         &self.arena,
@@ -82,7 +82,7 @@ impl SemanticAnalyzer {
                         return Err(SemanticAnalysisError::SymbolNotFound { name: symbol_name });
                     }
                     Some(symbol) => {
-                        let value = self.analyze_expression(expression)?;
+                        let value = self.analyze_expression(expression, symbol_table)?;
                         if value.resolved_type() != symbol.symbol_type {
                             return Err(SemanticAnalysisError::MismatchedAssignmentType {
                                 symbol_name,
@@ -100,12 +100,12 @@ impl SemanticAnalyzer {
             }
             Statement::Return { expression } => {
                 let value = expression
-                    .map(|expr| self.analyze_expression(expr))
+                    .map(|expr| self.analyze_expression(expr, symbol_table))
                     .transpose()?;
                 statements.push(self.alloc(TypedStatement::Return { value }));
             }
             Statement::Expression { expression } => {
-                let typed_expression = self.analyze_expression(expression)?;
+                let typed_expression = self.analyze_expression(expression, symbol_table)?;
                 statements.push(self.alloc(TypedStatement::Expression {
                     expression: typed_expression,
                 }))
@@ -122,9 +122,23 @@ impl SemanticAnalyzer {
     pub fn analyze_expression<'a>(
         &'a self,
         expr: &Expression,
+        symbol_table: &'a SymbolTable<'a>,
     ) -> Result<&'a TypedExpression<'a>, SemanticAnalysisError> {
         match expr {
-            Expression::Identifier { symbol_id } => todo!(),
+            Expression::Identifier { name: symbol_id } => {
+                let symbol = symbol_table.lookup_by_name(*symbol_id);
+                match symbol {
+                    Some(symbol) => Ok(self.alloc(TypedExpression::Identifier {
+                        symbol_id: symbol.id,
+                        resolved_type: symbol.symbol_type.clone(),
+                    })),
+                    None => Err(SemanticAnalysisError::SymbolNotFound {
+                        name: resolve_string_id(*symbol_id)
+                            .expect("should be able to find string")
+                            .to_owned(),
+                    }),
+                }
+            }
 
             // Literals will never fail
             Expression::Literal(value) => Ok(self.alloc(TypedExpression::Literal {
@@ -134,7 +148,7 @@ impl SemanticAnalyzer {
 
             // Unary operators - can fail!
             Expression::Unary { operator, operand } => {
-                let typed_operand = self.analyze_expression(operand)?;
+                let typed_operand = self.analyze_expression(operand, symbol_table)?;
                 let operand_type = typed_operand.resolved_type();
                 if (Self::unary_op_is_allowed(operator.clone(), operand_type.clone())) {
                     Ok(self.alloc(TypedExpression::Unary {
@@ -156,8 +170,8 @@ impl SemanticAnalyzer {
                 left,
                 right,
             } => {
-                let typed_left = self.analyze_expression(left)?;
-                let typed_right = self.analyze_expression(right)?;
+                let typed_left = self.analyze_expression(left, symbol_table)?;
+                let typed_right = self.analyze_expression(right, symbol_table)?;
                 let left_type = typed_left.resolved_type();
                 let right_type = typed_right.resolved_type();
                 if Self::bin_op_is_allowed(operator.clone(), left_type.clone(), right_type.clone())
@@ -223,7 +237,7 @@ impl SemanticAnalyzer {
         vec
     }
 
-    fn symbol_table<'a>(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
+    pub fn symbol_table<'a>(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
         self.alloc(SymbolTable::new(&self.arena, parent))
     }
 }
@@ -244,11 +258,12 @@ mod tests {
                     let ast = parser::Ast::default();
                     let expression = parser::parse_as_expression(&ast, $source);
                     let analyzer = SemanticAnalyzer::default();
-                    let result = analyzer.analyze_expression(expression);
+                    let symbol_table = analyzer.symbol_table(None);
+                    let result = analyzer.analyze_expression(expression, symbol_table);
                     assert_eq!(
                         result
                             .expect("should have matched types correctly")
-                            .to_string(),
+                            .to_string_with_symbol_table(symbol_table),
                         $typed_ast
                     );
                 }
@@ -262,7 +277,8 @@ mod tests {
                     let ast = parser::Ast::default();
                     let expression = parser::parse_as_expression(&ast, $source);
                     let analyzer = SemanticAnalyzer::default();
-                    let result = analyzer.analyze_expression(expression);
+                    let symbol_table = analyzer.symbol_table(None);
+                    let result = analyzer.analyze_expression(expression, symbol_table);
                     assert_eq!(
                         result.expect_err("should have failed to match types"),
                         $expected_error
@@ -490,6 +506,18 @@ mod tests {
 }
 "
         );
+        test_ok!(
+            can_use_declared_variables_in_expressions,
+            r"{
+  let a = 1;
+  a + 1;
+}",
+            r"{ #0
+  let a: int = 1i;
+  (+i a 1i);
+}
+"
+        );
 
         test_ko!(
             assignment_symbol_not_found,
@@ -515,6 +543,13 @@ mod tests {
   a = 2;
 }",
             "symbol not found: \"a\""
+        );
+        test_ko!(
+            expression_symbol_not_found,
+            r"{
+    x;
+}",
+            "symbol not found: \"x\""
         );
     }
 }

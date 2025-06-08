@@ -5,9 +5,9 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::values::IntValue;
 use parser::{BinaryOperator, UnaryOperator};
+use semantic_analysis::Type;
 use std::collections::HashMap;
 use thiserror::Error;
-use type_engine::Type;
 
 #[derive(Debug, PartialEq, Error)]
 #[error("Code generation error: {message}")]
@@ -374,24 +374,25 @@ mod tests {
     use codegen::Ir;
     use codegen::{BasicBlock, build_ir};
     use inkwell::context::Context;
+    use semantic_analysis::{SemanticAnalyzer, TypedExpression};
     use std::io::{Write, stderr};
-    use type_engine::{SemanticAnalyzer, TypedExpression};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'te>(
-        type_engine: &'te SemanticAnalyzer,
+        semantic_analyzer: &'te SemanticAnalyzer,
         source: &str,
     ) -> &'te TypedExpression<'te> {
         let ast = parser::Ast::default();
         let expression = parser::parse_as_expression(&ast, source);
+        let symbol_table = semantic_analyzer.symbol_table(None);
 
-        let result = type_engine.analyze_expression(expression);
+        let result = semantic_analyzer.analyze_expression(expression, symbol_table);
         result.expect("should have passed semantic analysis")
     }
 
     fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
-        let type_engine = SemanticAnalyzer::default();
-        let expression = make_analyzed_ast(&type_engine, source);
+        let semantic_analyzer = SemanticAnalyzer::default();
+        let expression = make_analyzed_ast(&semantic_analyzer, source);
         let bb = build_ir(ir, expression);
 
         let bb_ir = bb

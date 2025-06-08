@@ -1,6 +1,6 @@
 use crate::ir::*;
+use semantic_analysis::TypedExpression;
 use std::cell::RefCell;
-use type_engine::TypedExpression;
 
 #[derive(Default, Debug)]
 struct Counter {
@@ -35,6 +35,9 @@ impl<'ir> IrBuilder<'ir> {
 
     fn generate(&self, expression: &TypedExpression) -> &'ir Instruction<'ir> {
         match expression {
+            TypedExpression::Identifier { .. } => {
+                todo!()
+            }
             TypedExpression::Literal {
                 resolved_type,
                 value,
@@ -98,22 +101,23 @@ pub fn build_ir<'ir>(ir: &'ir Ir, expression: &TypedExpression) -> &'ir BasicBlo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use type_engine::SemanticAnalyzer;
+    use semantic_analysis::SemanticAnalyzer;
 
     fn make_analyzed_ast<'te>(
-        type_engine: &'te SemanticAnalyzer,
+        semantic_analyzer: &'te SemanticAnalyzer,
         source: &str,
     ) -> &'te TypedExpression<'te> {
         let ast = parser::Ast::default();
         let expression = parser::parse_as_expression(&ast, source);
+        let symbol_table = semantic_analyzer.symbol_table(None);
 
-        let result = type_engine.analyze_expression(expression);
+        let result = semantic_analyzer.analyze_expression(expression, symbol_table);
         result.expect("should have passed semantic analysis")
     }
 
     fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
-        let type_engine = SemanticAnalyzer::default();
-        let expression = make_analyzed_ast(&type_engine, source);
+        let semantic_analysis = SemanticAnalyzer::default();
+        let expression = make_analyzed_ast(&semantic_analysis, source);
         build_ir(ir, expression)
     }
 

@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 parser = { path = "../parser" }
-type_engine = { path = "../semantic_analysis" }
+semantic_analysis = { path = "../semantic_analysis" }
 bumpalo = { workspace = true, features = ["collections"] }
