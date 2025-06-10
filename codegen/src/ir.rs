@@ -4,68 +4,6 @@ use semantic_analysis::Type;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum InstructionType {
-    Ret,
-
-    Const,
-
-    Not,
-    Neg,
-    BitwiseNot,
-
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    Exp,
-    Eq,
-    Neq,
-    Lt,
-    Lte,
-    Gt,
-    Gte,
-    And,
-    Or,
-    BitwiseAnd,
-    BitwiseOr,
-    BitwiseXor,
-    BitwiseShl,
-    BitwiseShr,
-}
-
-impl Display for InstructionType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InstructionType::Ret => write!(f, "ret"),
-            InstructionType::Const => write!(f, "const"),
-            InstructionType::Not => write!(f, "not"),
-            InstructionType::Neg => write!(f, "neg"),
-            InstructionType::BitwiseNot => write!(f, "bitwise_not"),
-            InstructionType::Add => write!(f, "add"),
-            InstructionType::Sub => write!(f, "sub"),
-            InstructionType::Mul => write!(f, "mul"),
-            InstructionType::Div => write!(f, "div"),
-            InstructionType::Rem => write!(f, "rem"),
-            InstructionType::Exp => write!(f, "exp"),
-            InstructionType::Eq => write!(f, "eq"),
-            InstructionType::Neq => write!(f, "neq"),
-            InstructionType::Lt => write!(f, "lt"),
-            InstructionType::Lte => write!(f, "lte"),
-            InstructionType::Gt => write!(f, "gt"),
-            InstructionType::Gte => write!(f, "gte"),
-            InstructionType::And => write!(f, "and"),
-            InstructionType::Or => write!(f, "or"),
-            InstructionType::BitwiseAnd => write!(f, "bitwise_and"),
-            InstructionType::BitwiseOr => write!(f, "bitwise_or"),
-            InstructionType::BitwiseXor => write!(f, "bitwise_xor"),
-            InstructionType::BitwiseShl => write!(f, "bitwise_shl"),
-            InstructionType::BitwiseShr => write!(f, "bitwise_shr"),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub enum InstructionPayload<'a> {
     Ret,
