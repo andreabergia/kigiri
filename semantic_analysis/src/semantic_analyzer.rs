@@ -5,7 +5,7 @@ use crate::typed_ast::{
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    resolve_string_id, BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator,
+    BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator, resolve_string_id,
 };
 use thiserror::Error;
 
