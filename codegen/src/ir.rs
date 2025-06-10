@@ -6,6 +6,10 @@ use std::fmt::{Binary, Display, Formatter};
 
 #[derive(Debug, PartialEq)]
 pub enum InstructionPayload<'a> {
+    RetExpr {
+        operand_type: Type,
+        expression: &'a Instruction<'a>,
+    },
     Ret,
     Constant {
         operand_type: Type,
@@ -33,6 +37,7 @@ pub struct Instruction<'a> {
 impl InstructionPayload<'_> {
     pub fn instruction_type(&self) -> Option<Type> {
         match self {
+            InstructionPayload::RetExpr { operand_type, .. } => Some(operand_type.clone()),
             InstructionPayload::Ret => None,
             InstructionPayload::Constant { operand_type, .. } => Some(operand_type.clone()),
             InstructionPayload::Unary { operand_type, .. } => Some(operand_type.clone()),
@@ -66,6 +71,19 @@ impl<'a> Instruction<'a> {
         Self {
             name,
             payload: InstructionPayload::Ret {},
+        }
+    }
+
+    fn new_ret_expr<'n>(name: &'n str, operand_type: Type, expression: &'n Instruction<'n>) -> Self
+    where
+        'n: 'a,
+    {
+        Self {
+            name,
+            payload: InstructionPayload::RetExpr {
+                operand_type,
+                expression,
+            },
         }
     }
 
@@ -113,6 +131,15 @@ impl<'a> Instruction<'a> {
 impl Display for InstructionPayload<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            InstructionPayload::RetExpr {
+                operand_type,
+                expression,
+            } => write!(
+                f,
+                "{} ret({})",
+                operand_type.to_string_short(),
+                expression.name
+            ),
             InstructionPayload::Ret => write!(f, "ret()"),
             InstructionPayload::Constant {
                 operand_type,
@@ -207,6 +234,21 @@ impl Ir {
             .alloc(Instruction::new_ret(self.arena.alloc_str(name)))
     }
 
+    pub fn new_ret_expr<'s>(
+        &'s self,
+        name: &str,
+        expression: &'s Instruction,
+    ) -> &'s Instruction<'s> {
+        let operand_type = expression
+            .instruction_type()
+            .expect("cannot have a ret expression with a void operand");
+        self.arena.alloc(Instruction::new_ret_expr(
+            self.arena.alloc_str(name),
+            operand_type,
+            expression,
+        ))
+    }
+
     pub fn new_unary<'s>(
         &'s self,
         name: &str,
@@ -258,13 +300,23 @@ mod tests {
     use parser::UnaryOperator;
 
     #[test]
-    fn test_display_instruction_no_args_no_const() {
+    fn test_display_instruction_ret() {
         let ir = Ir::new();
         assert_eq!("ret_0           ret()", ir.new_ret("ret_0").to_string())
     }
 
     #[test]
-    fn test_display_instruction_no_args_const() {
+    fn test_display_instruction_ret_expr() {
+        let ir = Ir::new();
+        let const_0 = ir.new_const("const_0", LiteralValue::Integer(1));
+        assert_eq!(
+            "ret_0           i ret(const_0)",
+            ir.new_ret_expr("ret_0", const_0).to_string()
+        )
+    }
+
+    #[test]
+    fn test_display_instruction_const() {
         let ir = Ir::new();
         assert_eq!(
             "const_0         i = const(1i)",
@@ -274,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn test_display_instruction_arg_no_const() {
+    fn test_display_instruction_unary() {
         let ir = Ir::new();
         let const_0 = ir.new_const("const_0", LiteralValue::Integer(1));
         assert_eq!(
@@ -285,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn test_display_instruction_args_no_const() {
+    fn test_display_instruction_binary() {
         let ir = Ir::new();
         let const_0 = ir.new_const("const_0", LiteralValue::Integer(0));
         let const_1 = ir.new_const("const_1", LiteralValue::Integer(1));

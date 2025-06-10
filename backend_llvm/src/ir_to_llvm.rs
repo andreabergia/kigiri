@@ -82,6 +82,7 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
                 InstructionPayload::Ret => {
                     todo!()
                 }
+                &InstructionPayload::RetExpr { .. } => todo!(),
             }
         }
 
