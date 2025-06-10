@@ -1,7 +1,12 @@
-use crate::typed_ast::{SymbolTable, TypedBlock, TypedStatement};
+use crate::typed_ast::{
+    SymbolId, SymbolTable, TypedBlock, TypedFunctionDeclaration, TypedFunctionSignature,
+    TypedFunctionSignaturesByName, TypedModule, TypedStatement,
+};
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
-use parser::{resolve_string_id, BinaryOperator, Expression, Statement, UnaryOperator};
+use parser::{
+    resolve_string_id, BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -27,6 +32,8 @@ pub enum SemanticAnalysisError {
         symbol_type: Type,
         expression_type: Type,
     },
+    #[error("type not found: \"{type_name}\"")]
+    TypeNotFound { type_name: String },
 }
 
 #[derive(Default)]
@@ -35,6 +42,76 @@ pub struct SemanticAnalyzer {
 }
 
 impl SemanticAnalyzer {
+    pub fn analyze_module<'a>(
+        &'a self,
+        module: &Module,
+    ) -> Result<&'a TypedModule<'a>, SemanticAnalysisError> {
+        let mut function_signatures =
+            TypedFunctionSignaturesByName::with_capacity(module.function_signatures.len());
+        let mut functions = BumpVec::with_capacity_in(module.functions.len(), &self.arena);
+
+        for function in module.functions.iter() {
+            let function = self.analyze_function(function)?;
+            functions.push(function);
+            function_signatures.insert(function.signature.name, function.signature);
+        }
+
+        Ok(self.alloc({
+            TypedModule {
+                name: module.name,
+                functions,
+                function_signatures,
+            }
+        }))
+    }
+
+    fn analyze_function<'a>(
+        &'a self,
+        function: &parser::FunctionDeclaration,
+    ) -> Result<&'a TypedFunctionDeclaration<'a>, SemanticAnalysisError> {
+        let symbol_table = self.symbol_table(None);
+
+        let return_type = function
+            .signature
+            .return_type
+            .map(|t| self.parse_type(t))
+            .transpose()?;
+
+        let arguments = function
+            .signature
+            .arguments
+            .iter()
+            .map(|argument| {
+                let arg_type = self.parse_type(argument.arg_type);
+                arg_type
+                    .map(|arg_type| symbol_table.add_symbol(&self.arena, argument.name, arg_type))
+            })
+            .collect::<Result<Vec<SymbolId>, SemanticAnalysisError>>()?;
+        let arguments = BumpVec::from_iter_in(arguments.iter().cloned(), &self.arena);
+
+        let signature = self.alloc(TypedFunctionSignature {
+            name: function.signature.name,
+            return_type,
+            arguments,
+        });
+
+        let body = self.analyze_block(function.body, symbol_table)?;
+
+        Ok(self.alloc(TypedFunctionDeclaration { signature, body }))
+    }
+
+    fn parse_type(&self, type_name: StringId) -> Result<Type, SemanticAnalysisError> {
+        let type_name = resolve_string_id(type_name).expect("should be able to resolve type name");
+        match type_name {
+            "int" => Ok(Type::Int),
+            "double" => Ok(Type::Double),
+            "boolean" => Ok(Type::Boolean),
+            _ => Err(SemanticAnalysisError::TypeNotFound {
+                type_name: type_name.to_string(),
+            }),
+        }
+    }
+
     fn analyze_block<'a>(
         &'a self,
         block: &parser::Block,
@@ -545,5 +622,91 @@ mod tests {
 }",
             "symbol not found: \"x\""
         );
+    }
+
+    mod modules {
+        use super::*;
+
+        macro_rules! test_ok {
+            ($name: ident, $source: expr, $expected_typed_ast: expr) => {
+                #[test]
+                fn $name() {
+                    let ast = parser::Ast::default();
+                    let module = parser::parse(&ast, "test", $source);
+
+                    let analyzer = SemanticAnalyzer::default();
+                    let result = analyzer.analyze_module(module);
+
+                    assert_eq!(
+                        result
+                            .expect("should have succeeded semantic analysis")
+                            .to_string(),
+                        $expected_typed_ast
+                    );
+                }
+            };
+        }
+
+        macro_rules! test_ko {
+            ($name: ident, $source: expr, $expected_error: expr) => {
+                #[test]
+                fn $name() {
+                    let ast = parser::Ast::default();
+                    let module = parser::parse(&ast, "test", $source);
+
+                    let analyzer = SemanticAnalyzer::default();
+                    let result = analyzer.analyze_module(module);
+
+                    assert_eq!(
+                        result
+                            .expect_err("should have failed semantic analysis")
+                            .to_string(),
+                        $expected_error
+                    );
+                }
+            };
+        }
+
+        test_ok!(
+            can_use_function_argument_in_expression,
+            r"fn inc(x: int) -> int {
+  return 1 + x;
+}",
+            r"module test
+
+fn inc(
+  x: int,
+) -> int
+{ #0
+  return (+i 1i x);
+}
+
+"
+        );
+        test_ok!(
+            can_assign_to_function_argument,
+            r"fn inc(x: int) {
+  x = 1;
+}",
+            r"module test
+
+fn inc(
+  x: int,
+) -> void
+{ #0
+  x = 1i;
+}
+
+"
+        );
+
+        test_ko!(
+            variable_not_found,
+            r"fn a() {
+    x;
+}",
+            "symbol not found: \"x\""
+        );
+        // TODO: all return match expected type? here or in separate pass?
     }
 }

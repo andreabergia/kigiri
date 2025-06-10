@@ -109,6 +109,49 @@ pub enum TypedExpression<'a> {
 
 // Display
 
+impl Display for TypedModule<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "module {}",
+            resolve_string_id(self.name).expect("should find module name")
+        )?;
+        writeln!(f)?;
+        for function in &self.functions {
+            writeln!(f, "{}", function)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for TypedFunctionDeclaration<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "fn {}(",
+            resolve_string_id(self.signature.name).expect("function name")
+        )?;
+        for arg in self.signature.arguments.iter() {
+            let symbol = self.body.symbol_table.lookup_by_id(*arg);
+            if let Some(symbol) = symbol {
+                let symbol_name = resolve_string_id(symbol.name).expect("symbol name");
+                writeln!(f, "  {}: {},", symbol_name, symbol.symbol_type)?;
+            } else {
+                return Err(std::fmt::Error);
+            }
+        }
+        writeln!(
+            f,
+            ") -> {}",
+            match &self.signature.return_type {
+                Some(return_type) => return_type.to_string(),
+                None => "void".to_string(),
+            }
+        )?;
+        write!(f, "{}", self.body)
+    }
+}
+
 impl Display for TypedBlock<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.fmt_with_context(
