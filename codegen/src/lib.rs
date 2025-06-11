@@ -3,6 +3,7 @@
 mod ir;
 mod ir2;
 mod ir_builder;
+mod ir_builder2;
 
 pub use ir::BasicBlock;
 pub use ir::Instruction;

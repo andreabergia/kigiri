@@ -33,9 +33,8 @@ pub enum InstructionPayload2 {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Instruction2<'a> {
+pub struct Instruction2 {
     pub id: InstructionId,
-    pub name: &'a str,
     pub payload: InstructionPayload2,
 }
 
@@ -51,7 +50,7 @@ impl InstructionPayload2 {
     }
 }
 
-impl<'a> Instruction2<'a> {
+impl Instruction2 {
     pub fn instruction_type(&self) -> Option<Type> {
         self.payload.instruction_type()
     }
@@ -90,17 +89,16 @@ impl Display for InstructionPayload2 {
     }
 }
 
-impl Display for Instruction2<'_> {
+impl Display for Instruction2 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{:05} {} {} = {}",
+            "{:05} {} {}",
             self.id.0,
             self.payload
                 .instruction_type()
                 .map(|t| t.to_string_short())
                 .unwrap_or("v".to_string()),
-            self.name,
             self.payload
         )
     }
@@ -108,7 +106,7 @@ impl Display for Instruction2<'_> {
 
 pub struct BasicBlock2<'a> {
     // TODO: name
-    pub instructions: RefCell<BumpVec<'a, &'a Instruction2<'a>>>,
+    pub instructions: RefCell<BumpVec<'a, &'a Instruction2>>,
 }
 
 impl<'a> BasicBlock2<'a> {
@@ -153,85 +151,66 @@ impl Ir2 {
         InstructionId(old)
     }
 
-    fn new_instruction(&self, name: &str, payload: InstructionPayload2) -> &Instruction2 {
+    fn new_instruction(&self, payload: InstructionPayload2) -> &Instruction2 {
         self.arena.alloc(Instruction2 {
             id: self.next_id(),
-            name: self.arena.alloc_str(name),
             payload,
         })
     }
 
-    pub fn new_const(&self, name: &str, constant: LiteralValue) -> &Instruction2 {
-        self.new_instruction(
-            name,
-            InstructionPayload2::Constant {
-                operand_type: Type::of_literal(&constant),
-                constant,
-            },
-        )
+    pub fn new_const(&self, constant: LiteralValue) -> &Instruction2 {
+        self.new_instruction(InstructionPayload2::Constant {
+            operand_type: Type::of_literal(&constant),
+            constant,
+        })
     }
 
-    pub fn new_ret(&self, name: &str) -> &Instruction2 {
-        self.new_instruction(name, InstructionPayload2::Ret)
+    pub fn new_ret(&self) -> &Instruction2 {
+        self.new_instruction(InstructionPayload2::Ret)
     }
 
-    pub fn new_ret_expr<'s>(
-        &'s self,
-        name: &str,
-        expression: &Instruction2,
-    ) -> &'s Instruction2<'s> {
+    pub fn new_ret_expr<'s>(&'s self, expression: &Instruction2) -> &'s Instruction2 {
         let operand_type = expression
             .instruction_type()
             .expect("cannot have a ret expression with a void operand");
-        self.new_instruction(
-            name,
-            InstructionPayload2::RetExpr {
-                operand_type,
-                expression: expression.id,
-            },
-        )
+        self.new_instruction(InstructionPayload2::RetExpr {
+            operand_type,
+            expression: expression.id,
+        })
     }
 
     pub fn new_unary<'s>(
         &'s self,
-        name: &str,
         operator: UnaryOperator,
         operand: &'s Instruction2,
-    ) -> &'s Instruction2<'s> {
+    ) -> &'s Instruction2 {
         let operand_type = operand
             .instruction_type()
             .expect("cannot have an unary expression with a void operand");
-        self.new_instruction(
-            name,
-            InstructionPayload2::Unary {
-                operand_type,
-                operator,
-                operand: operand.id,
-            },
-        )
+        self.new_instruction(InstructionPayload2::Unary {
+            operand_type,
+            operator,
+            operand: operand.id,
+        })
     }
 
     pub fn new_binary<'s>(
         &'s self,
-        name: &str,
         operator: BinaryOperator,
         left: &'s Instruction2,
         right: &'s Instruction2,
-    ) -> &'s Instruction2<'s> {
+    ) -> &'s Instruction2 {
         let left_type = left
             .instruction_type()
             .expect("cannot have a binary instruction with a void operand");
         assert_eq!(Some(left_type.clone()), right.instruction_type());
 
-        self.new_instruction(
-            name,
-            InstructionPayload2::Binary {
-                operand_type: left_type,
-                operator,
-                left: left.id,
-                right: right.id,
-            },
-        )
+        self.new_instruction(InstructionPayload2::Binary {
+            operand_type: left_type,
+            operator,
+            left: left.id,
+            right: right.id,
+        })
     }
 
     pub fn basic_block(&self) -> &BasicBlock2 {
@@ -249,48 +228,43 @@ mod tests {
     #[test]
     fn test_display_instruction_ret() {
         let ir = Ir2::new();
-        assert_eq!("00000 v ret_0 = ret", ir.new_ret("ret_0").to_string())
+        assert_eq!("00000 v ret", ir.new_ret().to_string())
     }
 
     #[test]
     fn test_display_instruction_ret_expr() {
         let ir = Ir2::new();
-        let const_0 = ir.new_const("const_0", LiteralValue::Integer(1));
-        assert_eq!(
-            "00001 i ret_0 = ret @0",
-            ir.new_ret_expr("ret_0", const_0).to_string()
-        )
+        let const_0 = ir.new_const(LiteralValue::Integer(1));
+        assert_eq!("00001 i ret @0", ir.new_ret_expr(const_0).to_string())
     }
 
     #[test]
     fn test_display_instruction_const() {
         let ir = Ir2::new();
         assert_eq!(
-            "00000 i const_0 = const 1i",
-            ir.new_const("const_0", LiteralValue::Integer(1))
-                .to_string()
+            "00000 i const 1i",
+            ir.new_const(LiteralValue::Integer(1)).to_string()
         )
     }
 
     #[test]
     fn test_display_instruction_unary() {
         let ir = Ir2::new();
-        let const_0 = ir.new_const("const_0", LiteralValue::Integer(1));
+        let const_0 = ir.new_const(LiteralValue::Integer(1));
         assert_eq!(
-            "00001 i neg_0 = neg @0",
-            ir.new_unary("neg_0", UnaryOperator::Neg, const_0)
-                .to_string()
+            "00001 i neg @0",
+            ir.new_unary(UnaryOperator::Neg, const_0).to_string()
         )
     }
 
     #[test]
     fn test_display_instruction_binary() {
         let ir = Ir2::new();
-        let const_0 = ir.new_const("const_0", LiteralValue::Integer(0));
-        let const_1 = ir.new_const("const_1", LiteralValue::Integer(1));
+        let const_0 = ir.new_const(LiteralValue::Integer(0));
+        let const_1 = ir.new_const(LiteralValue::Integer(1));
         assert_eq!(
-            "00002 i add_0 = add @0, @1",
-            ir.new_binary("add_0", BinaryOperator::Add, const_0, const_1)
+            "00002 i add @0, @1",
+            ir.new_binary(BinaryOperator::Add, const_0, const_1)
                 .to_string()
         )
     }
