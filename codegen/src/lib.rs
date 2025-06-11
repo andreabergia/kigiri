@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 mod ir;
+mod ir2;
 mod ir_builder;
 
 pub use ir::BasicBlock;
