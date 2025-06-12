@@ -2,11 +2,11 @@ Parser
 - [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
 
 LLVM backend
-- [ ] rather than a hash map for the values, add an index to IR instructions and use an array
-- [ ] function calls
-- [ ] float math
-- [ ] cast
 - [ ] variables
+- [ ] float math
 
 Language as a whole
+- [ ] cast
+- [ ] function calls
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
+- [ ] verify functions have a return on all paths, with a coherent type
