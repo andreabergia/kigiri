@@ -1,4 +1,4 @@
-use codegen::{Instruction, InstructionPayload, LiteralValue};
+use codegen::{InstructionId, InstructionPayload, LiteralValue};
 use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
@@ -6,7 +6,6 @@ use inkwell::module::Module;
 use inkwell::values::IntValue;
 use parser::{BinaryOperator, UnaryOperator};
 use semantic_analysis::Type;
-use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
@@ -31,25 +30,36 @@ where
     module: &'m Module<'c>,
     builder: Builder<'c>,
     ir: &'b codegen::BasicBlock<'b2>,
-    int_values: HashMap<&'b str, IntValue<'c>>,
-    bool_values: HashMap<&'b str, IntValue<'c>>,
+
+    // Vectors are indexed by instruction id. There's a bit of space wasted,
+    // but it makes everything quite simple and fast.
+    int_values: Vec<Option<IntValue<'c>>>,
+    bool_values: Vec<Option<IntValue<'c>>>,
 }
 
 impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
     fn new(context: &'c Context, module: &'m Module<'c>, ir: &'b codegen::BasicBlock<'b2>) -> Self {
         let builder = context.create_builder();
+        let num_ir_instructions = ir.instructions.borrow().len();
+
+        let mut int_values = Vec::with_capacity(num_ir_instructions);
+        int_values.resize(num_ir_instructions, None);
+
+        let mut bool_values = Vec::with_capacity(num_ir_instructions);
+        bool_values.resize(num_ir_instructions, None);
+
         Self {
             context,
             module,
             builder,
             ir,
-            int_values: HashMap::new(),
-            bool_values: HashMap::new(),
+            int_values,
+            bool_values,
         }
     }
 
     fn generate(&mut self) -> Result<(), CodeGenError> {
-        let fn_type = self.context.i64_type().fn_type(&[], false);
+        let fn_type = self.context.void_type().fn_type(&[], false);
         let fun = self.module.add_function("test", fn_type, None);
 
         let bb = self.context.append_basic_block(fun, "entry");
@@ -57,11 +67,9 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
         self.builder.position_at_end(bb);
 
         for instruction in self.ir.instructions.borrow().iter() {
-            let name = instruction.name;
-
             match &instruction.payload {
                 InstructionPayload::Constant { constant, .. } => {
-                    self.handle_constant(name, constant);
+                    self.handle_constant(instruction.id, constant);
                 }
 
                 InstructionPayload::Unary {
@@ -69,7 +77,7 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
                     operator,
                     operand,
                 } => {
-                    self.handle_unary(name, operand_type, operator, operand)?;
+                    self.handle_unary(instruction.id, operand_type, operator, *operand)?;
                 }
                 InstructionPayload::Binary {
                     operand_type,
@@ -77,22 +85,18 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
                     left,
                     right,
                 } => {
-                    self.handle_binary(name, operand_type, operator, left, right)?;
+                    self.handle_binary(instruction.id, operand_type, operator, *left, *right)?;
                 }
                 InstructionPayload::Ret => {
-                    todo!()
+                    self.builder.build_return(None)?;
                 }
                 &InstructionPayload::RetExpr { .. } => todo!(),
             }
         }
 
-        let last_instr_name = self.ir.instructions.borrow().last().unwrap().name;
-        let last_value = self
-            .int_values
-            .get(last_instr_name)
-            .or(self.bool_values.get(last_instr_name))
-            .unwrap();
-        self.builder.build_return(Some(last_value))?;
+        // TODO: remove
+        self.builder.build_return(None)?;
+
         if !fun.verify(true) {
             panic!("Invalid function");
         }
@@ -103,19 +107,19 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_binary(
         &mut self,
-        name: &'b str,
+        id: InstructionId,
         operand_type: &Type,
         operator: &BinaryOperator,
-        left: &Instruction,
-        right: &Instruction,
+        left: InstructionId,
+        right: InstructionId,
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                self.handle_binary_int(name, operator, left, right)?;
+                self.handle_binary_int(id, operator, left, right)?;
             }
 
             Type::Boolean => {
-                self.handle_binary_boolean(name, operator, left, right)?;
+                self.handle_binary_boolean(id, operator, left, right)?;
             }
             Type::Double => todo!(),
         }
@@ -124,21 +128,23 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_binary_boolean(
         &mut self,
-        name: &'b str,
+        id: InstructionId,
         operator: &BinaryOperator,
-        left: &Instruction,
-        right: &Instruction,
+        left: InstructionId,
+        right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = *self
+        let left = self
             .bool_values
-            .get(left.name)
+            .get(left.as_usize())
+            .expect("vector should be initialized with the correct length")
             .expect("binary operand should be a bool");
-        let right = *self
+        let right = self
             .bool_values
-            .get(right.name)
+            .get(right.as_usize())
+            .expect("vector should be initialized with the correct length")
             .expect("binary operand should be a bool");
 
-        match operator {
+        self.bool_values[id.as_usize()] = Some(match operator {
             BinaryOperator::Add
             | BinaryOperator::Sub
             | BinaryOperator::Mul
@@ -155,200 +161,224 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
             | BinaryOperator::BitwiseShl
             | BinaryOperator::BitwiseShr => unreachable!(),
 
-            BinaryOperator::Eq => self.bool_values.insert(
-                name,
-                self.builder
-                    .build_int_compare(IntPredicate::EQ, left, right, name)?,
-            ),
-            BinaryOperator::Neq => self.bool_values.insert(
-                name,
-                self.builder
-                    .build_int_compare(IntPredicate::NE, left, right, name)?,
-            ),
+            BinaryOperator::Eq => self.builder.build_int_compare(
+                IntPredicate::EQ,
+                left,
+                right,
+                &Self::name("eq", id),
+            )?,
+            BinaryOperator::Neq => self.builder.build_int_compare(
+                IntPredicate::NE,
+                left,
+                right,
+                &Self::name("neq", id),
+            )?,
             BinaryOperator::And => self
-                .bool_values
-                .insert(name, self.builder.build_and(left, right, name)?),
-            BinaryOperator::Or => self
-                .bool_values
-                .insert(name, self.builder.build_or(left, right, name)?),
-        };
+                .builder
+                .build_and(left, right, &Self::name("and", id))?,
+            BinaryOperator::Or => self.builder.build_or(left, right, &Self::name("or", id))?,
+        });
         Ok(())
     }
 
     fn handle_binary_int(
         &mut self,
-        name: &'b str,
+        id: InstructionId,
         operator: &BinaryOperator,
-        left: &Instruction,
-        right: &Instruction,
+        left: InstructionId,
+        right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = *self
+        let left = self
             .int_values
-            .get(left.name)
+            .get(left.as_usize())
+            .expect("vector should be initialized with the correct length")
             .expect("binary operand should be an int");
-        let right = *self
+        let right = self
             .int_values
-            .get(right.name)
+            .get(right.as_usize())
+            .expect("vector should be initialized with the correct length")
             .expect("binary operand should be an int");
 
-        match operator {
-            BinaryOperator::Add => self
-                .int_values
-                .insert(name, self.builder.build_int_add(left, right, name)?),
-            BinaryOperator::Sub => self
-                .int_values
-                .insert(name, self.builder.build_int_sub(left, right, name)?),
-            BinaryOperator::Mul => self
-                .int_values
-                .insert(name, self.builder.build_int_mul(left, right, name)?),
-            BinaryOperator::Div => self
-                .int_values
-                .insert(name, self.builder.build_int_signed_div(left, right, name)?),
+        self.int_values[id.as_usize()] = Some(match operator {
+            BinaryOperator::Add => {
+                self.builder
+                    .build_int_add(left, right, &Self::name("add", id))?
+            }
+            BinaryOperator::Sub => {
+                self.builder
+                    .build_int_sub(left, right, &Self::name("sub", id))?
+            }
+            BinaryOperator::Mul => {
+                self.builder
+                    .build_int_mul(left, right, &Self::name("mul", id))?
+            }
+            BinaryOperator::Div => {
+                self.builder
+                    .build_int_signed_div(left, right, &Self::name("div", id))?
+            }
             BinaryOperator::Rem => {
                 todo!()
             }
             BinaryOperator::Exp => {
                 todo!()
             }
-            BinaryOperator::Eq => self.bool_values.insert(
-                name,
+            BinaryOperator::Eq => self.builder.build_int_compare(
+                IntPredicate::EQ,
+                left,
+                right,
+                &Self::name("eq", id),
+            )?,
+            BinaryOperator::Neq => self.builder.build_int_compare(
+                IntPredicate::NE,
+                left,
+                right,
+                &Self::name("neq", id),
+            )?,
+            BinaryOperator::Lt => self.builder.build_int_compare(
+                IntPredicate::SLT,
+                left,
+                right,
+                &Self::name("lt", id),
+            )?,
+            BinaryOperator::Lte => self.builder.build_int_compare(
+                IntPredicate::SLE,
+                left,
+                right,
+                &Self::name("lte", id),
+            )?,
+            BinaryOperator::Gt => self.builder.build_int_compare(
+                IntPredicate::SGT,
+                left,
+                right,
+                &Self::name("gt", id),
+            )?,
+            BinaryOperator::Gte => self.builder.build_int_compare(
+                IntPredicate::SGE,
+                left,
+                right,
+                &Self::name("gte", id),
+            )?,
+            BinaryOperator::BitwiseAnd => {
                 self.builder
-                    .build_int_compare(IntPredicate::EQ, left, right, name)?,
-            ),
-            BinaryOperator::Neq => self.bool_values.insert(
-                name,
+                    .build_and(left, right, &Self::name("bitwise_and", id))?
+            }
+            BinaryOperator::BitwiseOr => {
                 self.builder
-                    .build_int_compare(IntPredicate::NE, left, right, name)?,
-            ),
-            BinaryOperator::Lt => self.bool_values.insert(
-                name,
+                    .build_or(left, right, &Self::name("bitwise_or", id))?
+            }
+            BinaryOperator::BitwiseXor => {
                 self.builder
-                    .build_int_compare(IntPredicate::SLT, left, right, name)?,
-            ),
-            BinaryOperator::Lte => self.bool_values.insert(
-                name,
+                    .build_xor(left, right, &Self::name("bitwise_xor", id))?
+            }
+            BinaryOperator::BitwiseShl => {
                 self.builder
-                    .build_int_compare(IntPredicate::SLE, left, right, name)?,
-            ),
-            BinaryOperator::Gt => self.bool_values.insert(
-                name,
-                self.builder
-                    .build_int_compare(IntPredicate::SGT, left, right, name)?,
-            ),
-            BinaryOperator::Gte => self.bool_values.insert(
-                name,
-                self.builder
-                    .build_int_compare(IntPredicate::SGE, left, right, name)?,
-            ),
-            BinaryOperator::BitwiseAnd => self
-                .int_values
-                .insert(name, self.builder.build_and(left, right, name)?),
-            BinaryOperator::BitwiseOr => self
-                .int_values
-                .insert(name, self.builder.build_or(left, right, name)?),
-            BinaryOperator::BitwiseXor => self
-                .int_values
-                .insert(name, self.builder.build_xor(left, right, name)?),
-            BinaryOperator::BitwiseShl => self
-                .int_values
-                .insert(name, self.builder.build_left_shift(left, right, name)?),
-            BinaryOperator::BitwiseShr => self.int_values.insert(
-                name,
-                self.builder.build_right_shift(left, right, false, name)?,
-            ),
+                    .build_left_shift(left, right, &Self::name("bitwise_shl", id))?
+            }
+            BinaryOperator::BitwiseShr => self.builder.build_right_shift(
+                left,
+                right,
+                false,
+                &Self::name("bitwise_shr", id),
+            )?,
 
             BinaryOperator::And | BinaryOperator::Or => {
                 // TODO
                 unreachable!()
             }
-        };
+        });
         Ok(())
     }
 
     fn handle_unary(
         &mut self,
-        name: &'b str,
+        id: InstructionId,
         operand_type: &Type,
         operator: &UnaryOperator,
-        operand: &Instruction,
+        operand: InstructionId,
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                self.handle_unary_int(name, operator, operand)?;
+                self.handle_unary_int(id, operator, operand)?;
             }
             Type::Boolean => {
-                self.handle_unary_boolean(name, operator, operand)?;
+                self.handle_unary_boolean(id, operator, operand)?;
             }
             Type::Double => todo!(),
         }
         Ok(())
     }
 
+    fn name(prefix: &str, id: InstructionId) -> String {
+        format!("{}_{}", prefix, id)
+    }
+
     fn handle_unary_boolean(
         &mut self,
-        name: &'b str,
+        id: InstructionId,
         operator: &UnaryOperator,
-        operand: &Instruction,
+        operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = *self
+        let operand = self
             .bool_values
-            .get(operand.name)
+            .get(operand.as_usize())
+            .expect("vector should be initialized with the correct length")
             .expect("unary operand should be a bool");
-        self.bool_values.insert(
-            name,
-            match operator {
-                UnaryOperator::Neg | UnaryOperator::BitwiseNot => {
-                    unreachable!()
-                }
-                UnaryOperator::Not => self.builder.build_not(operand, name)?,
-            },
-        );
+        self.bool_values[id.as_usize()] = Some(match operator {
+            UnaryOperator::Neg | UnaryOperator::BitwiseNot => {
+                unreachable!()
+            }
+            UnaryOperator::Not => self.builder.build_not(operand, &Self::name("not", id))?,
+        });
         Ok(())
     }
 
     fn handle_unary_int(
         &mut self,
-        name: &'b str,
+        id: InstructionId,
         operator: &UnaryOperator,
-        operand: &Instruction,
+        operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = *self
+        let operand = self
             .int_values
-            .get(operand.name)
+            .get(operand.as_usize())
+            .expect("vector should be initialized with the correct length")
             .expect("unary operand should be an int");
-        self.int_values.insert(
-            name,
-            match operator {
-                UnaryOperator::Neg => self.builder.build_int_neg(operand, name)?,
-                UnaryOperator::BitwiseNot => {
-                    // There's no LLVM instruction for bitwise not, but we can xor with
-                    // all 1s to get the same result (i.e. complement to 1)
-                    self.builder.build_xor(
-                        self.context.i64_type().const_all_ones(),
-                        operand,
-                        name,
-                    )?
-                }
-                UnaryOperator::Not => {
-                    // TODO: error
-                    unreachable!("unexpected not operator with int type")
-                }
-            },
-        );
+        self.int_values[id.as_usize()] = Some(match operator {
+            UnaryOperator::Neg => self
+                .builder
+                .build_int_neg(operand, &Self::name("neg", id))?,
+            UnaryOperator::BitwiseNot => {
+                // There's no LLVM instruction for bitwise not, but we can xor with
+                // all 1s to get the same result (i.e. complement to 1)
+                self.builder.build_xor(
+                    self.context.i64_type().const_all_ones(),
+                    operand,
+                    &Self::name("bitwise_not", id),
+                )?
+            }
+            UnaryOperator::Not => {
+                // TODO: error
+                unreachable!("unexpected not operator with int type")
+            }
+        });
         Ok(())
     }
 
-    fn handle_constant(&mut self, name: &'b str, constant: &LiteralValue) {
+    fn handle_constant(&mut self, id: InstructionId, constant: &LiteralValue) {
         match constant {
             LiteralValue::Integer(value) => {
-                self.int_values.insert(
-                    name,
-                    self.context.i64_type().const_int(*value as u64, false),
-                );
+                let option = self
+                    .int_values
+                    .get_mut(id.as_usize())
+                    .expect("vector should be initialized with the correct length");
+                *option = Some(self.context.i64_type().const_int(*value as u64, false));
             }
             LiteralValue::Boolean(value) => {
-                self.bool_values.insert(
-                    name,
+                let option = self
+                    .bool_values
+                    .get_mut(id.as_usize())
+                    .expect("vector should be initialized with the correct length");
+                *option = Some(
                     self.context
                         .bool_type()
                         .const_int(if *value { 1 } else { 0 }, false),
@@ -372,8 +402,8 @@ fn ir_to_llvm<'c>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::Ir;
-    use codegen::{BasicBlock, build_ir};
+    use codegen::build_ir;
+    use codegen::{BasicBlock, Ir};
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedExpression};
     use std::io::{Write, stderr};

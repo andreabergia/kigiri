@@ -1,14 +1,18 @@
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, LiteralValue, UnaryOperator};
 use semantic_analysis::Type;
+use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InstructionId(u32);
+
 #[derive(Debug, PartialEq)]
-pub enum InstructionPayload<'a> {
+pub enum InstructionPayload {
     RetExpr {
         operand_type: Type,
-        expression: &'a Instruction<'a>,
+        expression: InstructionId,
     },
     Ret,
     Constant {
@@ -18,23 +22,29 @@ pub enum InstructionPayload<'a> {
     Unary {
         operand_type: Type,
         operator: UnaryOperator,
-        operand: &'a Instruction<'a>,
+        operand: InstructionId,
     },
     Binary {
         operand_type: Type,
         operator: BinaryOperator,
-        left: &'a Instruction<'a>,
-        right: &'a Instruction<'a>,
+        left: InstructionId,
+        right: InstructionId,
     },
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Instruction<'a> {
-    pub name: &'a str,
-    pub payload: InstructionPayload<'a>,
+pub struct Instruction {
+    pub id: InstructionId,
+    pub payload: InstructionPayload,
 }
 
-impl InstructionPayload<'_> {
+impl InstructionId {
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl InstructionPayload {
     pub fn instruction_type(&self) -> Option<Type> {
         match self {
             InstructionPayload::RetExpr { operand_type, .. } => Some(operand_type.clone()),
@@ -46,147 +56,63 @@ impl InstructionPayload<'_> {
     }
 }
 
-impl<'a> Instruction<'a> {
+impl Instruction {
     pub fn instruction_type(&self) -> Option<Type> {
         self.payload.instruction_type()
     }
+}
 
-    fn new_const<'n>(name: &'n str, constant: LiteralValue) -> Self
-    where
-        'n: 'a,
-    {
-        Self {
-            name,
-            payload: InstructionPayload::Constant {
-                operand_type: Type::of_literal(&constant),
-                constant,
-            },
-        }
-    }
-
-    fn new_ret<'n>(name: &'n str) -> Self
-    where
-        'n: 'a,
-    {
-        Self {
-            name,
-            payload: InstructionPayload::Ret {},
-        }
-    }
-
-    fn new_ret_expr<'n>(name: &'n str, operand_type: Type, expression: &'n Instruction<'n>) -> Self
-    where
-        'n: 'a,
-    {
-        Self {
-            name,
-            payload: InstructionPayload::RetExpr {
-                operand_type,
-                expression,
-            },
-        }
-    }
-
-    fn new_unary<'n>(
-        name: &'n str,
-        operand_type: Type,
-        operator: UnaryOperator,
-        operand: &'n Instruction<'n>,
-    ) -> Self
-    where
-        'n: 'a,
-    {
-        Self {
-            name,
-            payload: InstructionPayload::Unary {
-                operand_type,
-                operator,
-                operand,
-            },
-        }
-    }
-
-    fn new_binary<'n>(
-        name: &'n str,
-        operand_type: Type,
-        operator: BinaryOperator,
-        left: &'n Instruction<'n>,
-        right: &'n Instruction<'n>,
-    ) -> Self
-    where
-        'n: 'a,
-    {
-        Self {
-            name,
-            payload: InstructionPayload::Binary {
-                operand_type,
-                operator,
-                left,
-                right,
-            },
-        }
+impl Display for InstructionId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
-impl Display for InstructionPayload<'_> {
+impl Display for InstructionPayload {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             InstructionPayload::RetExpr {
                 operand_type,
                 expression,
-            } => write!(
-                f,
-                "{} ret({})",
-                operand_type.to_string_short(),
-                expression.name
-            ),
-            InstructionPayload::Ret => write!(f, "ret()"),
+            } => write!(f, "ret @{}", expression),
+            InstructionPayload::Ret => write!(f, "ret"),
             InstructionPayload::Constant {
                 operand_type,
                 constant,
-            } => write!(
-                f,
-                "{} = const({})",
-                operand_type.to_string_short(),
-                constant
-            ),
+            } => write!(f, "const {}", constant),
             InstructionPayload::Unary {
                 operand_type,
                 operator,
                 operand,
-            } => write!(
-                f,
-                "{} = {}({})",
-                operand_type.to_string_short(),
-                operator.name(),
-                operand.name
-            ),
+            } => write!(f, "{} @{}", operator.name(), operand),
             InstructionPayload::Binary {
                 operand_type,
                 operator,
                 left,
                 right,
-            } => write!(
-                f,
-                "{} = {}({}, {})",
-                operand_type.to_string_short(),
-                operator.name(),
-                left.name,
-                right.name
-            ),
+            } => write!(f, "{} @{}, @{}", operator.name(), left, right),
         }
     }
 }
 
-impl Display for Instruction<'_> {
+impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:-15} {}", self.name, self.payload)
+        write!(
+            f,
+            "{:05} {} {}",
+            self.id.0,
+            self.payload
+                .instruction_type()
+                .map(|t| t.to_string_short())
+                .unwrap_or("v".to_string()),
+            self.payload
+        )
     }
 }
 
 pub struct BasicBlock<'a> {
     // TODO: name
-    pub instructions: RefCell<BumpVec<'a, &'a Instruction<'a>>>,
+    pub instructions: RefCell<BumpVec<'a, &'a Instruction>>,
 }
 
 impl<'a> BasicBlock<'a> {
@@ -208,7 +134,8 @@ impl Display for BasicBlock<'_> {
 }
 
 pub struct Ir {
-    pub(crate) arena: bumpalo::Bump,
+    arena: bumpalo::Bump,
+    next_id_counter: RefCell<u32>,
 }
 
 impl Default for Ir {
@@ -221,70 +148,75 @@ impl Ir {
     pub fn new() -> Self {
         Self {
             arena: bumpalo::Bump::new(),
+            next_id_counter: RefCell::new(0u32),
         }
     }
 
-    pub fn new_const(&self, name: &str, constant: LiteralValue) -> &Instruction {
-        self.arena
-            .alloc(Instruction::new_const(self.arena.alloc_str(name), constant))
+    fn next_id(&self) -> InstructionId {
+        let old = self.next_id_counter.replace_with(|u| *u + 1);
+        InstructionId(old)
     }
 
-    pub fn new_ret(&self, name: &str) -> &Instruction {
-        self.arena
-            .alloc(Instruction::new_ret(self.arena.alloc_str(name)))
+    fn new_instruction(&self, payload: InstructionPayload) -> &Instruction {
+        self.arena.alloc(Instruction {
+            id: self.next_id(),
+            payload,
+        })
     }
 
-    pub fn new_ret_expr<'s>(
-        &'s self,
-        name: &str,
-        expression: &'s Instruction,
-    ) -> &'s Instruction<'s> {
+    pub fn new_const(&self, constant: LiteralValue) -> &Instruction {
+        self.new_instruction(InstructionPayload::Constant {
+            operand_type: Type::of_literal(&constant),
+            constant,
+        })
+    }
+
+    pub fn new_ret(&self) -> &Instruction {
+        self.new_instruction(InstructionPayload::Ret)
+    }
+
+    pub fn new_ret_expr<'s>(&'s self, expression: &Instruction) -> &'s Instruction {
         let operand_type = expression
             .instruction_type()
             .expect("cannot have a ret expression with a void operand");
-        self.arena.alloc(Instruction::new_ret_expr(
-            self.arena.alloc_str(name),
+        self.new_instruction(InstructionPayload::RetExpr {
             operand_type,
-            expression,
-        ))
+            expression: expression.id,
+        })
     }
 
     pub fn new_unary<'s>(
         &'s self,
-        name: &str,
         operator: UnaryOperator,
         operand: &'s Instruction,
-    ) -> &'s Instruction<'s> {
-        self.arena.alloc(Instruction::new_unary(
-            self.arena.alloc_str(name),
-            operand
-                .instruction_type()
-                .expect("cannot have an unary instruction with a void operand"),
+    ) -> &'s Instruction {
+        let operand_type = operand
+            .instruction_type()
+            .expect("cannot have an unary expression with a void operand");
+        self.new_instruction(InstructionPayload::Unary {
+            operand_type,
             operator,
-            operand,
-        ))
+            operand: operand.id,
+        })
     }
 
     pub fn new_binary<'s>(
         &'s self,
-        name: &str,
         operator: BinaryOperator,
         left: &'s Instruction,
         right: &'s Instruction,
-    ) -> &'s Instruction<'s> {
+    ) -> &'s Instruction {
         let left_type = left
             .instruction_type()
             .expect("cannot have a binary instruction with a void operand");
         assert_eq!(Some(left_type.clone()), right.instruction_type());
 
-        self.arena.alloc(Instruction::new_binary(
-            self.arena.alloc_str(name),
-            left.instruction_type()
-                .expect("cannot have a binary instruction with a void operand"),
+        self.new_instruction(InstructionPayload::Binary {
+            operand_type: left_type,
             operator,
-            left,
-            right,
-        ))
+            left: left.id,
+            right: right.id,
+        })
     }
 
     pub fn basic_block(&self) -> &BasicBlock {
@@ -302,48 +234,43 @@ mod tests {
     #[test]
     fn test_display_instruction_ret() {
         let ir = Ir::new();
-        assert_eq!("ret_0           ret()", ir.new_ret("ret_0").to_string())
+        assert_eq!("00000 v ret", ir.new_ret().to_string())
     }
 
     #[test]
     fn test_display_instruction_ret_expr() {
         let ir = Ir::new();
-        let const_0 = ir.new_const("const_0", LiteralValue::Integer(1));
-        assert_eq!(
-            "ret_0           i ret(const_0)",
-            ir.new_ret_expr("ret_0", const_0).to_string()
-        )
+        let const_0 = ir.new_const(LiteralValue::Integer(1));
+        assert_eq!("00001 i ret @0", ir.new_ret_expr(const_0).to_string())
     }
 
     #[test]
     fn test_display_instruction_const() {
         let ir = Ir::new();
         assert_eq!(
-            "const_0         i = const(1i)",
-            ir.new_const("const_0", LiteralValue::Integer(1))
-                .to_string()
+            "00000 i const 1i",
+            ir.new_const(LiteralValue::Integer(1)).to_string()
         )
     }
 
     #[test]
     fn test_display_instruction_unary() {
         let ir = Ir::new();
-        let const_0 = ir.new_const("const_0", LiteralValue::Integer(1));
+        let const_0 = ir.new_const(LiteralValue::Integer(1));
         assert_eq!(
-            "neg_0           i = neg(const_0)",
-            ir.new_unary("neg_0", UnaryOperator::Neg, const_0)
-                .to_string()
+            "00001 i neg @0",
+            ir.new_unary(UnaryOperator::Neg, const_0).to_string()
         )
     }
 
     #[test]
     fn test_display_instruction_binary() {
         let ir = Ir::new();
-        let const_0 = ir.new_const("const_0", LiteralValue::Integer(0));
-        let const_1 = ir.new_const("const_1", LiteralValue::Integer(1));
+        let const_0 = ir.new_const(LiteralValue::Integer(0));
+        let const_1 = ir.new_const(LiteralValue::Integer(1));
         assert_eq!(
-            "add_0           i = add(const_0, const_1)",
-            ir.new_binary("add_0", BinaryOperator::Add, const_0, const_1)
+            "00002 i add @0, @1",
+            ir.new_binary(BinaryOperator::Add, const_0, const_1)
                 .to_string()
         )
     }
