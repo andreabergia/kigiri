@@ -402,7 +402,7 @@ fn ir_to_llvm<'c>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::build_ir;
+    use codegen::build_ir_expression;
     use codegen::{BasicBlock, Ir};
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedExpression};
@@ -424,7 +424,7 @@ mod tests {
     fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
         let semantic_analyzer = SemanticAnalyzer::default();
         let expression = make_analyzed_ast(&semantic_analyzer, source);
-        let bb = build_ir(ir, expression);
+        let bb = build_ir_expression(ir, expression);
 
         let bb_ir = bb
             .instructions

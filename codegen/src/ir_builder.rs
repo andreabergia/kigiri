@@ -1,13 +1,13 @@
-use crate::ir::{BasicBlock, Instruction, Ir};
-use semantic_analysis::TypedExpression;
+use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, Ir, Module};
+use semantic_analysis::{TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement};
 
-struct IrBuilder<'ir> {
+struct FunctionIrBuilder<'ir> {
     ir: &'ir Ir,
     pub(crate) first_bb: &'ir BasicBlock<'ir>,
     current_bb: &'ir BasicBlock<'ir>,
 }
 
-impl<'ir> IrBuilder<'ir> {
+impl<'ir> FunctionIrBuilder<'ir> {
     fn new(ir: &'ir Ir) -> Self {
         let basic_block = ir.basic_block();
         Self {
@@ -17,7 +17,52 @@ impl<'ir> IrBuilder<'ir> {
         }
     }
 
-    fn generate(&self, expression: &TypedExpression) -> &'ir Instruction {
+    fn generate_function(&self, function: &TypedFunctionDeclaration) -> &'ir Function<'ir> {
+        let first_bb = self.first_bb;
+
+        for statement in function.body.statements.iter() {
+            self.generate_statement(statement);
+        }
+
+        let signature = self.ir.function_signature(
+            function.signature.name,
+            function.signature.return_type.clone(),
+            self.ir
+                .function_arguments(function.signature.arguments.iter().map(|arg| {
+                    let symbol = function
+                        .symbol_table
+                        .lookup_by_id(*arg)
+                        .expect("should find function argument in symbol table");
+                    FunctionArgument {
+                        name: symbol.name,
+                        argument_type: symbol.symbol_type.clone(),
+                    }
+                })),
+        );
+
+        self.ir.function(signature, first_bb)
+    }
+
+    fn generate_statement(&self, statement: &TypedStatement) {
+        match statement {
+            TypedStatement::Let { .. } => todo!(),
+            TypedStatement::Assignment { .. } => todo!(),
+            TypedStatement::Return { value } => {
+                if let Some(value) = value {
+                    let instruction = self.generate_expression(value);
+                    self.push_to_current_bb(self.ir.new_ret_expr(instruction));
+                } else {
+                    self.push_to_current_bb(self.ir.new_ret())
+                }
+            }
+            TypedStatement::Expression { expression } => {
+                self.generate_expression(expression);
+            }
+            TypedStatement::NestedBlock { .. } => todo!(),
+        }
+    }
+
+    fn generate_expression(&self, expression: &TypedExpression) -> &'ir Instruction {
         match expression {
             TypedExpression::Identifier { .. } => {
                 todo!()
@@ -35,7 +80,7 @@ impl<'ir> IrBuilder<'ir> {
                 operator,
                 operand,
             } => {
-                let operand_instruction = self.generate(operand);
+                let operand_instruction = self.generate_expression(operand);
 
                 let instruction = self.ir.new_unary(operator.clone(), operand_instruction);
                 self.push_to_current_bb(instruction);
@@ -47,8 +92,8 @@ impl<'ir> IrBuilder<'ir> {
                 left,
                 right,
             } => {
-                let left_instruction = self.generate(left);
-                let right_instruction = self.generate(right);
+                let left_instruction = self.generate_expression(left);
+                let right_instruction = self.generate_expression(right);
 
                 let instruction =
                     self.ir
@@ -64,10 +109,24 @@ impl<'ir> IrBuilder<'ir> {
     }
 }
 
-pub fn build_ir<'ir>(ir: &'ir Ir, expression: &TypedExpression) -> &'ir BasicBlock<'ir> {
-    let builder = IrBuilder::new(ir);
-    builder.generate(expression);
+pub fn build_ir_expression<'ir>(ir: &'ir Ir, expression: &TypedExpression) -> &'ir BasicBlock<'ir> {
+    let builder = FunctionIrBuilder::new(ir);
+    builder.generate_expression(expression);
     builder.first_bb
+}
+
+fn build_ir_function<'ir>(ir: &'ir Ir, function: &TypedFunctionDeclaration) -> &'ir Function<'ir> {
+    let builder = FunctionIrBuilder::new(ir);
+    builder.generate_function(function)
+}
+
+fn build_ir_module<'ir>(ir: &'ir Ir, module: &TypedModule) -> &'ir Module<'ir> {
+    let mut functions = ir.functions();
+
+    for function in &module.functions {
+        functions.push(build_ir_function(ir, function));
+    }
+    ir.module(module.name, functions)
 }
 
 #[cfg(test)]
@@ -75,63 +134,134 @@ mod tests {
     use super::*;
     use semantic_analysis::SemanticAnalyzer;
 
-    fn make_analyzed_ast<'te>(
-        semantic_analyzer: &'te SemanticAnalyzer,
-        source: &str,
-    ) -> &'te TypedExpression<'te> {
-        let ast = parser::Ast::default();
-        let expression = parser::parse_as_expression(&ast, source);
-        let symbol_table = semantic_analyzer.symbol_table(None);
+    mod expressions {
+        use super::*;
 
-        let result = semantic_analyzer.analyze_expression(expression, symbol_table);
-        result.expect("should have passed semantic analysis")
+        fn analyze_expression<'s>(
+            semantic_analyzer: &'s SemanticAnalyzer,
+            source: &str,
+        ) -> &'s TypedExpression<'s> {
+            let ast = parser::Ast::default();
+            let expression = parser::parse_as_expression(&ast, source);
+            let symbol_table = semantic_analyzer.symbol_table(None);
+
+            let result = semantic_analyzer.analyze_expression(expression, symbol_table);
+            result.expect("should have passed semantic analysis")
+        }
+
+        fn basic_block_from_expression<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
+            let semantic_analysis = SemanticAnalyzer::default();
+            let expression = analyze_expression(&semantic_analysis, source);
+            build_ir_expression(ir, expression)
+        }
+
+        macro_rules! test_expression_ir {
+            ($name: ident, $source: expr, $expected: expr) => {
+                #[test]
+                fn $name() {
+                    let ir = Ir::new();
+                    let bb = basic_block_from_expression(&ir, $source);
+                    assert_eq!(bb.to_string(), $expected);
+                }
+            };
+        }
+
+        test_expression_ir!(
+            const_int,
+            "1",
+            r"{ #0
+  00000 i const 1i
+}"
+        );
+        test_expression_ir!(
+            const_dbl,
+            "2.0",
+            r"{ #0
+  00000 d const 2d
+}"
+        );
+        test_expression_ir!(
+            const_bool,
+            "true",
+            r"{ #0
+  00000 b const true
+}"
+        );
+
+        test_expression_ir!(
+            neg_int,
+            "- 3",
+            r"{ #0
+  00000 i const 3i
+  00001 i neg @0
+}"
+        );
+
+        test_expression_ir!(
+            add_int,
+            "1 + 2",
+            r"{ #0
+  00000 i const 1i
+  00001 i const 2i
+  00002 i add @0, @1
+}"
+        );
+
+        test_expression_ir!(
+            mixed_expression,
+            "1 + 2 * 3 < 4",
+            r"{ #0
+  00000 i const 1i
+  00001 i const 2i
+  00002 i const 3i
+  00003 i mul @1, @2
+  00004 i add @0, @3
+  00005 i const 4i
+  00006 i lt @4, @5
+}"
+        );
     }
 
-    fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
-        let semantic_analysis = SemanticAnalyzer::default();
-        let expression = make_analyzed_ast(&semantic_analysis, source);
-        build_ir(ir, expression)
+    mod modules {
+        use super::*;
+
+        fn analyze_module<'ir>(ir: &'ir Ir, source: &str) -> &'ir Module<'ir> {
+            let ast = parser::Ast::default();
+            let ast_module = parser::parse(&ast, "test", source);
+
+            let semantic_analyzer = SemanticAnalyzer::default();
+            let typed_module = semantic_analyzer
+                .analyze_module(ast_module)
+                .expect("should have passed semantic analysis");
+
+            build_ir_module(ir, typed_module)
+        }
+
+        macro_rules! test_module_ir {
+            ($name: ident, $source: expr, $expected: expr) => {
+                #[test]
+                fn $name() {
+                    let ir = Ir::new();
+                    let module = analyze_module(&ir, $source);
+                    assert_eq!(module.to_string(), $expected);
+                }
+            };
+        }
+
+        test_module_ir!(
+            fn_constant,
+            r"fn one() -> int {
+    return 1;
+}",
+            r"module test
+
+fn one(
+) -> i
+{ #0
+  00000 i const 1i
+  00001 i ret @0
+}
+"
+        );
     }
-
-    macro_rules! test_ir {
-        ($name: ident, $source: expr, $expected: expr) => {
-            #[test]
-            fn $name() {
-                let ir = Ir::new();
-                let bb = basic_block_from_source(&ir, $source);
-                assert_eq!(bb.to_string(), $expected);
-            }
-        };
-    }
-
-    test_ir!(const_int, "1", "00000 i const 1i\n");
-    test_ir!(const_dbl, "2.0", "00000 d const 2d\n");
-    test_ir!(const_bool, "true", "00000 b const true\n");
-
-    test_ir!(
-        neg_int,
-        "- 3",
-        "00000 i const 3i\n\
-        00001 i neg @0\n"
-    );
-
-    test_ir!(
-        add_int,
-        "1 + 2",
-        "00000 i const 1i\n\
-        00001 i const 2i\n\
-        00002 i add @0, @1\n"
-    );
-
-    test_ir!(
-        mixed_expression,
-        "1 + 2 * 3 < 4",
-        "00000 i const 1i\n\
-        00001 i const 2i\n\
-        00002 i const 3i\n\
-        00003 i mul @1, @2\n\
-        00004 i add @0, @3\n\
-        00005 i const 4i\n\
-        00006 i lt @4, @5\n"
-    );
 }

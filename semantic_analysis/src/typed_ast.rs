@@ -380,6 +380,10 @@ impl<'a> SymbolTable<'a> {
     pub fn len(&self) -> usize {
         self.allocated_symbols.borrow().len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.allocated_symbols.borrow().is_empty()
+    }
 }
 
 impl TypedExpression<'_> {

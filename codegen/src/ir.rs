@@ -1,9 +1,41 @@
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, LiteralValue, UnaryOperator};
-use semantic_analysis::Type;
+use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
+use semantic_analysis::{SymbolId, Type};
 use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
+
+#[derive(Debug, PartialEq)]
+pub struct Module<'a> {
+    pub name: StringId,
+    pub functions: BumpVec<'a, &'a Function<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Function<'a> {
+    pub signature: &'a FunctionSignature<'a>,
+    pub body: &'a BasicBlock<'a>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionSignature<'a> {
+    pub name: StringId,
+    pub return_type: Option<Type>,
+    pub arguments: BumpVec<'a, FunctionArgument>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionArgument {
+    pub name: StringId,
+    pub argument_type: Type,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Symbol {
+    pub id: SymbolId,
+    pub name: StringId,
+    pub symbol_type: Type,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InstructionId(u32);
@@ -110,32 +142,27 @@ impl Display for Instruction {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct BasicBlock<'a> {
-    // TODO: name
+    pub id: BlockId,
     pub instructions: RefCell<BumpVec<'a, &'a Instruction>>,
-}
-
-impl<'a> BasicBlock<'a> {
-    pub fn new_in(ir: &'a Ir) -> Self {
-        Self {
-            instructions: RefCell::new(BumpVec::new_in(&ir.arena)),
-        }
-    }
 }
 
 impl Display for BasicBlock<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{{ #{}", self.id.0)?;
         let instructions = self.instructions.borrow();
         for instr in instructions.iter() {
-            writeln!(f, "{}", instr)?;
+            writeln!(f, "  {}", instr)?;
         }
-        Ok(())
+        write!(f, "}}")
     }
 }
 
 pub struct Ir {
     arena: bumpalo::Bump,
-    next_id_counter: RefCell<u32>,
+    next_basic_block_id: RefCell<u32>,
+    next_instruction_id: RefCell<u32>,
 }
 
 impl Default for Ir {
@@ -148,18 +175,24 @@ impl Ir {
     pub fn new() -> Self {
         Self {
             arena: bumpalo::Bump::new(),
-            next_id_counter: RefCell::new(0u32),
+            next_basic_block_id: RefCell::new(0u32),
+            next_instruction_id: RefCell::new(0u32),
         }
     }
 
-    fn next_id(&self) -> InstructionId {
-        let old = self.next_id_counter.replace_with(|u| *u + 1);
+    fn next_basic_block_id(&self) -> BlockId {
+        let old = self.next_basic_block_id.replace_with(|u| *u + 1);
+        BlockId(old)
+    }
+
+    fn next_instruction_id(&self) -> InstructionId {
+        let old = self.next_instruction_id.replace_with(|u| *u + 1);
         InstructionId(old)
     }
 
     fn new_instruction(&self, payload: InstructionPayload) -> &Instruction {
         self.arena.alloc(Instruction {
-            id: self.next_id(),
+            id: self.next_instruction_id(),
             payload,
         })
     }
@@ -221,8 +254,91 @@ impl Ir {
 
     pub fn basic_block(&self) -> &BasicBlock {
         self.arena.alloc(BasicBlock {
+            id: self.next_basic_block_id(),
             instructions: RefCell::new(BumpVec::new_in(&self.arena)),
         })
+    }
+
+    pub fn functions(&self) -> BumpVec<&Function> {
+        BumpVec::new_in(&self.arena)
+    }
+
+    pub fn module<'s>(
+        &'s self,
+        name: StringId,
+        functions: BumpVec<'s, &'s Function<'s>>,
+    ) -> &'s Module<'s> {
+        self.arena.alloc(Module { name, functions })
+    }
+
+    pub fn function_arguments(
+        &self,
+        iter: impl IntoIterator<Item = FunctionArgument>,
+    ) -> BumpVec<FunctionArgument> {
+        BumpVec::from_iter_in(iter, &self.arena)
+    }
+
+    pub fn function_signature<'s>(
+        &'s self,
+        name: StringId,
+        return_type: Option<Type>,
+        arguments: BumpVec<'s, FunctionArgument>,
+    ) -> &'s FunctionSignature<'s> {
+        self.arena.alloc(FunctionSignature {
+            name,
+            return_type,
+            arguments,
+        })
+    }
+
+    pub fn function<'s>(
+        &'s self,
+        signature: &'s FunctionSignature<'s>,
+        body: &'s BasicBlock<'s>,
+    ) -> &'s Function<'s> {
+        self.arena.alloc(Function { signature, body })
+    }
+}
+
+impl Display for Module<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "module {}",
+            resolve_string_id(self.name).expect("should find module name")
+        )?;
+        writeln!(f)?;
+        for function in &self.functions {
+            writeln!(f, "{}", function)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Function<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "fn {}(",
+            resolve_string_id(self.signature.name).expect("function name")
+        )?;
+        for arg in self.signature.arguments.iter() {
+            writeln!(
+                f,
+                "  {}: {},",
+                resolve_string_id(arg.name).expect("argument name"),
+                arg.argument_type.to_string_short(),
+            )?;
+        }
+        writeln!(
+            f,
+            ") -> {}",
+            self.signature
+                .return_type
+                .as_ref()
+                .map_or("void".to_string(), |t| t.to_string_short())
+        )?;
+        write!(f, "{}", self.body)
     }
 }
 

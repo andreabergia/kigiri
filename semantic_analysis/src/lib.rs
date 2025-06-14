@@ -5,5 +5,5 @@ mod typed_ast;
 mod types;
 
 pub use semantic_analyzer::SemanticAnalyzer;
-pub use typed_ast::TypedExpression;
+pub use typed_ast::*;
 pub use types::Type;
