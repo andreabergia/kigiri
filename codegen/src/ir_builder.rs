@@ -17,11 +17,11 @@ impl<'ir> FunctionIrBuilder<'ir> {
         }
     }
 
-    fn generate_function(&self, function: &TypedFunctionDeclaration) -> &'ir Function<'ir> {
+    fn generate(&self, function: &TypedFunctionDeclaration) -> &'ir Function<'ir> {
         let first_bb = self.first_bb;
 
         for statement in function.body.statements.iter() {
-            self.generate_statement(statement);
+            self.handle_statement(statement);
         }
 
         let signature = self.ir.function_signature(
@@ -43,26 +43,26 @@ impl<'ir> FunctionIrBuilder<'ir> {
         self.ir.function(signature, first_bb)
     }
 
-    fn generate_statement(&self, statement: &TypedStatement) {
+    fn handle_statement(&self, statement: &TypedStatement) {
         match statement {
             TypedStatement::Let { .. } => todo!(),
             TypedStatement::Assignment { .. } => todo!(),
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
-                    let instruction = self.generate_expression(value);
+                    let instruction = self.handle_expression(value);
                     self.push_to_current_bb(self.ir.new_ret_expr(instruction));
                 } else {
                     self.push_to_current_bb(self.ir.new_ret())
                 }
             }
             TypedStatement::Expression { expression } => {
-                self.generate_expression(expression);
+                self.handle_expression(expression);
             }
             TypedStatement::NestedBlock { .. } => todo!(),
         }
     }
 
-    fn generate_expression(&self, expression: &TypedExpression) -> &'ir Instruction {
+    fn handle_expression(&self, expression: &TypedExpression) -> &'ir Instruction {
         match expression {
             TypedExpression::Identifier { .. } => {
                 todo!()
@@ -80,7 +80,7 @@ impl<'ir> FunctionIrBuilder<'ir> {
                 operator,
                 operand,
             } => {
-                let operand_instruction = self.generate_expression(operand);
+                let operand_instruction = self.handle_expression(operand);
 
                 let instruction = self.ir.new_unary(operator.clone(), operand_instruction);
                 self.push_to_current_bb(instruction);
@@ -92,8 +92,8 @@ impl<'ir> FunctionIrBuilder<'ir> {
                 left,
                 right,
             } => {
-                let left_instruction = self.generate_expression(left);
-                let right_instruction = self.generate_expression(right);
+                let left_instruction = self.handle_expression(left);
+                let right_instruction = self.handle_expression(right);
 
                 let instruction =
                     self.ir
@@ -111,20 +111,15 @@ impl<'ir> FunctionIrBuilder<'ir> {
 
 pub fn build_ir_expression<'ir>(ir: &'ir Ir, expression: &TypedExpression) -> &'ir BasicBlock<'ir> {
     let builder = FunctionIrBuilder::new(ir);
-    builder.generate_expression(expression);
+    builder.handle_expression(expression);
     builder.first_bb
-}
-
-fn build_ir_function<'ir>(ir: &'ir Ir, function: &TypedFunctionDeclaration) -> &'ir Function<'ir> {
-    let builder = FunctionIrBuilder::new(ir);
-    builder.generate_function(function)
 }
 
 fn build_ir_module<'ir>(ir: &'ir Ir, module: &TypedModule) -> &'ir Module<'ir> {
     let mut functions = ir.functions();
-
     for function in &module.functions {
-        functions.push(build_ir_function(ir, function));
+        let fn_builder = FunctionIrBuilder::new(ir);
+        functions.push(fn_builder.generate(function));
     }
     ir.module(module.name, functions)
 }

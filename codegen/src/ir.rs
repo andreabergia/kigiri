@@ -37,6 +37,18 @@ pub struct Symbol {
     pub symbol_type: Type,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct BasicBlock<'a> {
+    pub id: BlockId,
+    pub instructions: RefCell<BumpVec<'a, &'a Instruction>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Instruction {
+    pub id: InstructionId,
+    pub payload: InstructionPayload,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InstructionId(u32);
 
@@ -64,11 +76,7 @@ pub enum InstructionPayload {
     },
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Instruction {
-    pub id: InstructionId,
-    pub payload: InstructionPayload,
-}
+// Impls
 
 impl InstructionId {
     pub fn as_usize(&self) -> usize {
@@ -91,6 +99,76 @@ impl InstructionPayload {
 impl Instruction {
     pub fn instruction_type(&self) -> Option<Type> {
         self.payload.instruction_type()
+    }
+}
+
+// Display impls
+
+impl Display for Module<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "module {}",
+            resolve_string_id(self.name).expect("should find module name")
+        )?;
+        writeln!(f)?;
+        for function in &self.functions {
+            writeln!(f, "{}", function)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Function<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "fn {}(",
+            resolve_string_id(self.signature.name).expect("function name")
+        )?;
+        for arg in self.signature.arguments.iter() {
+            writeln!(
+                f,
+                "  {}: {},",
+                resolve_string_id(arg.name).expect("argument name"),
+                arg.argument_type.to_string_short(),
+            )?;
+        }
+        writeln!(
+            f,
+            ") -> {}",
+            self.signature
+                .return_type
+                .as_ref()
+                .map_or("void".to_string(), |t| t.to_string_short())
+        )?;
+        write!(f, "{}", self.body)
+    }
+}
+
+impl Display for BasicBlock<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{{ #{}", self.id.0)?;
+        let instructions = self.instructions.borrow();
+        for instr in instructions.iter() {
+            writeln!(f, "  {}", instr)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl Display for Instruction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:05} {} {}",
+            self.id.0,
+            self.payload
+                .instruction_type()
+                .map(|t| t.to_string_short())
+                .unwrap_or("v".to_string()),
+            self.payload
+        )
     }
 }
 
@@ -127,37 +205,7 @@ impl Display for InstructionPayload {
     }
 }
 
-impl Display for Instruction {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:05} {} {}",
-            self.id.0,
-            self.payload
-                .instruction_type()
-                .map(|t| t.to_string_short())
-                .unwrap_or("v".to_string()),
-            self.payload
-        )
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct BasicBlock<'a> {
-    pub id: BlockId,
-    pub instructions: RefCell<BumpVec<'a, &'a Instruction>>,
-}
-
-impl Display for BasicBlock<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{{ #{}", self.id.0)?;
-        let instructions = self.instructions.borrow();
-        for instr in instructions.iter() {
-            writeln!(f, "  {}", instr)?;
-        }
-        write!(f, "}}")
-    }
-}
+// IR builder helper
 
 pub struct Ir {
     arena: bumpalo::Bump,
@@ -297,48 +345,6 @@ impl Ir {
         body: &'s BasicBlock<'s>,
     ) -> &'s Function<'s> {
         self.arena.alloc(Function { signature, body })
-    }
-}
-
-impl Display for Module<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "module {}",
-            resolve_string_id(self.name).expect("should find module name")
-        )?;
-        writeln!(f)?;
-        for function in &self.functions {
-            writeln!(f, "{}", function)?;
-        }
-        Ok(())
-    }
-}
-
-impl Display for Function<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "fn {}(",
-            resolve_string_id(self.signature.name).expect("function name")
-        )?;
-        for arg in self.signature.arguments.iter() {
-            writeln!(
-                f,
-                "  {}: {},",
-                resolve_string_id(arg.name).expect("argument name"),
-                arg.argument_type.to_string_short(),
-            )?;
-        }
-        writeln!(
-            f,
-            ") -> {}",
-            self.signature
-                .return_type
-                .as_ref()
-                .map_or("void".to_string(), |t| t.to_string_short())
-        )?;
-        write!(f, "{}", self.body)
     }
 }
 
