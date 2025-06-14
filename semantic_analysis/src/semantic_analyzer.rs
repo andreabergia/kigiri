@@ -5,7 +5,7 @@ use crate::typed_ast::{
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator, resolve_string_id,
+    resolve_string_id, BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator,
 };
 use thiserror::Error;
 
@@ -97,7 +97,11 @@ impl SemanticAnalyzer {
 
         let body = self.analyze_block(function.body, symbol_table)?;
 
-        Ok(self.alloc(TypedFunctionDeclaration { signature, body }))
+        Ok(self.alloc(TypedFunctionDeclaration {
+            signature,
+            body,
+            symbol_table,
+        }))
     }
 
     fn parse_type(&self, type_name: StringId) -> Result<Type, SemanticAnalysisError> {
@@ -639,7 +643,7 @@ mod tests {
 
                     assert_eq!(
                         result
-                            .expect("should have succeeded semantic analysis")
+                            .expect("should have passed semantic analysis")
                             .to_string(),
                         $expected_typed_ast
                     );
@@ -665,6 +669,26 @@ mod tests {
                     );
                 }
             };
+        }
+
+        #[test]
+        fn function_symbol_map_contains_arguments() {
+            let ast = parser::Ast::default();
+            let module = parser::parse(&ast, "test", "fn inc(x: int) -> int { return 1 + x; }");
+
+            let analyzer = SemanticAnalyzer::default();
+            let result = analyzer
+                .analyze_module(module)
+                .expect("should have passed semantic analysis");
+
+            assert_eq!(1, result.functions.len());
+            let fun = result.functions[0];
+            assert_eq!(1, fun.symbol_table.len());
+            let symbol = fun
+                .symbol_table
+                .lookup_by_name(parser::get_or_create_string("x"))
+                .expect("should have found argument x");
+            assert_eq!(Type::Int, symbol.symbol_type);
         }
 
         test_ok!(

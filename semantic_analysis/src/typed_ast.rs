@@ -21,6 +21,7 @@ pub struct TypedModule<'a> {
 pub struct TypedFunctionDeclaration<'a> {
     pub signature: &'a TypedFunctionSignature<'a>,
     pub body: &'a TypedBlock<'a>,
+    pub symbol_table: &'a SymbolTable<'a>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -374,6 +375,10 @@ impl<'a> SymbolTable<'a> {
             .get(&id)
             .cloned()
             .or_else(|| self.parent.and_then(|parent| parent.lookup_by_id(id)))
+    }
+
+    pub fn len(&self) -> usize {
+        self.allocated_symbols.borrow().len()
     }
 }
 
