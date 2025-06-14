@@ -29,7 +29,7 @@ where
     context: &'c Context,
     module: &'m Module<'c>,
     builder: Builder<'c>,
-    ir: &'b codegen::BasicBlock<'b2>,
+    ir_allocator: &'b codegen::BasicBlock<'b2>,
 
     // Vectors are indexed by instruction id. There's a bit of space wasted,
     // but it makes everything quite simple and fast.
@@ -38,9 +38,13 @@ where
 }
 
 impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
-    fn new(context: &'c Context, module: &'m Module<'c>, ir: &'b codegen::BasicBlock<'b2>) -> Self {
+    fn new(
+        context: &'c Context,
+        module: &'m Module<'c>,
+        ir_allocator: &'b codegen::BasicBlock<'b2>,
+    ) -> Self {
         let builder = context.create_builder();
-        let num_ir_instructions = ir.instructions.borrow().len();
+        let num_ir_instructions = ir_allocator.instructions.borrow().len();
 
         let mut int_values = Vec::with_capacity(num_ir_instructions);
         int_values.resize(num_ir_instructions, None);
@@ -52,7 +56,7 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
             context,
             module,
             builder,
-            ir,
+            ir_allocator,
             int_values,
             bool_values,
         }
@@ -66,7 +70,7 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
         self.builder.position_at_end(bb);
 
-        for instruction in self.ir.instructions.borrow().iter() {
+        for instruction in self.ir_allocator.instructions.borrow().iter() {
             match &instruction.payload {
                 InstructionPayload::Constant { constant, .. } => {
                     self.handle_constant(instruction.id, constant);
@@ -393,9 +397,9 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 fn ir_to_llvm<'c>(
     context: &'c Context,
     module: &Module<'c>,
-    ir: &codegen::BasicBlock,
+    ir_allocator: &codegen::BasicBlock,
 ) -> Result<(), CodeGenError> {
-    let mut builder = LlvmGenerator::new(context, module, ir);
+    let mut builder = LlvmGenerator::new(context, module, ir_allocator);
     builder.generate()
 }
 
@@ -403,7 +407,7 @@ fn ir_to_llvm<'c>(
 mod tests {
     use super::*;
     use codegen::build_ir_expression;
-    use codegen::{BasicBlock, Ir};
+    use codegen::{BasicBlock, IrAllocator};
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedExpression};
     use std::io::{Write, stderr};
@@ -413,18 +417,21 @@ mod tests {
         semantic_analyzer: &'te SemanticAnalyzer,
         source: &str,
     ) -> &'te TypedExpression<'te> {
-        let ast = parser::Ast::default();
-        let expression = parser::parse_as_expression(&ast, source);
+        let ast_allocator = parser::AstAllocator::default();
+        let expression = parser::parse_as_expression(&ast_allocator, source);
         let symbol_table = semantic_analyzer.symbol_table(None);
 
         let result = semantic_analyzer.analyze_expression(expression, symbol_table);
         result.expect("should have passed semantic analysis")
     }
 
-    fn basic_block_from_source<'ir>(ir: &'ir Ir, source: &str) -> &'ir BasicBlock<'ir> {
+    fn basic_block_from_source<'i>(
+        ir_allocator: &'i IrAllocator,
+        source: &str,
+    ) -> &'i BasicBlock<'i> {
         let semantic_analyzer = SemanticAnalyzer::default();
         let expression = make_analyzed_ast(&semantic_analyzer, source);
-        let bb = build_ir_expression(ir, expression);
+        let bb = build_ir_expression(ir_allocator, expression);
 
         let bb_ir = bb
             .instructions
@@ -441,8 +448,8 @@ mod tests {
 
     #[test]
     fn test_ir_to_llvm() {
-        let ir = Ir::new();
-        let basic_block = basic_block_from_source(&ir, "1 + 2 * 3");
+        let ir_allocator = IrAllocator::new();
+        let basic_block = basic_block_from_source(&ir_allocator, "1 + 2 * 3");
 
         let context = Context::create();
         let module = context.create_module("test");

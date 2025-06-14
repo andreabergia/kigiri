@@ -205,21 +205,21 @@ impl Display for InstructionPayload {
     }
 }
 
-// IR builder helper
+// IR allocator
 
-pub struct Ir {
+pub struct IrAllocator {
     arena: bumpalo::Bump,
     next_basic_block_id: RefCell<u32>,
     next_instruction_id: RefCell<u32>,
 }
 
-impl Default for Ir {
+impl Default for IrAllocator {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Ir {
+impl IrAllocator {
     pub fn new() -> Self {
         Self {
             arena: bumpalo::Bump::new(),
@@ -355,44 +355,50 @@ mod tests {
 
     #[test]
     fn test_display_instruction_ret() {
-        let ir = Ir::new();
-        assert_eq!("00000 v ret", ir.new_ret().to_string())
+        let ir_allocator = IrAllocator::new();
+        assert_eq!("00000 v ret", ir_allocator.new_ret().to_string())
     }
 
     #[test]
     fn test_display_instruction_ret_expr() {
-        let ir = Ir::new();
-        let const_0 = ir.new_const(LiteralValue::Integer(1));
-        assert_eq!("00001 i ret @0", ir.new_ret_expr(const_0).to_string())
+        let ir_allocator = IrAllocator::new();
+        let const_0 = ir_allocator.new_const(LiteralValue::Integer(1));
+        assert_eq!(
+            "00001 i ret @0",
+            ir_allocator.new_ret_expr(const_0).to_string()
+        )
     }
 
     #[test]
     fn test_display_instruction_const() {
-        let ir = Ir::new();
+        let ir_allocator = IrAllocator::new();
         assert_eq!(
             "00000 i const 1i",
-            ir.new_const(LiteralValue::Integer(1)).to_string()
+            ir_allocator.new_const(LiteralValue::Integer(1)).to_string()
         )
     }
 
     #[test]
     fn test_display_instruction_unary() {
-        let ir = Ir::new();
-        let const_0 = ir.new_const(LiteralValue::Integer(1));
+        let ir_allocator = IrAllocator::new();
+        let const_0 = ir_allocator.new_const(LiteralValue::Integer(1));
         assert_eq!(
             "00001 i neg @0",
-            ir.new_unary(UnaryOperator::Neg, const_0).to_string()
+            ir_allocator
+                .new_unary(UnaryOperator::Neg, const_0)
+                .to_string()
         )
     }
 
     #[test]
     fn test_display_instruction_binary() {
-        let ir = Ir::new();
-        let const_0 = ir.new_const(LiteralValue::Integer(0));
-        let const_1 = ir.new_const(LiteralValue::Integer(1));
+        let ir_allocator = IrAllocator::new();
+        let const_0 = ir_allocator.new_const(LiteralValue::Integer(0));
+        let const_1 = ir_allocator.new_const(LiteralValue::Integer(1));
         assert_eq!(
             "00002 i add @0, @1",
-            ir.new_binary(BinaryOperator::Add, const_0, const_1)
+            ir_allocator
+                .new_binary(BinaryOperator::Add, const_0, const_1)
                 .to_string()
         )
     }

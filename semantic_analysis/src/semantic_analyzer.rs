@@ -5,7 +5,7 @@ use crate::typed_ast::{
 use crate::{Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator, resolve_string_id,
+    resolve_string_id, BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator,
 };
 use thiserror::Error;
 
@@ -330,8 +330,8 @@ mod tests {
             ($name: ident, $source: expr, $typed_ast: expr) => {
                 #[test]
                 fn $name() {
-                    let ast = parser::Ast::default();
-                    let expression = parser::parse_as_expression(&ast, $source);
+                    let ast_allocator = parser::AstAllocator::default();
+                    let expression = parser::parse_as_expression(&ast_allocator, $source);
                     let analyzer = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
                     let result = analyzer.analyze_expression(expression, symbol_table);
@@ -349,8 +349,8 @@ mod tests {
             ($name: ident, $source: expr, $expected_error: expr) => {
                 #[test]
                 fn $name() {
-                    let ast = parser::Ast::default();
-                    let expression = parser::parse_as_expression(&ast, $source);
+                    let ast_allocator = parser::AstAllocator::default();
+                    let expression = parser::parse_as_expression(&ast_allocator, $source);
                     let analyzer = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
                     let result = analyzer.analyze_expression(expression, symbol_table);
@@ -437,8 +437,8 @@ mod tests {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
                 #[test]
                 fn $name() {
-                    let ast = parser::Ast::default();
-                    let block = parser::parse_as_block(&ast, $source);
+                    let ast_allocator = parser::AstAllocator::default();
+                    let block = parser::parse_as_block(&ast_allocator, $source);
 
                     let analyzer = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
@@ -458,8 +458,8 @@ mod tests {
             ($name: ident, $source: expr, $expected_error: expr) => {
                 #[test]
                 fn $name() {
-                    let ast = parser::Ast::default();
-                    let block = parser::parse_as_block(&ast, $source);
+                    let ast_allocator = parser::AstAllocator::default();
+                    let block = parser::parse_as_block(&ast_allocator, $source);
 
                     let analyzer = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
@@ -635,8 +635,8 @@ mod tests {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
                 #[test]
                 fn $name() {
-                    let ast = parser::Ast::default();
-                    let module = parser::parse(&ast, "test", $source);
+                    let ast_allocator = parser::AstAllocator::default();
+                    let module = parser::parse(&ast_allocator, "test", $source);
 
                     let analyzer = SemanticAnalyzer::default();
                     let result = analyzer.analyze_module(module);
@@ -655,8 +655,8 @@ mod tests {
             ($name: ident, $source: expr, $expected_error: expr) => {
                 #[test]
                 fn $name() {
-                    let ast = parser::Ast::default();
-                    let module = parser::parse(&ast, "test", $source);
+                    let ast_allocator = parser::AstAllocator::default();
+                    let module = parser::parse(&ast_allocator, "test", $source);
 
                     let analyzer = SemanticAnalyzer::default();
                     let result = analyzer.analyze_module(module);
@@ -673,8 +673,12 @@ mod tests {
 
         #[test]
         fn function_symbol_map_contains_arguments() {
-            let ast = parser::Ast::default();
-            let module = parser::parse(&ast, "test", "fn inc(x: int) -> int { return 1 + x; }");
+            let ast_allocator = parser::AstAllocator::default();
+            let module = parser::parse(
+                &ast_allocator,
+                "test",
+                "fn inc(x: int) -> int { return 1 + x; }",
+            );
 
             let analyzer = SemanticAnalyzer::default();
             let result = analyzer

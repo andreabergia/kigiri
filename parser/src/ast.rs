@@ -1,4 +1,4 @@
-use crate::symbols::{StringId, get_or_create_string, resolve_string_id};
+use crate::symbols::{get_or_create_string, resolve_string_id, StringId};
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -341,13 +341,15 @@ impl Display for Expression<'_> {
     }
 }
 
+// AST allocator
+
 #[derive(Default)]
-pub struct Ast {
+pub struct AstAllocator {
     arena: bumpalo::Bump,
     next_block_id: Cell<BlockId>,
 }
 
-impl Ast {
+impl AstAllocator {
     fn alloc<T>(&self, value: T) -> &T {
         self.arena.alloc(value)
     }
@@ -531,37 +533,37 @@ mod tests {
 
     #[test]
     fn can_allocate_via_ast() {
-        let ast = Ast::default();
-        let id = ast.literal_integer(1);
+        let ast_allocator = AstAllocator::default();
+        let id = ast_allocator.literal_integer(1);
         assert_eq!(id, &Expression::Literal(LiteralValue::Integer(1)));
     }
 
     #[test]
     fn format_expressions() {
-        let ast = Ast::default();
+        let ast_allocator = AstAllocator::default();
 
-        let x = ast.identifier("x");
-        let one = ast.literal_integer(1);
-        let sum = ast.binary(BinaryOperator::Add, x, one);
-        let two = ast.literal_double(2.1);
-        let neg = ast.unary(UnaryOperator::Neg, two);
-        let mul = ast.binary(BinaryOperator::Mul, sum, neg);
-        let lt = ast.binary(BinaryOperator::Lt, mul, ast.literal_double(4.2));
-        let true_lit = ast.literal_boolean(true);
-        let or = ast.binary(BinaryOperator::Or, lt, true_lit);
+        let x = ast_allocator.identifier("x");
+        let one = ast_allocator.literal_integer(1);
+        let sum = ast_allocator.binary(BinaryOperator::Add, x, one);
+        let two = ast_allocator.literal_double(2.1);
+        let neg = ast_allocator.unary(UnaryOperator::Neg, two);
+        let mul = ast_allocator.binary(BinaryOperator::Mul, sum, neg);
+        let lt = ast_allocator.binary(BinaryOperator::Lt, mul, ast_allocator.literal_double(4.2));
+        let true_lit = ast_allocator.literal_boolean(true);
+        let or = ast_allocator.binary(BinaryOperator::Or, lt, true_lit);
         assert_eq!(or.to_string(), "(|| (< (* (+ x 1i) (- 2.1d)) 4.2d) true)");
     }
 
     #[test]
     fn format_block() {
-        let ast = Ast::default();
+        let ast_allocator = AstAllocator::default();
 
-        let block_id = ast.next_block_id();
-        let x = ast.identifier("x");
-        let statement = ast.statement_expression(x);
-        let mut statements = ast.statements();
+        let block_id = ast_allocator.next_block_id();
+        let x = ast_allocator.identifier("x");
+        let statement = ast_allocator.statement_expression(x);
+        let mut statements = ast_allocator.statements();
         statements.push(statement);
-        let block = ast.block_from_statements(block_id, statements);
+        let block = ast_allocator.block_from_statements(block_id, statements);
 
         assert_eq!(
             block.to_string(),
@@ -573,19 +575,19 @@ x;
 
     #[test]
     fn format_function() {
-        let ast = Ast::default();
+        let ast_allocator = AstAllocator::default();
 
-        let block_id = ast.next_block_id();
-        let x = ast.identifier("x");
-        let statements = ast.statements();
-        let block = ast.block_from_statements(block_id, statements);
+        let block_id = ast_allocator.next_block_id();
+        let x = ast_allocator.identifier("x");
+        let statements = ast_allocator.statements();
+        let block = ast_allocator.block_from_statements(block_id, statements);
 
-        let mut args = ast.function_arguments();
+        let mut args = ast_allocator.function_arguments();
         args.push(FunctionArgument {
             name: get_or_create_string("x"),
             arg_type: get_or_create_string("int"),
         });
-        let fun = ast.function_declaration("foo", None, args, block);
+        let fun = ast_allocator.function_declaration("foo", None, args, block);
 
         assert_eq!(
             fun.to_string(),

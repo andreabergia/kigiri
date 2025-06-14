@@ -1,5 +1,5 @@
 use crate::ast::{
-    Ast, BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration,
+    AstAllocator, BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration,
     FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator,
 };
 use crate::grammar::{Grammar, Rule};
@@ -32,7 +32,10 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::neg) | Op::prefix(Rule::not) | Op::prefix(Rule::bitwise_not))
 });
 
-fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Expression<'ast> {
+fn parse_expression<'a>(
+    ast_allocator: &'a AstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Expression<'a> {
     PRATT_PARSER
         .map_primary(|primary| {
             match primary.as_rule() {
@@ -40,59 +43,66 @@ fn parse_expression<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Express
                     let pair = primary.into_inner().next().unwrap();
                     let text = pair.as_str();
                     match pair.as_rule() {
-                        Rule::integerNumber => ast.literal_integer(i64::from_str(text).unwrap()),
-                        Rule::hexNumber => ast.literal_integer(
+                        Rule::integerNumber => {
+                            ast_allocator.literal_integer(i64::from_str(text).unwrap())
+                        }
+                        Rule::hexNumber => ast_allocator.literal_integer(
                             i64::from_str_radix(
                                 text.to_ascii_lowercase().trim_start_matches("0x"),
                                 16,
                             )
                             .unwrap(),
                         ),
-                        Rule::doubleNumber => ast.literal_double(f64::from_str(text).unwrap()),
+                        Rule::doubleNumber => {
+                            ast_allocator.literal_double(f64::from_str(text).unwrap())
+                        }
                         _ => unreachable!(""),
                     }
                 }
-                Rule::identifier => ast.identifier(primary.as_str()),
-                Rule::expression => parse_expression(ast, primary),
-                Rule::boolean => ast.literal_boolean(primary.as_str().parse().unwrap()),
+                Rule::identifier => ast_allocator.identifier(primary.as_str()),
+                Rule::expression => parse_expression(ast_allocator, primary),
+                Rule::boolean => ast_allocator.literal_boolean(primary.as_str().parse().unwrap()),
                 // Rule::functionCall => Expression::FunctionCall(parse_function_call(primary)),
                 _ => unreachable!(""),
             }
         })
         .map_prefix(|prefix, operand| match prefix.as_rule() {
-            Rule::neg => ast.unary(UnaryOperator::Neg, operand),
-            Rule::not => ast.unary(UnaryOperator::Not, operand),
-            Rule::bitwise_not => ast.unary(UnaryOperator::BitwiseNot, operand),
+            Rule::neg => ast_allocator.unary(UnaryOperator::Neg, operand),
+            Rule::not => ast_allocator.unary(UnaryOperator::Not, operand),
+            Rule::bitwise_not => ast_allocator.unary(UnaryOperator::BitwiseNot, operand),
             _ => unreachable!(),
         })
         .map_infix(|left, op, right| match op.as_rule() {
-            Rule::add => ast.binary(BinaryOperator::Add, left, right),
-            Rule::mul => ast.binary(BinaryOperator::Mul, left, right),
-            Rule::sub => ast.binary(BinaryOperator::Sub, left, right),
-            Rule::div => ast.binary(BinaryOperator::Div, left, right),
-            Rule::rem => ast.binary(BinaryOperator::Rem, left, right),
-            Rule::exp => ast.binary(BinaryOperator::Exp, left, right),
-            Rule::eq => ast.binary(BinaryOperator::Eq, left, right),
-            Rule::neq => ast.binary(BinaryOperator::Neq, left, right),
-            Rule::lt => ast.binary(BinaryOperator::Lt, left, right),
-            Rule::lte => ast.binary(BinaryOperator::Lte, left, right),
-            Rule::gt => ast.binary(BinaryOperator::Gt, left, right),
-            Rule::gte => ast.binary(BinaryOperator::Gte, left, right),
-            Rule::and => ast.binary(BinaryOperator::And, left, right),
-            Rule::or => ast.binary(BinaryOperator::Or, left, right),
-            Rule::bitwise_and => ast.binary(BinaryOperator::BitwiseAnd, left, right),
-            Rule::bitwise_or => ast.binary(BinaryOperator::BitwiseOr, left, right),
-            Rule::bitwise_xor => ast.binary(BinaryOperator::BitwiseXor, left, right),
-            Rule::bitwise_shl => ast.binary(BinaryOperator::BitwiseShl, left, right),
-            Rule::bitwise_shr => ast.binary(BinaryOperator::BitwiseShr, left, right),
+            Rule::add => ast_allocator.binary(BinaryOperator::Add, left, right),
+            Rule::mul => ast_allocator.binary(BinaryOperator::Mul, left, right),
+            Rule::sub => ast_allocator.binary(BinaryOperator::Sub, left, right),
+            Rule::div => ast_allocator.binary(BinaryOperator::Div, left, right),
+            Rule::rem => ast_allocator.binary(BinaryOperator::Rem, left, right),
+            Rule::exp => ast_allocator.binary(BinaryOperator::Exp, left, right),
+            Rule::eq => ast_allocator.binary(BinaryOperator::Eq, left, right),
+            Rule::neq => ast_allocator.binary(BinaryOperator::Neq, left, right),
+            Rule::lt => ast_allocator.binary(BinaryOperator::Lt, left, right),
+            Rule::lte => ast_allocator.binary(BinaryOperator::Lte, left, right),
+            Rule::gt => ast_allocator.binary(BinaryOperator::Gt, left, right),
+            Rule::gte => ast_allocator.binary(BinaryOperator::Gte, left, right),
+            Rule::and => ast_allocator.binary(BinaryOperator::And, left, right),
+            Rule::or => ast_allocator.binary(BinaryOperator::Or, left, right),
+            Rule::bitwise_and => ast_allocator.binary(BinaryOperator::BitwiseAnd, left, right),
+            Rule::bitwise_or => ast_allocator.binary(BinaryOperator::BitwiseOr, left, right),
+            Rule::bitwise_xor => ast_allocator.binary(BinaryOperator::BitwiseXor, left, right),
+            Rule::bitwise_shl => ast_allocator.binary(BinaryOperator::BitwiseShl, left, right),
+            Rule::bitwise_shr => ast_allocator.binary(BinaryOperator::BitwiseShr, left, right),
             _ => unreachable!(),
         })
         .parse(rule.into_inner())
 }
 
-fn parse_let_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Statement<'ast> {
+fn parse_let_statement<'a>(
+    ast_allocator: &'a AstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Statement<'a> {
     let mut iter = rule.into_inner();
-    let mut initializers = ast.statement_let_initializers();
+    let mut initializers = ast_allocator.statement_let_initializers();
     loop {
         let Some(initializer_rule) = iter.next() else {
             break;
@@ -103,60 +113,67 @@ fn parse_let_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Stat
         let id = get_or_create_string(id.as_str());
 
         let value = initializer_rule.next().unwrap();
-        let value = parse_expression(ast, value);
+        let value = parse_expression(ast_allocator, value);
 
         initializers.push(LetInitializer { name: id, value })
     }
-    ast.statement_let(initializers)
+    ast_allocator.statement_let(initializers)
 }
 
-fn parse_statement<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Statement<'ast> {
+fn parse_statement<'a>(ast_allocator: &'a AstAllocator, rule: Pair<'_, Rule>) -> &'a Statement<'a> {
     let pair = rule.into_inner().next().unwrap();
     match pair.as_rule() {
-        Rule::letStatement => parse_let_statement(ast, pair),
+        Rule::letStatement => parse_let_statement(ast_allocator, pair),
         Rule::assignmentStatement => {
             let mut inner = pair.into_inner();
             let identifier = inner
                 .next()
                 .expect("identifier on lhs of assignment")
                 .as_str();
-            let expression =
-                parse_expression(ast, inner.next().expect("expression on rhs of assignment"));
-            ast.statement_assignment(identifier, expression)
+            let expression = parse_expression(
+                ast_allocator,
+                inner.next().expect("expression on rhs of assignment"),
+            );
+            ast_allocator.statement_assignment(identifier, expression)
         }
         Rule::returnStatement => {
-            let expression = pair.into_inner().next().map(|p| parse_expression(ast, p));
-            ast.statement_return(expression)
+            let expression = pair
+                .into_inner()
+                .next()
+                .map(|p| parse_expression(ast_allocator, p));
+            ast_allocator.statement_return(expression)
         }
         Rule::expression => {
-            let expression = parse_expression(ast, pair);
-            ast.statement_expression(expression)
+            let expression = parse_expression(ast_allocator, pair);
+            ast_allocator.statement_expression(expression)
         }
         _ => unreachable!(),
     }
 }
 
-fn parse_block<'ast>(ast: &'ast Ast, rule: Pair<'_, Rule>) -> &'ast Block<'ast> {
+fn parse_block<'a>(ast_allocator: &'a AstAllocator, rule: Pair<'_, Rule>) -> &'a Block<'a> {
     // We want a parent block to have a smaller id than any nested block,
     // so we generate the block_id first and then recurse.
-    let block_id = ast.next_block_id();
+    let block_id = ast_allocator.next_block_id();
 
-    let mut statements = ast.statements();
+    let mut statements = ast_allocator.statements();
     for pair in rule.into_inner() {
         match pair.as_rule() {
-            Rule::statement => statements.push(parse_statement(ast, pair)),
-            Rule::block => statements.push(ast.nested_block(parse_block(ast, pair))),
+            Rule::statement => statements.push(parse_statement(ast_allocator, pair)),
+            Rule::block => {
+                statements.push(ast_allocator.nested_block(parse_block(ast_allocator, pair)))
+            }
             _ => unreachable!(),
         }
     }
-    ast.block_from_statements(block_id, statements)
+    ast_allocator.block_from_statements(block_id, statements)
 }
 
-fn parse_function_declaration_arguments<'ast>(
-    ast: &'ast Ast,
+fn parse_function_declaration_arguments<'a>(
+    ast_allocator: &'a AstAllocator,
     rule: Pair<'_, Rule>,
-) -> BumpVec<'ast, FunctionArgument> {
-    let mut arguments = ast.function_arguments();
+) -> BumpVec<'a, FunctionArgument> {
+    let mut arguments = ast_allocator.function_arguments();
 
     for arg in rule.into_inner() {
         let mut arg = arg.into_inner();
@@ -171,15 +188,15 @@ fn parse_function_declaration_arguments<'ast>(
     arguments
 }
 
-fn parse_function_declaration<'ast>(
-    ast: &'ast Ast,
+fn parse_function_declaration<'a>(
+    ast_allocator: &'a AstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'ast FunctionDeclaration<'ast> {
+) -> &'a FunctionDeclaration<'a> {
     let mut rule_iter = rule.into_inner();
     let name = rule_iter.next().expect("function name").as_str();
 
     let arguments_rule = rule_iter.next().expect("function arguments");
-    let arguments = parse_function_declaration_arguments(ast, arguments_rule);
+    let arguments = parse_function_declaration_arguments(ast_allocator, arguments_rule);
 
     let next = rule_iter.next().expect("function return type or body");
     let (return_type, body_rule) = if let Rule::functionReturnType = next.as_rule() {
@@ -192,19 +209,19 @@ fn parse_function_declaration<'ast>(
         (None, next)
     };
 
-    let body = parse_block(ast, body_rule);
+    let body = parse_block(ast_allocator, body_rule);
 
     assert!(rule_iter.next().is_none());
 
-    ast.function_declaration(name, return_type, arguments, body)
+    ast_allocator.function_declaration(name, return_type, arguments, body)
 }
 
-fn parse_module<'ast>(
-    ast: &'ast Ast,
+fn parse_module<'a>(
+    ast_allocator: &'a AstAllocator,
     module_name: &str,
     rule: Pair<'_, Rule>,
-) -> &'ast Module<'ast> {
-    let mut functions = ast.functions();
+) -> &'a Module<'a> {
+    let mut functions = ast_allocator.functions();
     let mut function_signatures = FunctionSignaturesByName::default();
 
     let rule_inner = rule.into_inner();
@@ -212,7 +229,7 @@ fn parse_module<'ast>(
         match inner.as_rule() {
             Rule::EOI => continue,
             Rule::functionDeclaration => {
-                let fun = parse_function_declaration(ast, inner);
+                let fun = parse_function_declaration(ast_allocator, inner);
                 function_signatures.insert(fun.signature.name, fun.signature);
                 functions.push(fun);
             }
@@ -220,25 +237,25 @@ fn parse_module<'ast>(
         }
     }
 
-    ast.module(module_name, functions, function_signatures)
+    ast_allocator.module(module_name, functions, function_signatures)
 }
 
-pub fn parse_as_expression<'ast>(ast: &'ast Ast, text: &str) -> &'ast Expression<'ast> {
+pub fn parse_as_expression<'a>(ast_allocator: &'a AstAllocator, text: &str) -> &'a Expression<'a> {
     let pair = Grammar::parse(Rule::expression, text)
         .unwrap()
         .next()
         .unwrap();
-    parse_expression(ast, pair)
+    parse_expression(ast_allocator, pair)
 }
 
-pub fn parse_as_block<'ast>(ast: &'ast Ast, text: &str) -> &'ast Block<'ast> {
+pub fn parse_as_block<'a>(ast_allocator: &'a AstAllocator, text: &str) -> &'a Block<'a> {
     let pair = Grammar::parse(Rule::block, text).unwrap().next().unwrap();
-    parse_block(ast, pair)
+    parse_block(ast_allocator, pair)
 }
 
-pub fn parse<'ast>(ast: &'ast Ast, module_name: &str, text: &str) -> &'ast Module<'ast> {
+pub fn parse<'a>(ast_allocator: &'a AstAllocator, module_name: &str, text: &str) -> &'a Module<'a> {
     let pair = Grammar::parse(Rule::module, text).unwrap().next().unwrap();
-    parse_module(ast, module_name, pair)
+    parse_module(ast_allocator, module_name, pair)
 }
 
 #[cfg(test)]
@@ -253,8 +270,8 @@ mod tests {
         ($name: ident, $source: expr, $ast: expr) => {
             #[test]
             fn $name() {
-                let ast = Ast::default();
-                let expression = parse_as_expression(&ast, $source);
+                let ast_allocator = AstAllocator::default();
+                let expression = parse_as_expression(&ast_allocator, $source);
                 assert_eq!(expression.to_string(), $ast);
             }
         };
@@ -264,8 +281,8 @@ mod tests {
         ($name: ident, $source: expr, $ast: expr) => {
             #[test]
             fn $name() {
-                let ast = Ast::default();
-                let block = parse_as_block(&ast, $source);
+                let ast_allocator = AstAllocator::default();
+                let block = parse_as_block(&ast_allocator, $source);
                 assert_eq!(block.to_string(), $ast);
             }
         };
@@ -387,9 +404,9 @@ a = 1i;
 
     #[test]
     fn module_fn_with_return_type() {
-        let ast = Ast::default();
+        let ast_allocator = AstAllocator::default();
         let module = parse(
-            &ast,
+            &ast_allocator,
             "test",
             r"
 fn add(x: int, y: int) -> int {
@@ -414,9 +431,9 @@ return (+ x y);
 
     #[test]
     fn module_fn_no_return_type() {
-        let ast = Ast::default();
+        let ast_allocator = AstAllocator::default();
         let module = parse(
-            &ast,
+            &ast_allocator,
             "test",
             r"
 fn foo() {}
