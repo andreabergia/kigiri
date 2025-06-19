@@ -1,7 +1,7 @@
 use crate::types::Type;
-use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
+use bumpalo::Bump;
+use parser::{resolve_string_id, BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -61,11 +61,19 @@ pub struct TypedBlock<'a> {
     pub symbol_table: &'a SymbolTable<'a>,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum SymbolKind {
+    Function,
+    Variable,
+    Argument,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Symbol {
     pub id: SymbolId,
     pub name: StringId,
     pub symbol_type: Type,
+    pub kind: SymbolKind,
     // TODO: declaration location (span)
 }
 
@@ -345,12 +353,19 @@ impl<'a> SymbolTable<'a> {
         }
     }
 
-    pub fn add_symbol(&self, allocator: &'a Bump, name: StringId, symbol_type: Type) -> SymbolId {
+    pub fn add_symbol(
+        &self,
+        allocator: &'a Bump,
+        name: StringId,
+        symbol_type: Type,
+        kind: SymbolKind,
+    ) -> SymbolId {
         let id = next_symbol_id();
         let symbol = allocator.alloc(Symbol {
             id,
             name,
             symbol_type,
+            kind,
         });
 
         // This allows for name shadowing!

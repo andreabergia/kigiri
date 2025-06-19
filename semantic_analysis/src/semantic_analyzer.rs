@@ -2,7 +2,7 @@ use crate::typed_ast::{
     SymbolId, SymbolTable, TypedBlock, TypedFunctionDeclaration, TypedFunctionSignature,
     TypedFunctionSignaturesByName, TypedModule, TypedStatement,
 };
-use crate::{Type, TypedExpression};
+use crate::{SymbolKind, Type, TypedExpression};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     resolve_string_id, BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator,
@@ -83,8 +83,14 @@ impl SemanticAnalyzer {
             .iter()
             .map(|argument| {
                 let arg_type = self.parse_type(argument.arg_type);
-                arg_type
-                    .map(|arg_type| symbol_table.add_symbol(&self.arena, argument.name, arg_type))
+                arg_type.map(|arg_type| {
+                    symbol_table.add_symbol(
+                        &self.arena,
+                        argument.name,
+                        arg_type,
+                        SymbolKind::Argument,
+                    )
+                })
             })
             .collect::<Result<Vec<SymbolId>, SemanticAnalysisError>>()?;
         let arguments = BumpVec::from_iter_in(arguments.iter().cloned(), &self.arena);
@@ -147,6 +153,7 @@ impl SemanticAnalyzer {
                         &self.arena,
                         initializer.name,
                         value.resolved_type(),
+                        SymbolKind::Variable,
                     );
                     statements.push(self.alloc(TypedStatement::Let { symbol, value }));
                 }
@@ -693,6 +700,7 @@ mod tests {
                 .lookup_by_name(parser::get_or_create_string("x"))
                 .expect("should have found argument x");
             assert_eq!(Type::Int, symbol.symbol_type);
+            assert_eq!(SymbolKind::Argument, symbol.kind);
         }
 
         test_ok!(
