@@ -125,7 +125,12 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 InstructionPayload::Ret => {
                     self.builder.build_return(None)?;
                 }
-                &InstructionPayload::RetExpr { .. } => todo!(),
+                InstructionPayload::RetExpr {
+                    expression,
+                    operand_type,
+                } => {
+                    self.handle_return_expression(&mut fun_ctx, *expression, operand_type)?;
+                }
                 &InstructionPayload::Load { .. } => todo!(),
             }
         }
@@ -453,6 +458,34 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             LiteralValue::Double(..) => todo!(),
         };
     }
+
+    fn handle_return_expression(
+        &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
+        expression: InstructionId,
+        operand_type: &Type,
+    ) -> Result<(), CodeGenError> {
+        match operand_type {
+            Type::Int => {
+                let operand = fun_ctx
+                    .int_values
+                    .get(expression.as_usize())
+                    .expect("vector should be initialized with the correct length")
+                    .expect("return expression should be an int");
+                self.builder.build_return(Some(&operand))?;
+            }
+            Type::Boolean => {
+                let operand = fun_ctx
+                    .bool_values
+                    .get(expression.as_usize())
+                    .expect("vector should be initialized with the correct length")
+                    .expect("return expression should be a bool");
+                self.builder.build_return(Some(&operand))?;
+            }
+            Type::Double => todo!(),
+        }
+        Ok(())
+    }
 }
 
 #[allow(unused)]
@@ -501,11 +534,11 @@ mod tests {
             r"fn simple() {
   1 + 2;
 }
+
+fn add_one(x: int) -> int {
+  return 1;
+}
 ",
-            // fn add_one(x: int) -> int {
-            //     return 1;
-            // }
-            // ",
         );
 
         let context = Context::create();
