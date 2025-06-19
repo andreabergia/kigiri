@@ -4,7 +4,7 @@ use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::values::IntValue;
-use parser::{BinaryOperator, UnaryOperator};
+use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
 use semantic_analysis::Type;
 use thiserror::Error;
 
@@ -22,58 +22,72 @@ impl From<BuilderError> for CodeGenError {
     }
 }
 
-struct LlvmGenerator<'c, 'm, 'b, 'b2>
-where
-    'c: 'm,
-{
-    context: &'c Context,
-    module: &'m Module<'c>,
-    builder: Builder<'c>,
-    ir_allocator: &'b codegen::BasicBlock<'b2>,
-
+struct FunctionContext<'c> {
     // Vectors are indexed by instruction id. There's a bit of space wasted,
     // but it makes everything quite simple and fast.
     int_values: Vec<Option<IntValue<'c>>>,
     bool_values: Vec<Option<IntValue<'c>>>,
 }
 
-impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
-    fn new(
-        context: &'c Context,
-        module: &'m Module<'c>,
-        ir_allocator: &'b codegen::BasicBlock<'b2>,
-    ) -> Self {
-        let builder = context.create_builder();
-        let num_ir_instructions = ir_allocator.instructions.borrow().len();
+impl FunctionContext<'_> {
+    fn new(num_instructions: usize) -> Self {
+        let mut int_values = Vec::with_capacity(num_instructions);
+        int_values.resize(num_instructions, None);
 
-        let mut int_values = Vec::with_capacity(num_ir_instructions);
-        int_values.resize(num_ir_instructions, None);
-
-        let mut bool_values = Vec::with_capacity(num_ir_instructions);
-        bool_values.resize(num_ir_instructions, None);
+        let mut bool_values = Vec::with_capacity(num_instructions);
+        bool_values.resize(num_instructions, None);
 
         Self {
-            context,
-            module,
-            builder,
-            ir_allocator,
             int_values,
             bool_values,
         }
     }
+}
+
+struct LlvmGenerator<'c, 'm, 'm2>
+where
+    'c: 'm,
+{
+    context: &'c Context,
+    llvm_module: Module<'c>,
+    builder: Builder<'c>,
+    ir_module: &'m codegen::Module<'m2>,
+}
+
+impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
+    fn new(context: &'c Context, ir_module: &'m codegen::Module<'m2>) -> Self {
+        let llvm_module =
+            context.create_module(resolve_string_id(ir_module.name).expect("module name"));
+        let builder = context.create_builder();
+        Self {
+            context,
+            llvm_module,
+            builder,
+            ir_module,
+        }
+    }
 
     fn generate(&mut self) -> Result<(), CodeGenError> {
+        for function in self.ir_module.functions.iter() {
+            self.generate_fun(function)?;
+        }
+        Ok(())
+    }
+
+    fn generate_fun(&mut self, function: &codegen::Function) -> Result<(), CodeGenError> {
+        let mut fun_ctx = FunctionContext::new(function.body.instructions.borrow().len());
+
         let fn_type = self.context.void_type().fn_type(&[], false);
-        let fun = self.module.add_function("test", fn_type, None);
+        let fun = self.llvm_module.add_function("test", fn_type, None);
 
         let bb = self.context.append_basic_block(fun, "entry");
 
         self.builder.position_at_end(bb);
 
-        for instruction in self.ir_allocator.instructions.borrow().iter() {
+        for instruction in function.body.instructions.borrow().iter() {
             match &instruction.payload {
                 InstructionPayload::Constant { constant, .. } => {
-                    self.handle_constant(instruction.id, constant);
+                    self.handle_constant(&mut fun_ctx, instruction.id, constant);
                 }
 
                 InstructionPayload::Unary {
@@ -81,7 +95,13 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
                     operator,
                     operand,
                 } => {
-                    self.handle_unary(instruction.id, operand_type, operator, *operand)?;
+                    self.handle_unary(
+                        &mut fun_ctx,
+                        instruction.id,
+                        operand_type,
+                        operator,
+                        *operand,
+                    )?;
                 }
                 InstructionPayload::Binary {
                     operand_type,
@@ -89,7 +109,14 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
                     left,
                     right,
                 } => {
-                    self.handle_binary(instruction.id, operand_type, operator, *left, *right)?;
+                    self.handle_binary(
+                        &mut fun_ctx,
+                        instruction.id,
+                        operand_type,
+                        operator,
+                        *left,
+                        *right,
+                    )?;
                 }
                 InstructionPayload::Ret => {
                     self.builder.build_return(None)?;
@@ -112,6 +139,7 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_binary(
         &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
         id: InstructionId,
         operand_type: &Type,
         operator: &BinaryOperator,
@@ -120,11 +148,11 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                self.handle_binary_int(id, operator, left, right)?;
+                self.handle_binary_int(fun_ctx, id, operator, left, right)?;
             }
 
             Type::Boolean => {
-                self.handle_binary_boolean(id, operator, left, right)?;
+                self.handle_binary_boolean(fun_ctx, id, operator, left, right)?;
             }
             Type::Double => todo!(),
         }
@@ -133,23 +161,24 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_binary_boolean(
         &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
         id: InstructionId,
         operator: &BinaryOperator,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = self
+        let left = fun_ctx
             .bool_values
             .get(left.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be a bool");
-        let right = self
+        let right = fun_ctx
             .bool_values
             .get(right.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be a bool");
 
-        self.bool_values[id.as_usize()] = Some(match operator {
+        fun_ctx.bool_values[id.as_usize()] = Some(match operator {
             BinaryOperator::Add
             | BinaryOperator::Sub
             | BinaryOperator::Mul
@@ -188,23 +217,24 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_binary_int(
         &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
         id: InstructionId,
         operator: &BinaryOperator,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = self
+        let left = fun_ctx
             .int_values
             .get(left.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be an int");
-        let right = self
+        let right = fun_ctx
             .int_values
             .get(right.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be an int");
 
-        self.int_values[id.as_usize()] = Some(match operator {
+        fun_ctx.int_values[id.as_usize()] = Some(match operator {
             BinaryOperator::Add => {
                 self.builder
                     .build_int_add(left, right, &Self::name("add", id))?
@@ -296,6 +326,7 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_unary(
         &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
         id: InstructionId,
         operand_type: &Type,
         operator: &UnaryOperator,
@@ -303,10 +334,10 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                self.handle_unary_int(id, operator, operand)?;
+                self.handle_unary_int(fun_ctx, id, operator, operand)?;
             }
             Type::Boolean => {
-                self.handle_unary_boolean(id, operator, operand)?;
+                self.handle_unary_boolean(fun_ctx, id, operator, operand)?;
             }
             Type::Double => todo!(),
         }
@@ -319,16 +350,17 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_unary_boolean(
         &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
         id: InstructionId,
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = self
+        let operand = fun_ctx
             .bool_values
             .get(operand.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("unary operand should be a bool");
-        self.bool_values[id.as_usize()] = Some(match operator {
+        fun_ctx.bool_values[id.as_usize()] = Some(match operator {
             UnaryOperator::Neg | UnaryOperator::BitwiseNot => {
                 unreachable!()
             }
@@ -339,16 +371,17 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 
     fn handle_unary_int(
         &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
         id: InstructionId,
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = self
+        let operand = fun_ctx
             .int_values
             .get(operand.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("unary operand should be an int");
-        self.int_values[id.as_usize()] = Some(match operator {
+        fun_ctx.int_values[id.as_usize()] = Some(match operator {
             UnaryOperator::Neg => self
                 .builder
                 .build_int_neg(operand, &Self::name("neg", id))?,
@@ -369,17 +402,22 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
         Ok(())
     }
 
-    fn handle_constant(&mut self, id: InstructionId, constant: &LiteralValue) {
+    fn handle_constant(
+        &mut self,
+        fun_ctx: &mut FunctionContext<'c>,
+        id: InstructionId,
+        constant: &LiteralValue,
+    ) {
         match constant {
             LiteralValue::Integer(value) => {
-                let option = self
+                let option = fun_ctx
                     .int_values
                     .get_mut(id.as_usize())
                     .expect("vector should be initialized with the correct length");
                 *option = Some(self.context.i64_type().const_int(*value as u64, false));
             }
             LiteralValue::Boolean(value) => {
-                let option = self
+                let option = fun_ctx
                     .bool_values
                     .get_mut(id.as_usize())
                     .expect("vector should be initialized with the correct length");
@@ -395,69 +433,57 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
 }
 
 #[allow(unused)]
-fn ir_to_llvm<'c>(
-    context: &'c Context,
-    module: &Module<'c>,
-    ir_allocator: &codegen::BasicBlock,
-) -> Result<(), CodeGenError> {
-    let mut builder = LlvmGenerator::new(context, module, ir_allocator);
+fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<(), CodeGenError> {
+    let mut builder = LlvmGenerator::new(context, module);
     builder.generate()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::build_ir_expression;
-    use codegen::{BasicBlock, IrAllocator};
+    use codegen::IrAllocator;
+    use codegen::build_ir_module;
     use inkwell::context::Context;
-    use semantic_analysis::{SemanticAnalyzer, TypedExpression};
+    use semantic_analysis::{SemanticAnalyzer, TypedModule};
     use std::io::{Write, stderr};
 
     // TODO: this needs to not be so duplicated across projects
-    fn make_analyzed_ast<'te>(
-        semantic_analyzer: &'te SemanticAnalyzer,
+    fn make_analyzed_ast<'s>(
+        semantic_analyzer: &'s SemanticAnalyzer,
         source: &str,
-    ) -> &'te TypedExpression<'te> {
+    ) -> &'s TypedModule<'s> {
         let ast_allocator = parser::AstAllocator::default();
-        let expression = parser::parse_as_expression(&ast_allocator, source);
-        let symbol_table = semantic_analyzer.symbol_table(None);
+        let module = parser::parse(&ast_allocator, "test", source);
 
-        let result = semantic_analyzer.analyze_expression(expression, symbol_table);
+        let result = semantic_analyzer.analyze_module(module);
         result.expect("should have passed semantic analysis")
     }
 
-    fn basic_block_from_source<'i>(
-        ir_allocator: &'i IrAllocator,
-        source: &str,
-    ) -> &'i BasicBlock<'i> {
+    fn handle_module<'i>(ir_allocator: &'i IrAllocator, source: &str) -> &'i codegen::Module<'i> {
         let semantic_analyzer = SemanticAnalyzer::default();
-        let expression = make_analyzed_ast(&semantic_analyzer, source);
-        let bb = build_ir_expression(
-            ir_allocator,
-            expression,
-            semantic_analyzer.symbol_table(None),
-        );
+        let module = make_analyzed_ast(&semantic_analyzer, source);
+        let module = build_ir_module(ir_allocator, module);
 
-        let bb_ir = bb
-            .instructions
-            .borrow()
-            .iter()
-            .map(|i| i.to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
-        eprintln!("BasicBlock IR:\n{}", bb_ir);
+        eprintln!("Module IR:\n{}", module);
         stderr().flush().unwrap();
 
-        bb
+        module
     }
 
     #[test]
     fn test_ir_to_llvm() {
         let ir_allocator = IrAllocator::new();
-        let basic_block = basic_block_from_source(&ir_allocator, "1 + 2 * 3");
+        let basic_block = handle_module(
+            &ir_allocator,
+            r"fn simple() {
+  1 + 2;
+}", // TODO
+                //             r"fn add_one(x: int) -> int {
+                //     return 1 + x;
+                // }",
+        );
 
         let context = Context::create();
-        let module = context.create_module("test");
-        ir_to_llvm(&context, &module, basic_block).unwrap();
+        ir_to_llvm(&context, basic_block).unwrap();
     }
 }

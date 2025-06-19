@@ -129,7 +129,7 @@ impl<'i> FunctionIrBuilder<'i> {
     }
 }
 
-pub fn build_ir_expression<'i>(
+fn build_ir_expression<'i>(
     ir_allocator: &'i IrAllocator,
     expression: &TypedExpression,
     symbol_table: &SymbolTable,
@@ -139,7 +139,7 @@ pub fn build_ir_expression<'i>(
     builder.first_bb
 }
 
-fn build_ir_module<'i>(ir_allocator: &'i IrAllocator, module: &TypedModule) -> &'i Module<'i> {
+pub fn build_ir_module<'i>(ir_allocator: &'i IrAllocator, module: &TypedModule) -> &'i Module<'i> {
     let mut functions = ir_allocator.functions();
     for function in &module.functions {
         let fn_builder = FunctionIrBuilder::new(ir_allocator);

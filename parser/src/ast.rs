@@ -1,4 +1,4 @@
-use crate::symbols::{get_or_create_string, resolve_string_id, StringId};
+use crate::symbols::{StringId, get_or_create_string, resolve_string_id};
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::Cell;
 use std::collections::HashMap;
