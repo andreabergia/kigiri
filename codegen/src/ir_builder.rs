@@ -1,4 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
+use crate::FunctionSignature;
 use semantic_analysis::{
     SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
 };
@@ -21,13 +22,26 @@ impl<'i> FunctionIrBuilder<'i> {
     }
 
     fn generate(&self, function: &TypedFunctionDeclaration) -> &'i Function<'i> {
-        let first_bb = self.first_bb;
+        let signature = self.generate_function_signature(function);
 
+        let first_bb = self.first_bb;
+        let mut found_return = false;
         for statement in function.body.statements.iter() {
-            self.handle_statement(statement, function.symbol_table);
+            found_return |= self.handle_statement(statement, function.symbol_table);
+        }
+        if !found_return {
+            // If no return statement was found, we add an implicit return
+            self.push_to_current_bb(self.ir_allocator.new_ret());
         }
 
-        let signature = self.ir_allocator.function_signature(
+        self.ir_allocator.function(signature, first_bb)
+    }
+
+    fn generate_function_signature(
+        &self,
+        function: &TypedFunctionDeclaration,
+    ) -> &'i FunctionSignature<'i> {
+        self.ir_allocator.function_signature(
             function.signature.name,
             function.signature.return_type.clone(),
             self.ir_allocator
@@ -41,12 +55,10 @@ impl<'i> FunctionIrBuilder<'i> {
                         argument_type: symbol.symbol_type.clone(),
                     }
                 })),
-        );
-
-        self.ir_allocator.function(signature, first_bb)
+        )
     }
 
-    fn handle_statement(&self, statement: &TypedStatement, symbol_table: &SymbolTable) {
+    fn handle_statement(&self, statement: &TypedStatement, symbol_table: &SymbolTable) -> bool {
         match statement {
             TypedStatement::Let { .. } => todo!(),
             TypedStatement::Assignment { .. } => todo!(),
@@ -57,9 +69,11 @@ impl<'i> FunctionIrBuilder<'i> {
                 } else {
                     self.push_to_current_bb(self.ir_allocator.new_ret())
                 }
+                true
             }
             TypedStatement::Expression { expression } => {
                 self.handle_expression(expression, symbol_table);
+                false
             }
             TypedStatement::NestedBlock { .. } => todo!(),
         }
@@ -308,7 +322,6 @@ fn add_one(
 }
 "
         );
-
         test_module_ir!(
             multiple_fn_reset_ir_counter,
             r"fn one() -> int { return 1; }
@@ -326,6 +339,18 @@ fn two(
 { #1
   00000 i const 2i
   00001 i ret @0
+}
+"
+        );
+        test_module_ir!(
+            implicit_return_is_generated,
+            "fn empty() { }",
+            r"module test
+
+fn empty(
+) -> void
+{ #0
+  00000 v ret
 }
 "
         );

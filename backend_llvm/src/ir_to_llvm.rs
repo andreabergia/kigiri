@@ -1,11 +1,11 @@
 use codegen::{InstructionId, InstructionPayload, LiteralValue};
-use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::IntValue;
-use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
+use inkwell::IntPredicate;
+use parser::{resolve_string_id, BinaryOperator, UnaryOperator};
 use semantic_analysis::Type;
 use thiserror::Error;
 
@@ -129,9 +129,6 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 &InstructionPayload::Load { .. } => todo!(),
             }
         }
-
-        // TODO: remove
-        self.builder.build_return(None)?;
 
         if !fun.verify(true) {
             panic!("Invalid function");
@@ -467,11 +464,11 @@ fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<(), CodeGen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::IrAllocator;
     use codegen::build_ir_module;
+    use codegen::IrAllocator;
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedModule};
-    use std::io::{Write, stderr};
+    use std::io::{stderr, Write};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(

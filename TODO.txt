@@ -2,7 +2,7 @@ Parser
 - [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
 
 IR generator
-- ensure there's always a return
+- [x] ensure there's always a return
 
 LLVM backend
 - [ ] variables
