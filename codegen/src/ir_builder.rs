@@ -1,5 +1,7 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use semantic_analysis::{TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement};
+use semantic_analysis::{
+    SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
+};
 
 struct FunctionIrBuilder<'i> {
     ir_allocator: &'i IrAllocator,
@@ -21,7 +23,7 @@ impl<'i> FunctionIrBuilder<'i> {
         let first_bb = self.first_bb;
 
         for statement in function.body.statements.iter() {
-            self.handle_statement(statement);
+            self.handle_statement(statement, function.symbol_table);
         }
 
         let signature = self.ir_allocator.function_signature(
@@ -43,29 +45,43 @@ impl<'i> FunctionIrBuilder<'i> {
         self.ir_allocator.function(signature, first_bb)
     }
 
-    fn handle_statement(&self, statement: &TypedStatement) {
+    fn handle_statement(&self, statement: &TypedStatement, symbol_table: &SymbolTable) {
         match statement {
             TypedStatement::Let { .. } => todo!(),
             TypedStatement::Assignment { .. } => todo!(),
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
-                    let instruction = self.handle_expression(value);
+                    let instruction = self.handle_expression(value, symbol_table);
                     self.push_to_current_bb(self.ir_allocator.new_ret_expr(instruction));
                 } else {
                     self.push_to_current_bb(self.ir_allocator.new_ret())
                 }
             }
             TypedStatement::Expression { expression } => {
-                self.handle_expression(expression);
+                self.handle_expression(expression, symbol_table);
             }
             TypedStatement::NestedBlock { .. } => todo!(),
         }
     }
 
-    fn handle_expression(&self, expression: &TypedExpression) -> &'i Instruction {
+    fn handle_expression(
+        &self,
+        expression: &TypedExpression,
+        symbol_table: &SymbolTable,
+    ) -> &'i Instruction {
         match expression {
-            TypedExpression::Identifier { .. } => {
-                todo!()
+            TypedExpression::Identifier {
+                resolved_type,
+                symbol_id,
+            } => {
+                let symbol = symbol_table
+                    .lookup_by_id(*symbol_id)
+                    .expect("should find identifier in symbol table");
+
+                let instruction = self.ir_allocator.new_load(symbol);
+
+                self.push_to_current_bb(instruction);
+                instruction
             }
             TypedExpression::Literal {
                 resolved_type,
@@ -80,7 +96,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 operator,
                 operand,
             } => {
-                let operand_instruction = self.handle_expression(operand);
+                let operand_instruction = self.handle_expression(operand, symbol_table);
 
                 let instruction = self
                     .ir_allocator
@@ -94,8 +110,8 @@ impl<'i> FunctionIrBuilder<'i> {
                 left,
                 right,
             } => {
-                let left_instruction = self.handle_expression(left);
-                let right_instruction = self.handle_expression(right);
+                let left_instruction = self.handle_expression(left, symbol_table);
+                let right_instruction = self.handle_expression(right, symbol_table);
 
                 let instruction = self.ir_allocator.new_binary(
                     operator.clone(),
@@ -116,9 +132,10 @@ impl<'i> FunctionIrBuilder<'i> {
 pub fn build_ir_expression<'i>(
     ir_allocator: &'i IrAllocator,
     expression: &TypedExpression,
+    symbol_table: &SymbolTable,
 ) -> &'i BasicBlock<'i> {
     let builder = FunctionIrBuilder::new(ir_allocator);
-    builder.handle_expression(expression);
+    builder.handle_expression(expression, symbol_table);
     builder.first_bb
 }
 
@@ -155,9 +172,13 @@ mod tests {
             ir_allocator: &'i IrAllocator,
             source: &str,
         ) -> &'i BasicBlock<'i> {
-            let semantic_analysis = SemanticAnalyzer::default();
-            let expression = analyze_expression(&semantic_analysis, source);
-            build_ir_expression(ir_allocator, expression)
+            let semantic_analyzer = SemanticAnalyzer::default();
+            let expression = analyze_expression(&semantic_analyzer, source);
+            build_ir_expression(
+                ir_allocator,
+                expression,
+                semantic_analyzer.symbol_table(None),
+            )
         }
 
         macro_rules! test_expression_ir {
@@ -265,6 +286,24 @@ fn one(
 { #0
   00000 i const 1i
   00001 i ret @0
+}
+"
+        );
+        test_module_ir!(
+            fn_plus_one,
+            r"fn add_one(x: int) -> int {
+    return 1 + x;
+}",
+            r"module test
+
+fn add_one(
+  x: int,
+) -> i
+{ #0
+  00000 i const 1i
+  00001 i load x
+  00002 i add @0, @1
+  00003 i ret @2
 }
 "
         );

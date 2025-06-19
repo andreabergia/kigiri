@@ -95,6 +95,7 @@ impl<'c, 'm, 'b, 'b2> LlvmGenerator<'c, 'm, 'b, 'b2> {
                     self.builder.build_return(None)?;
                 }
                 &InstructionPayload::RetExpr { .. } => todo!(),
+                &InstructionPayload::Load { .. } => todo!(),
             }
         }
 
@@ -431,7 +432,11 @@ mod tests {
     ) -> &'i BasicBlock<'i> {
         let semantic_analyzer = SemanticAnalyzer::default();
         let expression = make_analyzed_ast(&semantic_analyzer, source);
-        let bb = build_ir_expression(ir_allocator, expression);
+        let bb = build_ir_expression(
+            ir_allocator,
+            expression,
+            semantic_analyzer.symbol_table(None),
+        );
 
         let bb_ir = bb
             .instructions

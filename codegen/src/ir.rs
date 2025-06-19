@@ -1,6 +1,6 @@
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
-use semantic_analysis::{SymbolId, Type};
+use semantic_analysis::{Symbol, Type};
 use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
@@ -28,13 +28,6 @@ pub struct FunctionSignature<'a> {
 pub struct FunctionArgument {
     pub name: StringId,
     pub argument_type: Type,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Symbol {
-    pub id: SymbolId,
-    pub name: StringId,
-    pub symbol_type: Type,
 }
 
 #[derive(Debug, PartialEq)]
@@ -74,6 +67,10 @@ pub enum InstructionPayload {
         left: InstructionId,
         right: InstructionId,
     },
+    Load {
+        name: StringId,
+        operand_type: Type,
+    },
 }
 
 // Impls
@@ -92,6 +89,7 @@ impl InstructionPayload {
             InstructionPayload::Constant { operand_type, .. } => Some(operand_type.clone()),
             InstructionPayload::Unary { operand_type, .. } => Some(operand_type.clone()),
             InstructionPayload::Binary { operand_type, .. } => Some(operand_type.clone()),
+            InstructionPayload::Load { operand_type, .. } => Some(operand_type.clone()),
         }
     }
 }
@@ -131,7 +129,7 @@ impl Display for Function<'_> {
                 f,
                 "  {}: {},",
                 resolve_string_id(arg.name).expect("argument name"),
-                arg.argument_type.to_string_short(),
+                arg.argument_type,
             )?;
         }
         writeln!(
@@ -201,6 +199,13 @@ impl Display for InstructionPayload {
                 left,
                 right,
             } => write!(f, "{} @{}, @{}", operator.name(), left, right),
+            InstructionPayload::Load { name, operand_type } => {
+                write!(
+                    f,
+                    "load {}",
+                    resolve_string_id(*name).expect("should find symbol name")
+                )
+            }
         }
     }
 }
@@ -297,6 +302,14 @@ impl IrAllocator {
             operator,
             left: left.id,
             right: right.id,
+        })
+    }
+
+    pub fn new_load<'s>(&'s self, symbol: &Symbol) -> &'s Instruction {
+        // TODO: do we need to distinguish between load of variable and arguments?
+        self.new_instruction(InstructionPayload::Load {
+            name: symbol.name,
+            operand_type: symbol.symbol_type.clone(),
         })
     }
 
