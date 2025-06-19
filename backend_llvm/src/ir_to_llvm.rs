@@ -3,6 +3,7 @@ use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
+use inkwell::types::FunctionType;
 use inkwell::values::IntValue;
 use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
 use semantic_analysis::Type;
@@ -77,11 +78,14 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     fn generate_fun(&mut self, function: &codegen::Function) -> Result<(), CodeGenError> {
         let mut fun_ctx = FunctionContext::new(function.body.instructions.borrow().len());
 
-        let fn_type = self.context.void_type().fn_type(&[], false);
-        let fun = self.llvm_module.add_function("test", fn_type, None);
+        let fn_type = self.make_fun_type(function);
+        let fun = self.llvm_module.add_function(
+            resolve_string_id(function.signature.name).expect("function name"),
+            fn_type,
+            None,
+        );
 
         let bb = self.context.append_basic_block(fun, "entry");
-
         self.builder.position_at_end(bb);
 
         for instruction in function.body.instructions.borrow().iter() {
@@ -135,6 +139,28 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
         fun.print_to_stderr();
         Ok(())
+    }
+
+    fn make_fun_type(&mut self, function: &codegen::Function) -> FunctionType<'c> {
+        let arguments = function
+            .signature
+            .arguments
+            .iter()
+            .map(|arg| match arg.argument_type {
+                Type::Int => self.context.i64_type().into(),
+                Type::Boolean => self.context.bool_type().into(),
+                Type::Double => self.context.f64_type().into(),
+            })
+            .collect::<Vec<_>>();
+
+        match &function.signature.return_type {
+            None => self.context.void_type().fn_type(&arguments, false),
+            Some(t) => match t {
+                Type::Int => self.context.i64_type().fn_type(&arguments, false),
+                Type::Boolean => self.context.bool_type().fn_type(&arguments, false),
+                Type::Double => self.context.f64_type().fn_type(&arguments, false),
+            },
+        }
     }
 
     fn handle_binary(
@@ -477,10 +503,12 @@ mod tests {
             &ir_allocator,
             r"fn simple() {
   1 + 2;
-}", // TODO
-                //             r"fn add_one(x: int) -> int {
-                //     return 1 + x;
-                // }",
+}
+",
+            // fn add_one(x: int) -> int {
+            //     return 1;
+            // }
+            // ",
         );
 
         let context = Context::create();
