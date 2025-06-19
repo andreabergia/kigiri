@@ -11,6 +11,7 @@ struct FunctionIrBuilder<'i> {
 
 impl<'i> FunctionIrBuilder<'i> {
     fn new(ir_allocator: &'i IrAllocator) -> Self {
+        ir_allocator.reset_instruction_id();
         let basic_block = ir_allocator.basic_block();
         Self {
             ir_allocator,
@@ -304,6 +305,27 @@ fn add_one(
   00001 i load x
   00002 i add @0, @1
   00003 i ret @2
+}
+"
+        );
+
+        test_module_ir!(
+            multiple_fn_reset_ir_counter,
+            r"fn one() -> int { return 1; }
+fn two() -> int { return 2; }",
+            r"module test
+
+fn one(
+) -> i
+{ #0
+  00000 i const 1i
+  00001 i ret @0
+}
+fn two(
+) -> i
+{ #1
+  00000 i const 2i
+  00001 i ret @0
 }
 "
         );

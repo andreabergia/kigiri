@@ -243,6 +243,10 @@ impl IrAllocator {
         InstructionId(old)
     }
 
+    pub fn reset_instruction_id(&self) {
+        self.next_instruction_id.replace(0);
+    }
+
     fn new_instruction(&self, payload: InstructionPayload) -> &Instruction {
         self.arena.alloc(Instruction {
             id: self.next_instruction_id(),
