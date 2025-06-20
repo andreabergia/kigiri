@@ -1,10 +1,10 @@
-use codegen::{InstructionId, InstructionPayload, LiteralValue};
+use codegen::{Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
 use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
-use inkwell::values::IntValue;
+use inkwell::values::{FunctionValue, IntValue};
 use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
 use semantic_analysis::{SymbolKind, Type};
 use thiserror::Error;
@@ -75,17 +75,31 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         Ok(())
     }
 
-    fn generate_fun(&mut self, function: &codegen::Function) -> Result<(), CodeGenError> {
-        let mut fun_ctx = FunctionContext::new(function.body.instructions.borrow().len());
-
+    fn generate_fun(&mut self, function: &'m Function) -> Result<(), CodeGenError> {
         let fn_type = self.make_fun_type(function);
         let fun = self.llvm_module.add_function(
             resolve_string_id(function.signature.name).expect("function name"),
             fn_type,
             None,
         );
-
         Self::setup_fun_arg(function, fun)?;
+
+        self.build(function, fun)?;
+
+        if !fun.verify(true) {
+            panic!("Invalid function");
+        }
+
+        fun.print_to_stderr();
+        Ok(())
+    }
+
+    fn build(
+        &mut self,
+        function: &'m Function,
+        fun: FunctionValue<'c>,
+    ) -> Result<(), CodeGenError> {
+        let mut fun_ctx = FunctionContext::new(function.body.instructions.borrow().len());
 
         let bb = self.context.append_basic_block(fun, "entry");
         self.builder.position_at_end(bb);
@@ -136,40 +150,44 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     operand_type,
                     symbol_kind,
                     ..
-                } => match symbol_kind {
-                    SymbolKind::Function => todo!(),
-                    SymbolKind::Variable => todo!(),
-                    SymbolKind::Argument { index } => {
-                        let value = fun
-                            .get_nth_param(index.into())
-                            .expect("valid argument number");
-                        match operand_type {
-                            Type::Int => {
-                                fun_ctx.int_values[instruction.id.as_usize()] =
-                                    Some(value.into_int_value());
-                            }
-                            Type::Boolean => {
-                                fun_ctx.bool_values[instruction.id.as_usize()] =
-                                    Some(value.into_int_value());
-                            }
-                            Type::Double => {
-                                todo!()
-                            }
-                        }
-                    }
-                },
+                } => Self::handle_load(fun, &mut fun_ctx, instruction, operand_type, symbol_kind),
             }
         }
-
-        if !fun.verify(true) {
-            panic!("Invalid function");
-        }
-
-        fun.print_to_stderr();
         Ok(())
     }
 
-    fn make_fun_type(&mut self, function: &codegen::Function) -> FunctionType<'c> {
+    fn handle_load(
+        fun: FunctionValue<'c>,
+        fun_ctx: &mut FunctionContext<'c>,
+        instruction: &Instruction,
+        operand_type: Type,
+        symbol_kind: SymbolKind,
+    ) {
+        match symbol_kind {
+            SymbolKind::Function => todo!(),
+            SymbolKind::Variable => todo!(),
+            SymbolKind::Argument { index } => {
+                let value = fun
+                    .get_nth_param(index.into())
+                    .expect("valid argument number");
+                match operand_type {
+                    Type::Int => {
+                        fun_ctx.int_values[instruction.id.as_usize()] =
+                            Some(value.into_int_value());
+                    }
+                    Type::Boolean => {
+                        fun_ctx.bool_values[instruction.id.as_usize()] =
+                            Some(value.into_int_value());
+                    }
+                    Type::Double => {
+                        todo!()
+                    }
+                }
+            }
+        }
+    }
+
+    fn make_fun_type(&mut self, function: &Function) -> FunctionType<'c> {
         let arguments = function
             .signature
             .arguments
@@ -191,10 +209,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         }
     }
 
-    fn setup_fun_arg(
-        function: &codegen::Function,
-        fun: inkwell::values::FunctionValue<'c>,
-    ) -> Result<(), CodeGenError> {
+    fn setup_fun_arg(function: &Function, fun: FunctionValue<'c>) -> Result<(), CodeGenError> {
         for (i, arg) in function.signature.arguments.iter().enumerate() {
             let arg_value = fun.get_nth_param(i as u32).expect("should have argument");
             arg_value.set_name(resolve_string_id(arg.name).expect("function argument name"));
