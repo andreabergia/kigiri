@@ -1,6 +1,6 @@
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
-use semantic_analysis::{Symbol, Type};
+use semantic_analysis::{Symbol, SymbolKind, Type};
 use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
@@ -70,6 +70,7 @@ pub enum InstructionPayload {
     Load {
         name: StringId,
         operand_type: Type,
+        symbol_kind: SymbolKind,
     },
 }
 
@@ -84,12 +85,12 @@ impl InstructionId {
 impl InstructionPayload {
     pub fn instruction_type(&self) -> Option<Type> {
         match self {
-            InstructionPayload::RetExpr { operand_type, .. } => Some(operand_type.clone()),
+            InstructionPayload::RetExpr { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Ret => None,
-            InstructionPayload::Constant { operand_type, .. } => Some(operand_type.clone()),
-            InstructionPayload::Unary { operand_type, .. } => Some(operand_type.clone()),
-            InstructionPayload::Binary { operand_type, .. } => Some(operand_type.clone()),
-            InstructionPayload::Load { operand_type, .. } => Some(operand_type.clone()),
+            InstructionPayload::Constant { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::Unary { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::Binary { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::Load { operand_type, .. } => Some(*operand_type),
         }
     }
 }
@@ -199,7 +200,9 @@ impl Display for InstructionPayload {
                 left,
                 right,
             } => write!(f, "{} @{}, @{}", operator.name(), left, right),
-            InstructionPayload::Load { name, operand_type } => {
+            InstructionPayload::Load {
+                name, operand_type, ..
+            } => {
                 write!(
                     f,
                     "load {}",
@@ -299,7 +302,7 @@ impl IrAllocator {
         let left_type = left
             .instruction_type()
             .expect("cannot have a binary instruction with a void operand");
-        assert_eq!(Some(left_type.clone()), right.instruction_type());
+        assert_eq!(Some(left_type), right.instruction_type());
 
         self.new_instruction(InstructionPayload::Binary {
             operand_type: left_type,
@@ -313,7 +316,8 @@ impl IrAllocator {
         // TODO: do we need to distinguish between load of variable and arguments?
         self.new_instruction(InstructionPayload::Load {
             name: symbol.name,
-            operand_type: symbol.symbol_type.clone(),
+            operand_type: symbol.symbol_type,
+            symbol_kind: symbol.kind,
         })
     }
 

@@ -1,5 +1,5 @@
-use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use crate::FunctionSignature;
+use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use semantic_analysis::{
     SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
 };
@@ -43,7 +43,7 @@ impl<'i> FunctionIrBuilder<'i> {
     ) -> &'i FunctionSignature<'i> {
         self.ir_allocator.function_signature(
             function.signature.name,
-            function.signature.return_type.clone(),
+            function.signature.return_type,
             self.ir_allocator
                 .function_arguments(function.signature.arguments.iter().map(|arg| {
                     let symbol = function
@@ -52,7 +52,7 @@ impl<'i> FunctionIrBuilder<'i> {
                         .expect("should find function argument in symbol table");
                     FunctionArgument {
                         name: symbol.name,
-                        argument_type: symbol.symbol_type.clone(),
+                        argument_type: symbol.symbol_type,
                     }
                 })),
         )

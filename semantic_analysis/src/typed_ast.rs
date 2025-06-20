@@ -65,7 +65,7 @@ pub struct TypedBlock<'a> {
 pub enum SymbolKind {
     Function,
     Variable,
-    Argument,
+    Argument { index: u16 },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -404,10 +404,10 @@ impl<'a> SymbolTable<'a> {
 impl TypedExpression<'_> {
     pub fn resolved_type(&self) -> Type {
         match self {
-            TypedExpression::Identifier { resolved_type, .. } => resolved_type.clone(),
-            TypedExpression::Literal { resolved_type, .. } => resolved_type.clone(),
-            TypedExpression::Unary { resolved_type, .. } => resolved_type.clone(),
-            TypedExpression::Binary { resolved_type, .. } => resolved_type.clone(),
+            TypedExpression::Identifier { resolved_type, .. } => *resolved_type,
+            TypedExpression::Literal { resolved_type, .. } => *resolved_type,
+            TypedExpression::Unary { resolved_type, .. } => *resolved_type,
+            TypedExpression::Binary { resolved_type, .. } => *resolved_type,
         }
     }
 }

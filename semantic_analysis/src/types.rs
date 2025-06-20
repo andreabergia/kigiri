@@ -2,7 +2,7 @@ use parser::LiteralValue;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Type {
     Int,
     Double,

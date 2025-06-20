@@ -1,12 +1,12 @@
 use codegen::{InstructionId, InstructionPayload, LiteralValue};
+use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::IntValue;
-use inkwell::IntPredicate;
-use parser::{resolve_string_id, BinaryOperator, UnaryOperator};
-use semantic_analysis::Type;
+use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
+use semantic_analysis::{SymbolKind, Type};
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
@@ -95,7 +95,6 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 InstructionPayload::Constant { constant, .. } => {
                     self.handle_constant(&mut fun_ctx, instruction.id, constant);
                 }
-
                 InstructionPayload::Unary {
                     operand_type,
                     operator,
@@ -133,7 +132,32 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 } => {
                     self.handle_return_expression(&mut fun_ctx, *expression, operand_type)?;
                 }
-                &InstructionPayload::Load { .. } => todo!(),
+                &InstructionPayload::Load {
+                    operand_type,
+                    symbol_kind,
+                    ..
+                } => match symbol_kind {
+                    SymbolKind::Function => todo!(),
+                    SymbolKind::Variable => todo!(),
+                    SymbolKind::Argument { index } => {
+                        let value = fun
+                            .get_nth_param(index.into())
+                            .expect("valid argument number");
+                        match operand_type {
+                            Type::Int => {
+                                fun_ctx.int_values[instruction.id.as_usize()] =
+                                    Some(value.into_int_value());
+                            }
+                            Type::Boolean => {
+                                fun_ctx.bool_values[instruction.id.as_usize()] =
+                                    Some(value.into_int_value());
+                            }
+                            Type::Double => {
+                                todo!()
+                            }
+                        }
+                    }
+                },
             }
         }
 
@@ -510,11 +534,11 @@ fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<(), CodeGen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::build_ir_module;
     use codegen::IrAllocator;
+    use codegen::build_ir_module;
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedModule};
-    use std::io::{stderr, Write};
+    use std::io::{Write, stderr};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
@@ -544,21 +568,26 @@ mod tests {
         let ir_allocator = IrAllocator::new();
         let basic_block = handle_module(
             &ir_allocator,
-            r"fn simple() {
-  1 + 2;
+            r"fn empty() {
 }
 
 fn add_one(x: int) -> int {
-  return 1;
+  return 1 + x;
 }
 
 fn add(x: int, y: int) -> int {
-  return 2;
+  return x + y;
+}
+
+fn greater(x: int, y: int) -> boolean {
+  return x > y;
 }
 ",
         );
 
         let context = Context::create();
         ir_to_llvm(&context, basic_block).unwrap();
+
+        // TODO: assert something on the generated IR
     }
 }

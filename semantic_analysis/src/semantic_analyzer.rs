@@ -81,14 +81,17 @@ impl SemanticAnalyzer {
             .signature
             .arguments
             .iter()
-            .map(|argument| {
+            .enumerate()
+            .map(|(index, argument)| {
                 let arg_type = self.parse_type(argument.arg_type);
                 arg_type.map(|arg_type| {
                     symbol_table.add_symbol(
                         &self.arena,
                         argument.name,
                         arg_type,
-                        SymbolKind::Argument,
+                        SymbolKind::Argument {
+                            index: index as u16,
+                        },
                     )
                 })
             })
@@ -174,7 +177,7 @@ impl SemanticAnalyzer {
                         if value.resolved_type() != symbol.symbol_type {
                             return Err(SemanticAnalysisError::MismatchedAssignmentType {
                                 symbol_name,
-                                symbol_type: symbol.symbol_type.clone(),
+                                symbol_type: symbol.symbol_type,
                                 expression_type: value.resolved_type(),
                             });
                         }
@@ -218,7 +221,7 @@ impl SemanticAnalyzer {
                 match symbol {
                     Some(symbol) => Ok(self.alloc(TypedExpression::Identifier {
                         symbol_id: symbol.id,
-                        resolved_type: symbol.symbol_type.clone(),
+                        resolved_type: symbol.symbol_type,
                     })),
                     None => Err(SemanticAnalysisError::SymbolNotFound {
                         name: resolve_string_id(*symbol_id)
@@ -238,16 +241,16 @@ impl SemanticAnalyzer {
             Expression::Unary { operator, operand } => {
                 let typed_operand = self.analyze_expression(operand, symbol_table)?;
                 let operand_type = typed_operand.resolved_type();
-                if (Self::unary_op_is_allowed(operator.clone(), operand_type.clone())) {
+                if (Self::unary_op_is_allowed(operator.clone(), operand_type)) {
                     Ok(self.alloc(TypedExpression::Unary {
-                        resolved_type: operand_type.clone(),
+                        resolved_type: operand_type,
                         operator: operator.clone(),
                         operand: typed_operand,
                     }))
                 } else {
                     Err(SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                         operator: operator.clone(),
-                        operand_type: operand_type.clone(),
+                        operand_type,
                     })
                 }
             }
@@ -262,10 +265,9 @@ impl SemanticAnalyzer {
                 let typed_right = self.analyze_expression(right, symbol_table)?;
                 let left_type = typed_left.resolved_type();
                 let right_type = typed_right.resolved_type();
-                if Self::bin_op_is_allowed(operator.clone(), left_type.clone(), right_type.clone())
-                {
+                if Self::bin_op_is_allowed(operator.clone(), left_type, right_type) {
                     Ok(self.alloc(TypedExpression::Binary {
-                        resolved_type: left_type.clone(),
+                        resolved_type: left_type,
                         operator: operator.clone(),
                         left: typed_left,
                         right: typed_right,
@@ -273,8 +275,8 @@ impl SemanticAnalyzer {
                 } else {
                     Err(SemanticAnalysisError::CannotApplyBinaryOperatorToType {
                         operator: operator.clone(),
-                        left_type: left_type.clone(),
-                        right_type: right_type.clone(),
+                        left_type,
+                        right_type,
                     })
                 }
             }
@@ -700,7 +702,7 @@ mod tests {
                 .lookup_by_name(parser::get_or_create_string("x"))
                 .expect("should have found argument x");
             assert_eq!(Type::Int, symbol.symbol_type);
-            assert_eq!(SymbolKind::Argument, symbol.kind);
+            assert_eq!(SymbolKind::Argument { index: 0 }, symbol.kind);
         }
 
         test_ok!(
