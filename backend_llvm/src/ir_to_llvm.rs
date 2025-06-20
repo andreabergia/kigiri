@@ -85,6 +85,8 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             None,
         );
 
+        Self::setup_fun_arg(function, fun)?;
+
         let bb = self.context.append_basic_block(fun, "entry");
         self.builder.position_at_end(bb);
 
@@ -163,6 +165,17 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 Type::Double => self.context.f64_type().fn_type(&arguments, false),
             },
         }
+    }
+
+    fn setup_fun_arg(
+        function: &codegen::Function,
+        fun: inkwell::values::FunctionValue<'c>,
+    ) -> Result<(), CodeGenError> {
+        for (i, arg) in function.signature.arguments.iter().enumerate() {
+            let arg_value = fun.get_nth_param(i as u32).expect("should have argument");
+            arg_value.set_name(resolve_string_id(arg.name).expect("function argument name"));
+        }
+        Ok(())
     }
 
     fn handle_binary(
@@ -537,6 +550,10 @@ mod tests {
 
 fn add_one(x: int) -> int {
   return 1;
+}
+
+fn add(x: int, y: int) -> int {
+  return 2;
 }
 ",
         );
