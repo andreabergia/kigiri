@@ -5,7 +5,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::{FunctionValue, IntValue};
-use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
+use parser::{BinaryOperator, StringId, UnaryOperator, resolve_string_id};
 use semantic_analysis::{SymbolKind, Type};
 use thiserror::Error;
 
@@ -146,11 +146,16 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 } => {
                     self.handle_return_expression(&mut fun_ctx, *expression, operand_type)?;
                 }
-                &InstructionPayload::Load {
+                InstructionPayload::Load {
                     operand_type,
                     symbol_kind,
                     ..
-                } => Self::handle_load(fun, &mut fun_ctx, instruction, operand_type, symbol_kind),
+                } => Self::handle_load(fun, &mut fun_ctx, instruction, operand_type, *symbol_kind),
+                InstructionPayload::Let {
+                    name,
+                    operand_type,
+                    initializer,
+                } => Self::handle_let(fun, &mut fun_ctx, *name, operand_type, *initializer),
             }
         }
         Ok(())
@@ -160,7 +165,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         fun: FunctionValue<'c>,
         fun_ctx: &mut FunctionContext<'c>,
         instruction: &Instruction,
-        operand_type: Type,
+        operand_type: &Type,
         symbol_kind: SymbolKind,
     ) {
         match symbol_kind {
@@ -185,6 +190,16 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 }
             }
         }
+    }
+
+    fn handle_let(
+        fun: FunctionValue<'c>,
+        fun_ctx: &mut FunctionContext<'c>,
+        name: StringId,
+        operand_type: &Type,
+        initializer: InstructionId,
+    ) {
+        todo!()
     }
 
     fn make_fun_type(&mut self, function: &Function) -> FunctionType<'c> {

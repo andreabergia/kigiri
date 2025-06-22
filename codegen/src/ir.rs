@@ -72,6 +72,11 @@ pub enum InstructionPayload {
         operand_type: Type,
         symbol_kind: SymbolKind,
     },
+    Let {
+        name: StringId,
+        operand_type: Type,
+        initializer: InstructionId,
+    },
 }
 
 // Impls
@@ -91,6 +96,7 @@ impl InstructionPayload {
             InstructionPayload::Unary { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Binary { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Load { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::Let { operand_type, .. } => Some(*operand_type),
         }
     }
 }
@@ -180,33 +186,33 @@ impl Display for InstructionId {
 impl Display for InstructionPayload {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            InstructionPayload::RetExpr {
-                operand_type,
-                expression,
-            } => write!(f, "ret @{}", expression),
+            InstructionPayload::RetExpr { expression, .. } => write!(f, "ret @{}", expression),
             InstructionPayload::Ret => write!(f, "ret"),
-            InstructionPayload::Constant {
-                operand_type,
-                constant,
-            } => write!(f, "const {}", constant),
+            InstructionPayload::Constant { constant, .. } => write!(f, "const {}", constant),
             InstructionPayload::Unary {
-                operand_type,
-                operator,
-                operand,
+                operator, operand, ..
             } => write!(f, "{} @{}", operator.name(), operand),
             InstructionPayload::Binary {
-                operand_type,
                 operator,
                 left,
                 right,
+                ..
             } => write!(f, "{} @{}, @{}", operator.name(), left, right),
-            InstructionPayload::Load {
-                name, operand_type, ..
-            } => {
+            InstructionPayload::Load { name, .. } => {
                 write!(
                     f,
                     "load {}",
                     resolve_string_id(*name).expect("should find symbol name")
+                )
+            }
+            InstructionPayload::Let {
+                name, initializer, ..
+            } => {
+                write!(
+                    f,
+                    "let {} = @{}",
+                    resolve_string_id(*name).expect("should find symbol name"),
+                    initializer
                 )
             }
         }
@@ -268,7 +274,7 @@ impl IrAllocator {
         self.new_instruction(InstructionPayload::Ret)
     }
 
-    pub fn new_ret_expr<'s>(&'s self, expression: &Instruction) -> &'s Instruction {
+    pub fn new_ret_expr(&self, expression: &Instruction) -> &Instruction {
         let operand_type = expression
             .instruction_type()
             .expect("cannot have a ret expression with a void operand");
@@ -312,12 +318,25 @@ impl IrAllocator {
         })
     }
 
-    pub fn new_load<'s>(&'s self, symbol: &Symbol) -> &'s Instruction {
+    pub fn new_load(&self, symbol: &Symbol) -> &Instruction {
         // TODO: do we need to distinguish between load of variable and arguments?
         self.new_instruction(InstructionPayload::Load {
             name: symbol.name,
             operand_type: symbol.symbol_type,
             symbol_kind: symbol.kind,
+        })
+    }
+
+    pub fn new_let(
+        &self,
+        name: StringId,
+        operand_type: Type,
+        initializer: InstructionId,
+    ) -> &Instruction {
+        self.new_instruction(InstructionPayload::Let {
+            name,
+            operand_type,
+            initializer,
         })
     }
 

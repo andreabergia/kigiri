@@ -10,6 +10,12 @@ struct FunctionIrBuilder<'i> {
     current_bb: &'i BasicBlock<'i>,
 }
 
+#[derive(Debug, PartialEq)]
+enum FoundReturn {
+    Yes,
+    No,
+}
+
 impl<'i> FunctionIrBuilder<'i> {
     fn new(ir_allocator: &'i IrAllocator) -> Self {
         ir_allocator.reset_instruction_id();
@@ -27,7 +33,9 @@ impl<'i> FunctionIrBuilder<'i> {
         let first_bb = self.first_bb;
         let mut found_return = false;
         for statement in function.body.statements.iter() {
-            found_return |= self.handle_statement(statement, function.symbol_table);
+            if self.handle_statement(statement, function.symbol_table) == FoundReturn::Yes {
+                found_return = true;
+            }
         }
         if !found_return {
             // If no return statement was found, we add an implicit return
@@ -58,9 +66,25 @@ impl<'i> FunctionIrBuilder<'i> {
         )
     }
 
-    fn handle_statement(&self, statement: &TypedStatement, symbol_table: &SymbolTable) -> bool {
+    fn handle_statement(
+        &self,
+        statement: &TypedStatement,
+        symbol_table: &SymbolTable,
+    ) -> FoundReturn {
         match statement {
-            TypedStatement::Let { .. } => todo!(),
+            TypedStatement::Let { symbol, value } => {
+                let initializer = self.handle_expression(value, symbol_table);
+
+                let symbol = symbol_table
+                    .lookup_by_id(*symbol)
+                    .expect("should find symbol in symbol table");
+
+                let instruction =
+                    self.ir_allocator
+                        .new_let(symbol.name, symbol.symbol_type, initializer.id);
+                self.push_to_current_bb(instruction);
+                FoundReturn::No
+            }
             TypedStatement::Assignment { .. } => todo!(),
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
@@ -69,11 +93,11 @@ impl<'i> FunctionIrBuilder<'i> {
                 } else {
                     self.push_to_current_bb(self.ir_allocator.new_ret())
                 }
-                true
+                FoundReturn::Yes
             }
             TypedStatement::Expression { expression } => {
                 self.handle_expression(expression, symbol_table);
-                false
+                FoundReturn::No
             }
             TypedStatement::NestedBlock { .. } => todo!(),
         }
@@ -354,5 +378,44 @@ fn empty(
 }
 "
         );
+        test_module_ir!(
+            variable_declaration,
+            r"fn var() -> int { 
+    let y = 1;
+    return y;
+}",
+            r"module test
+
+fn var(
+) -> i
+{ #0
+  00000 i const 1i
+  00001 i let y = @0
+  00002 i load y
+  00003 i ret @2
+}
+"
+        );
+        //         test_module_ir!(
+        //             variable_assignment,
+        //             r"fn var() -> int {
+        //     let y = 1;
+        //     y = 2;
+        //     return y;
+        // }",
+        //             r"module test
+        //
+        // fn var(
+        // ) -> i
+        // { #0
+        //   00000 i const 1i
+        //   00001 i let y = @0
+        //   00002 i const 2i
+        //   00003 i store y @2
+        //   00004 i load y
+        //   00005 i ret @4
+        // }
+        // "
+        //         );
     }
 }
