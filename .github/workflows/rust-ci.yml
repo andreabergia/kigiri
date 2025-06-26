@@ -38,11 +38,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-index-
 
-      - name: Setup Rust toolchain
-        run: |
-          rustup install 1.85.1  --profile minimal --no-self-update
-          rustup component add clippy
-
       - name: Run tests
         run: cargo test
         env:
