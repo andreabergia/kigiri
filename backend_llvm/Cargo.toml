@@ -9,3 +9,6 @@ thiserror = { workspace = true }
 parser = { path = "../parser" }
 semantic_analysis = { path = "../semantic_analysis" }
 codegen = { path = "../codegen" }
+
+[dev-dependencies]
+insta = { workspace = true }

@@ -682,6 +682,42 @@ fn declare_var() {
         let llvm_ir = ir_to_llvm(&context, basic_block).unwrap();
 
         println!("Generated LLVM IR:\n{}", llvm_ir);
-        // TODO: assert something on the generated IR
+
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define void @empty() {
+        entry:
+          ret void
+        }
+
+        define i64 @add_one(i64 %x) {
+        entry:
+          %add_2 = add i64 1, %x
+          ret i64 %add_2
+        }
+
+        define i64 @add(i64 %x, i64 %y) {
+        entry:
+          %add_2 = add i64 %x, %y
+          ret i64 %add_2
+        }
+
+        define i1 @greater(i64 %x, i64 %y) {
+        entry:
+          %gt_2 = icmp sgt i64 %x, %y
+          ret i1 %gt_2
+        }
+
+        define void @declare_var() {
+        entry:
+          %x = alloca i64, align 8
+          %y = alloca i1, align 1
+          store i64 1, ptr %x, align 4
+          store i1 true, ptr %y, align 1
+          ret void
+        }
+        "#);
     }
 }
