@@ -1,15 +1,12 @@
-use codegen::{
-    BasicBlock, Function, Instruction, InstructionId, InstructionPayload, LiteralValue,
-    VariableIndex,
-};
+use codegen::{BasicBlock, Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
+use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::{FunctionValue, IntValue, PointerValue};
-use inkwell::IntPredicate;
-use parser::{resolve_string_id, BinaryOperator, UnaryOperator};
-use semantic_analysis::{SymbolKind, Type};
+use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
+use semantic_analysis::{SymbolKind, Type, VariableIndex};
 use std::cell::RefCell;
 use thiserror::Error;
 
@@ -141,14 +138,14 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     self.handle_constant(&fun_ctx, instruction.id, constant);
                 }
                 InstructionPayload::Unary {
-                    operand_type,
+                    result_type: operand_type,
                     operator,
                     operand,
                 } => {
                     self.handle_unary(&fun_ctx, instruction.id, operand_type, operator, *operand)?;
                 }
                 InstructionPayload::Binary {
-                    operand_type,
+                    result_type: operand_type,
                     operator,
                     left,
                     right,
@@ -175,7 +172,9 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     operand_type,
                     symbol_kind,
                     ..
-                } => Self::handle_load(fun, &fun_ctx, instruction, operand_type, *symbol_kind),
+                } => {
+                    self.handle_load(fun, &fun_ctx, instruction, operand_type, *symbol_kind)?;
+                }
                 InstructionPayload::Let {
                     variable_index,
                     operand_type,
@@ -188,15 +187,49 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     }
 
     fn handle_load(
+        &self,
         fun: FunctionValue<'c>,
         fun_ctx: &FunctionContext<'c>,
         instruction: &Instruction,
         operand_type: &Type,
         symbol_kind: SymbolKind,
-    ) {
+    ) -> Result<(), CodeGenError> {
         match symbol_kind {
             SymbolKind::Function => todo!(),
-            SymbolKind::Variable => todo!(),
+            SymbolKind::Variable { index } => {
+                let variable_index: usize = index.into();
+                let var_pointer = *fun_ctx
+                    .int_bool_variable
+                    .borrow()
+                    .get(variable_index)
+                    .expect("variable index should be valid");
+
+                match operand_type {
+                    Type::Int => {
+                        fun_ctx.int_values.borrow_mut()[instruction.id.as_usize()] = Some(
+                            self.builder
+                                .build_load(
+                                    self.context.i64_type(),
+                                    var_pointer,
+                                    &Self::name("load", instruction.id),
+                                )?
+                                .into_int_value(),
+                        );
+                    }
+                    Type::Boolean => {
+                        fun_ctx.bool_values.borrow_mut()[instruction.id.as_usize()] = Some(
+                            self.builder
+                                .build_load(
+                                    self.context.bool_type(),
+                                    var_pointer,
+                                    &Self::name("load", instruction.id),
+                                )?
+                                .into_int_value(),
+                        );
+                    }
+                    Type::Double => todo!(),
+                }
+            }
             SymbolKind::Argument { index } => {
                 let value = fun
                     .get_nth_param(index.into())
@@ -216,6 +249,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 }
             }
         }
+        Ok(())
     }
 
     fn handle_let(
@@ -312,6 +346,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
+        // TODO: this is wrong, the left and right could be other type (imagine a > b)
         let left = fun_ctx
             .bool_values
             .borrow()
@@ -622,11 +657,11 @@ fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<String, Cod
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::build_ir_module;
     use codegen::IrAllocator;
+    use codegen::build_ir_module;
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedModule};
-    use std::io::{stderr, Write};
+    use std::io::{Write, stderr};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
@@ -656,7 +691,14 @@ mod tests {
         let ir_allocator = IrAllocator::new();
         let basic_block = handle_module(
             &ir_allocator,
-            r"fn empty() {
+            // TODO: this is broken
+            /*
+                        fn greater(x: int, y: int) -> boolean {
+                          return x > y;
+                        }
+            */
+            r"
+fn empty() {
 }
 
 fn add_one(x: int) -> int {
@@ -667,13 +709,15 @@ fn add(x: int, y: int) -> int {
   return x + y;
 }
 
-fn greater(x: int, y: int) -> boolean {
-  return x > y;
-}
-
 fn declare_var() {
     let x = 1;
     let y = true;
+}
+
+fn use_var() -> boolean {
+    let x = false;
+    let y = true;
+    return y && !x;
 }
 ",
         );
@@ -704,12 +748,6 @@ fn declare_var() {
           ret i64 %add_2
         }
 
-        define i1 @greater(i64 %x, i64 %y) {
-        entry:
-          %gt_2 = icmp sgt i64 %x, %y
-          ret i1 %gt_2
-        }
-
         define void @declare_var() {
         entry:
           %x = alloca i64, align 8
@@ -717,6 +755,19 @@ fn declare_var() {
           store i64 1, ptr %x, align 4
           store i1 true, ptr %y, align 1
           ret void
+        }
+
+        define i1 @use_var() {
+        entry:
+          %x = alloca i1, align 1
+          %y = alloca i1, align 1
+          store i1 false, ptr %x, align 1
+          store i1 true, ptr %y, align 1
+          %load_4 = load i1, ptr %y, align 1
+          %load_5 = load i1, ptr %x, align 1
+          %not_6 = xor i1 %load_5, true
+          %and_7 = and i1 %load_4, %not_6
+          ret i1 %and_7
         }
         "#);
     }

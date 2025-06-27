@@ -61,10 +61,15 @@ pub struct TypedBlock<'a> {
     pub symbol_table: &'a SymbolTable<'a>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VariableIndex {
+    index: usize,
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum SymbolKind {
     Function,
-    Variable,
+    Variable { index: VariableIndex },
     Argument { index: u16 },
 }
 
@@ -86,6 +91,7 @@ pub struct SymbolTable<'a> {
     symbols_by_id: RefCell<HashMap<SymbolId, &'a Symbol>>,
     symbols_by_name: RefCell<HashMap<StringId, &'a Symbol>>,
     parent: Option<&'a SymbolTable<'a>>,
+    num_variables: RefCell<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -211,6 +217,16 @@ impl Symbol {
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.name(), self.symbol_type)
+    }
+}
+
+impl SymbolKind {
+    pub fn prefix(&self) -> &'static str {
+        match self {
+            SymbolKind::Variable { .. } => "var",
+            SymbolKind::Argument { .. } => "param",
+            SymbolKind::Function => "fn",
+        }
     }
 }
 
@@ -343,6 +359,18 @@ fn next_symbol_id() -> SymbolId {
         .next()
 }
 
+impl From<VariableIndex> for usize {
+    fn from(val: VariableIndex) -> Self {
+        val.index
+    }
+}
+
+impl From<usize> for VariableIndex {
+    fn from(val: usize) -> Self {
+        VariableIndex { index: val }
+    }
+}
+
 impl<'a> SymbolTable<'a> {
     pub fn new(arena: &'a Bump, parent: Option<&'a SymbolTable<'a>>) -> Self {
         Self {
@@ -350,6 +378,7 @@ impl<'a> SymbolTable<'a> {
             symbols_by_id: RefCell::new(HashMap::new()),
             symbols_by_name: RefCell::new(HashMap::new()),
             parent,
+            num_variables: RefCell::new(0),
         }
     }
 
@@ -372,6 +401,10 @@ impl<'a> SymbolTable<'a> {
         self.allocated_symbols.borrow_mut().push(symbol);
         self.symbols_by_name.borrow_mut().insert(name, symbol);
         self.symbols_by_id.borrow_mut().insert(id, symbol);
+
+        if let SymbolKind::Variable { .. } = kind {
+            *self.num_variables.borrow_mut() += 1;
+        }
 
         id
     }
@@ -398,6 +431,10 @@ impl<'a> SymbolTable<'a> {
 
     pub fn is_empty(&self) -> bool {
         self.allocated_symbols.borrow().is_empty()
+    }
+
+    pub fn num_variables(&self) -> usize {
+        *self.num_variables.borrow()
     }
 }
 

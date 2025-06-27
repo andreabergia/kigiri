@@ -1,8 +1,9 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{FunctionSignature, VariableIndex, ir};
+use crate::{FunctionSignature, ir};
 use ir::Variable;
 use semantic_analysis::{
     Symbol, SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
+    VariableIndex,
 };
 
 struct FunctionIrBuilder<'i> {
@@ -160,6 +161,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
                 let instruction = self.ir_allocator.new_binary(
                     operator.clone(),
+                    resolved_type,
                     left_instruction,
                     right_instruction,
                 );
@@ -300,7 +302,7 @@ mod tests {
   00003 i mul @1, @2
   00004 i add @0, @3
   00005 i const 4i
-  00006 i lt @4, @5
+  00006 b lt @4, @5
 }"
         );
     }
@@ -358,7 +360,7 @@ fn add_one(
 ) -> i
 { #0
   00000 i const 1i
-  00001 i load x
+  00001 i load param x
   00002 i add @0, @1
   00003 i ret @2
 }
@@ -410,11 +412,12 @@ fn var(
   var y: int
   00000 i const 1i
   00001 i let y = @0
-  00002 i load y
+  00002 i load var y
   00003 i ret @2
 }
 "
         );
+        // TODO
         //         test_module_ir!(
         //             variable_assignment,
         //             r"fn var() -> int {

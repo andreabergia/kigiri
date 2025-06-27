@@ -1,6 +1,6 @@
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
-use semantic_analysis::{Symbol, SymbolKind, Type};
+use semantic_analysis::{Symbol, SymbolKind, Type, VariableIndex};
 use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
@@ -28,11 +28,6 @@ pub struct FunctionSignature<'a> {
 pub struct FunctionArgument {
     pub name: StringId,
     pub argument_type: Type,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VariableIndex {
-    index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,12 +65,12 @@ pub enum InstructionPayload {
         constant: LiteralValue,
     },
     Unary {
-        operand_type: Type,
+        result_type: Type,
         operator: UnaryOperator,
         operand: InstructionId,
     },
     Binary {
-        operand_type: Type,
+        result_type: Type,
         operator: BinaryOperator,
         left: InstructionId,
         right: InstructionId,
@@ -107,8 +102,14 @@ impl InstructionPayload {
             InstructionPayload::RetExpr { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Ret => None,
             InstructionPayload::Constant { operand_type, .. } => Some(*operand_type),
-            InstructionPayload::Unary { operand_type, .. } => Some(*operand_type),
-            InstructionPayload::Binary { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::Unary {
+                result_type: operand_type,
+                ..
+            } => Some(*operand_type),
+            InstructionPayload::Binary {
+                result_type: operand_type,
+                ..
+            } => Some(*operand_type),
             InstructionPayload::Load { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Let { operand_type, .. } => Some(*operand_type),
         }
@@ -118,18 +119,6 @@ impl InstructionPayload {
 impl Instruction {
     pub fn instruction_type(&self) -> Option<Type> {
         self.payload.instruction_type()
-    }
-}
-
-impl From<VariableIndex> for usize {
-    fn from(val: VariableIndex) -> Self {
-        val.index
-    }
-}
-
-impl From<usize> for VariableIndex {
-    fn from(val: usize) -> Self {
-        VariableIndex { index: val }
     }
 }
 
@@ -235,10 +224,13 @@ impl Display for InstructionPayload {
                 right,
                 ..
             } => write!(f, "{} @{}, @{}", operator.name(), left, right),
-            InstructionPayload::Load { name, .. } => {
+            InstructionPayload::Load {
+                name, symbol_kind, ..
+            } => {
                 write!(
                     f,
-                    "load {}",
+                    "load {} {}",
+                    symbol_kind.prefix(),
                     resolve_string_id(*name).expect("should find symbol name")
                 )
             }
@@ -330,7 +322,7 @@ impl IrAllocator {
             .instruction_type()
             .expect("cannot have an unary expression with a void operand");
         self.new_instruction(InstructionPayload::Unary {
-            operand_type,
+            result_type: operand_type,
             operator,
             operand: operand.id,
         })
@@ -339,6 +331,7 @@ impl IrAllocator {
     pub fn new_binary<'s>(
         &'s self,
         operator: BinaryOperator,
+        resolved_type: &Type,
         left: &'s Instruction,
         right: &'s Instruction,
     ) -> &'s Instruction {
@@ -348,7 +341,7 @@ impl IrAllocator {
         assert_eq!(Some(left_type), right.instruction_type());
 
         self.new_instruction(InstructionPayload::Binary {
-            operand_type: left_type,
+            result_type: *resolved_type,
             operator,
             left: left.id,
             right: right.id,
@@ -478,7 +471,7 @@ mod tests {
         assert_eq!(
             "00002 i add @0, @1",
             ir_allocator
-                .new_binary(BinaryOperator::Add, const_0, const_1)
+                .new_binary(BinaryOperator::Add, &Type::Int, const_0, const_1)
                 .to_string()
         )
     }

@@ -156,7 +156,9 @@ impl SemanticAnalyzer {
                         &self.arena,
                         initializer.name,
                         value.resolved_type(),
-                        SymbolKind::Variable,
+                        SymbolKind::Variable {
+                            index: symbol_table.num_variables().into(),
+                        },
                     );
                     statements.push(self.alloc(TypedStatement::Let { symbol, value }));
                 }
@@ -267,7 +269,7 @@ impl SemanticAnalyzer {
                 let right_type = typed_right.resolved_type();
                 if Self::bin_op_is_allowed(operator.clone(), left_type, right_type) {
                     Ok(self.alloc(TypedExpression::Binary {
-                        resolved_type: left_type,
+                        resolved_type: Self::type_of_operator(operator.clone(), left_type),
                         operator: operator.clone(),
                         left: typed_left,
                         right: typed_right,
@@ -313,6 +315,30 @@ impl SemanticAnalyzer {
             | BinaryOperator::BitwiseXor
             | BinaryOperator::BitwiseShl
             | BinaryOperator::BitwiseShr => left_type == right_type && left_type == Type::Int,
+        }
+    }
+
+    fn type_of_operator(operator: BinaryOperator, left: Type) -> Type {
+        match operator {
+            BinaryOperator::Add
+            | BinaryOperator::Sub
+            | BinaryOperator::Mul
+            | BinaryOperator::Div
+            | BinaryOperator::Rem
+            | BinaryOperator::Exp
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::BitwiseShl
+            | BinaryOperator::BitwiseShr => left,
+            BinaryOperator::Eq
+            | BinaryOperator::Neq
+            | BinaryOperator::Lt
+            | BinaryOperator::Lte
+            | BinaryOperator::Gt
+            | BinaryOperator::Gte
+            | BinaryOperator::And
+            | BinaryOperator::Or => Type::Boolean,
         }
     }
 
@@ -437,6 +463,7 @@ mod tests {
                 right_type: Type::Double,
             }
         );
+        test_ok!(binary_compare, "1 > 2", "(>b 1i 2i)");
     }
 
     mod blocks {
