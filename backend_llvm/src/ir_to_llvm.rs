@@ -2,13 +2,13 @@ use codegen::{
     BasicBlock, Function, Instruction, InstructionId, InstructionPayload, LiteralValue,
     VariableIndex,
 };
-use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::{FunctionValue, IntValue, PointerValue};
-use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
+use inkwell::IntPredicate;
+use parser::{resolve_string_id, BinaryOperator, UnaryOperator};
 use semantic_analysis::{SymbolKind, Type};
 use std::cell::RefCell;
 use thiserror::Error;
@@ -99,11 +99,11 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         }
     }
 
-    fn generate(&mut self) -> Result<(), CodeGenError> {
+    fn generate(&mut self) -> Result<String, CodeGenError> {
         for function in self.ir_module.functions.iter() {
             self.generate_fun(function)?;
         }
-        Ok(())
+        Ok(self.llvm_module.to_string())
     }
 
     fn generate_fun(&mut self, function: &'m Function) -> Result<(), CodeGenError> {
@@ -121,7 +121,6 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             panic!("Invalid function");
         }
 
-        fun.print_to_stderr();
         Ok(())
     }
 
@@ -615,7 +614,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 }
 
 #[allow(unused)]
-fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<(), CodeGenError> {
+fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<String, CodeGenError> {
     let mut builder = LlvmGenerator::new(context, module);
     builder.generate()
 }
@@ -623,11 +622,11 @@ fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<(), CodeGen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::IrAllocator;
     use codegen::build_ir_module;
+    use codegen::IrAllocator;
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedModule};
-    use std::io::{Write, stderr};
+    use std::io::{stderr, Write};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
@@ -680,8 +679,9 @@ fn declare_var() {
         );
 
         let context = Context::create();
-        ir_to_llvm(&context, basic_block).unwrap();
+        let llvm_ir = ir_to_llvm(&context, basic_block).unwrap();
 
+        println!("Generated LLVM IR:\n{}", llvm_ir);
         // TODO: assert something on the generated IR
     }
 }
