@@ -30,8 +30,14 @@ pub struct FunctionArgument {
     pub argument_type: Type,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VariableIndex {
+    index: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Variable {
+    pub index: VariableIndex,
     pub name: StringId,
     pub variable_type: Type,
 }
@@ -80,6 +86,7 @@ pub enum InstructionPayload {
         symbol_kind: SymbolKind,
     },
     Let {
+        variable_index: VariableIndex,
         name: StringId,
         operand_type: Type,
         initializer: InstructionId,
@@ -111,6 +118,18 @@ impl InstructionPayload {
 impl Instruction {
     pub fn instruction_type(&self) -> Option<Type> {
         self.payload.instruction_type()
+    }
+}
+
+impl From<VariableIndex> for usize {
+    fn from(val: VariableIndex) -> Self {
+        val.index
+    }
+}
+
+impl From<usize> for VariableIndex {
+    fn from(val: usize) -> Self {
+        VariableIndex { index: val }
     }
 }
 
@@ -347,11 +366,13 @@ impl IrAllocator {
 
     pub fn new_let(
         &self,
+        variable_index: VariableIndex,
         name: StringId,
         operand_type: Type,
         initializer: InstructionId,
     ) -> &Instruction {
         self.new_instruction(InstructionPayload::Let {
+            variable_index,
             name,
             operand_type,
             initializer,

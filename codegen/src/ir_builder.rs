@@ -1,5 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{FunctionSignature, ir};
+use crate::{FunctionSignature, VariableIndex, ir};
 use ir::Variable;
 use semantic_analysis::{
     Symbol, SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
@@ -80,11 +80,15 @@ impl<'i> FunctionIrBuilder<'i> {
                     .lookup_by_id(*symbol)
                     .expect("should find symbol in symbol table");
 
-                let instruction =
-                    self.ir_allocator
-                        .new_let(symbol.name, symbol.symbol_type, initializer.id);
+                let variable_index = self.next_variable_index();
+                let instruction = self.ir_allocator.new_let(
+                    variable_index,
+                    symbol.name,
+                    symbol.symbol_type,
+                    initializer.id,
+                );
                 self.push_to_current_bb(instruction);
-                self.push_variable_to_current_bb(symbol);
+                self.push_variable_to_current_bb(variable_index, symbol);
                 FoundReturn::No
             }
             TypedStatement::Assignment { .. } => todo!(),
@@ -169,11 +173,16 @@ impl<'i> FunctionIrBuilder<'i> {
         self.current_bb.instructions.borrow_mut().push(instruction);
     }
 
-    fn push_variable_to_current_bb(&self, symbol: &Symbol) {
+    fn push_variable_to_current_bb(&self, variable_index: VariableIndex, symbol: &Symbol) {
         self.current_bb.variables.borrow_mut().push(Variable {
+            index: variable_index,
             name: symbol.name,
             variable_type: symbol.symbol_type,
         });
+    }
+
+    fn next_variable_index(&self) -> VariableIndex {
+        self.current_bb.variables.borrow().len().into()
     }
 }
 

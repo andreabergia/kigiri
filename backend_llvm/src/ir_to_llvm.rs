@@ -1,12 +1,16 @@
-use codegen::{Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
+use codegen::{
+    BasicBlock, Function, Instruction, InstructionId, InstructionPayload, LiteralValue,
+    VariableIndex,
+};
 use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
-use inkwell::values::{FunctionValue, IntValue};
-use parser::{BinaryOperator, StringId, UnaryOperator, resolve_string_id};
+use inkwell::values::{FunctionValue, IntValue, PointerValue};
+use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
 use semantic_analysis::{SymbolKind, Type};
+use std::cell::RefCell;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
@@ -26,22 +30,49 @@ impl From<BuilderError> for CodeGenError {
 struct FunctionContext<'c> {
     // Vectors are indexed by instruction id. There's a bit of space wasted,
     // but it makes everything quite simple and fast.
-    int_values: Vec<Option<IntValue<'c>>>,
-    bool_values: Vec<Option<IntValue<'c>>>,
+    int_values: RefCell<Vec<Option<IntValue<'c>>>>,
+    bool_values: RefCell<Vec<Option<IntValue<'c>>>>,
+
+    // Variables are indexed by their progressive number
+    int_bool_variable: RefCell<Vec<PointerValue<'c>>>,
 }
 
-impl FunctionContext<'_> {
-    fn new(num_instructions: usize) -> Self {
+impl<'c> FunctionContext<'c> {
+    fn new(block: &BasicBlock) -> Self {
+        let num_instructions = block.instructions.borrow().len();
+
         let mut int_values = Vec::with_capacity(num_instructions);
         int_values.resize(num_instructions, None);
-
         let mut bool_values = Vec::with_capacity(num_instructions);
         bool_values.resize(num_instructions, None);
 
+        let int_bool_variable = Vec::with_capacity(block.variables.borrow().len());
+
         Self {
-            int_values,
-            bool_values,
+            int_values: int_values.into(),
+            bool_values: bool_values.into(),
+            int_bool_variable: int_bool_variable.into(),
         }
+    }
+
+    fn alloca_variables(
+        &self,
+        block: &BasicBlock,
+        context: &'c Context,
+        builder: &Builder<'c>,
+    ) -> Result<(), CodeGenError> {
+        for var in block.variables.borrow().iter() {
+            let value = builder.build_alloca(
+                match var.variable_type {
+                    Type::Int => context.i64_type(),
+                    Type::Boolean => context.bool_type(),
+                    Type::Double => todo!(),
+                },
+                resolve_string_id(var.name).expect("variable name"),
+            )?;
+            self.int_bool_variable.borrow_mut().push(value);
+        }
+        Ok(())
     }
 }
 
@@ -99,28 +130,23 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         function: &'m Function,
         fun: FunctionValue<'c>,
     ) -> Result<(), CodeGenError> {
-        let mut fun_ctx = FunctionContext::new(function.body.instructions.borrow().len());
-
         let bb = self.context.append_basic_block(fun, "entry");
         self.builder.position_at_end(bb);
+
+        let fun_ctx = FunctionContext::new(function.body);
+        fun_ctx.alloca_variables(function.body, self.context, &self.builder)?;
 
         for instruction in function.body.instructions.borrow().iter() {
             match &instruction.payload {
                 InstructionPayload::Constant { constant, .. } => {
-                    self.handle_constant(&mut fun_ctx, instruction.id, constant);
+                    self.handle_constant(&fun_ctx, instruction.id, constant);
                 }
                 InstructionPayload::Unary {
                     operand_type,
                     operator,
                     operand,
                 } => {
-                    self.handle_unary(
-                        &mut fun_ctx,
-                        instruction.id,
-                        operand_type,
-                        operator,
-                        *operand,
-                    )?;
+                    self.handle_unary(&fun_ctx, instruction.id, operand_type, operator, *operand)?;
                 }
                 InstructionPayload::Binary {
                     operand_type,
@@ -129,7 +155,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     right,
                 } => {
                     self.handle_binary(
-                        &mut fun_ctx,
+                        &fun_ctx,
                         instruction.id,
                         operand_type,
                         operator,
@@ -144,18 +170,19 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     expression,
                     operand_type,
                 } => {
-                    self.handle_return_expression(&mut fun_ctx, *expression, operand_type)?;
+                    self.handle_return_expression(&fun_ctx, *expression, operand_type)?;
                 }
                 InstructionPayload::Load {
                     operand_type,
                     symbol_kind,
                     ..
-                } => Self::handle_load(fun, &mut fun_ctx, instruction, operand_type, *symbol_kind),
+                } => Self::handle_load(fun, &fun_ctx, instruction, operand_type, *symbol_kind),
                 InstructionPayload::Let {
-                    name,
+                    variable_index,
                     operand_type,
                     initializer,
-                } => Self::handle_let(fun, &mut fun_ctx, *name, operand_type, *initializer),
+                    ..
+                } => self.handle_let(&fun_ctx, *variable_index, operand_type, *initializer)?,
             }
         }
         Ok(())
@@ -163,7 +190,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_load(
         fun: FunctionValue<'c>,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         instruction: &Instruction,
         operand_type: &Type,
         symbol_kind: SymbolKind,
@@ -177,11 +204,11 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     .expect("valid argument number");
                 match operand_type {
                     Type::Int => {
-                        fun_ctx.int_values[instruction.id.as_usize()] =
+                        fun_ctx.int_values.borrow_mut()[instruction.id.as_usize()] =
                             Some(value.into_int_value());
                     }
                     Type::Boolean => {
-                        fun_ctx.bool_values[instruction.id.as_usize()] =
+                        fun_ctx.bool_values.borrow_mut()[instruction.id.as_usize()] =
                             Some(value.into_int_value());
                     }
                     Type::Double => {
@@ -193,13 +220,37 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     }
 
     fn handle_let(
-        fun: FunctionValue<'c>,
-        fun_ctx: &mut FunctionContext<'c>,
-        name: StringId,
+        &self,
+        fun_ctx: &FunctionContext<'c>,
+        variable_index: VariableIndex,
         operand_type: &Type,
         initializer: InstructionId,
-    ) {
-        todo!()
+    ) -> Result<(), CodeGenError> {
+        let variable_index: usize = variable_index.into();
+        let var_pointer = *fun_ctx
+            .int_bool_variable
+            .borrow()
+            .get(variable_index)
+            .expect("variable index should be valid");
+
+        let initializer = match operand_type {
+            Type::Int => fun_ctx
+                .int_values
+                .borrow()
+                .get(initializer.as_usize())
+                .expect("vector should be initialized with the correct length")
+                .expect("let initializer should be an int"),
+            Type::Boolean => fun_ctx
+                .bool_values
+                .borrow()
+                .get(initializer.as_usize())
+                .expect("vector should be initialized with the correct length")
+                .expect("let initializer should be a bool"),
+            Type::Double => todo!(),
+        };
+
+        self.builder.build_store(var_pointer, initializer)?;
+        Ok(())
     }
 
     fn make_fun_type(&mut self, function: &Function) -> FunctionType<'c> {
@@ -234,7 +285,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_binary(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operand_type: &Type,
         operator: &BinaryOperator,
@@ -256,7 +307,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_binary_boolean(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operator: &BinaryOperator,
         left: InstructionId,
@@ -264,16 +315,18 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     ) -> Result<(), CodeGenError> {
         let left = fun_ctx
             .bool_values
+            .borrow()
             .get(left.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be a bool");
         let right = fun_ctx
             .bool_values
+            .borrow()
             .get(right.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be a bool");
 
-        fun_ctx.bool_values[id.as_usize()] = Some(match operator {
+        fun_ctx.bool_values.borrow_mut()[id.as_usize()] = Some(match operator {
             BinaryOperator::Add
             | BinaryOperator::Sub
             | BinaryOperator::Mul
@@ -312,7 +365,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_binary_int(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operator: &BinaryOperator,
         left: InstructionId,
@@ -320,16 +373,18 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     ) -> Result<(), CodeGenError> {
         let left = fun_ctx
             .int_values
+            .borrow()
             .get(left.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be an int");
         let right = fun_ctx
             .int_values
+            .borrow()
             .get(right.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be an int");
 
-        fun_ctx.int_values[id.as_usize()] = Some(match operator {
+        fun_ctx.int_values.borrow_mut()[id.as_usize()] = Some(match operator {
             BinaryOperator::Add => {
                 self.builder
                     .build_int_add(left, right, &Self::name("add", id))?
@@ -421,7 +476,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_unary(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operand_type: &Type,
         operator: &UnaryOperator,
@@ -445,17 +500,18 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_unary_boolean(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
         let operand = fun_ctx
             .bool_values
+            .borrow()
             .get(operand.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("unary operand should be a bool");
-        fun_ctx.bool_values[id.as_usize()] = Some(match operator {
+        fun_ctx.bool_values.borrow_mut()[id.as_usize()] = Some(match operator {
             UnaryOperator::Neg | UnaryOperator::BitwiseNot => {
                 unreachable!()
             }
@@ -466,17 +522,18 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_unary_int(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
         let operand = fun_ctx
             .int_values
+            .borrow()
             .get(operand.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("unary operand should be an int");
-        fun_ctx.int_values[id.as_usize()] = Some(match operator {
+        fun_ctx.int_values.borrow_mut()[id.as_usize()] = Some(match operator {
             UnaryOperator::Neg => self
                 .builder
                 .build_int_neg(operand, &Self::name("neg", id))?,
@@ -499,21 +556,21 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_constant(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         constant: &LiteralValue,
     ) {
         match constant {
             LiteralValue::Integer(value) => {
-                let option = fun_ctx
-                    .int_values
+                let mut int_values_borrow = fun_ctx.int_values.borrow_mut();
+                let option = int_values_borrow
                     .get_mut(id.as_usize())
                     .expect("vector should be initialized with the correct length");
                 *option = Some(self.context.i64_type().const_int(*value as u64, false));
             }
             LiteralValue::Boolean(value) => {
-                let option = fun_ctx
-                    .bool_values
+                let mut bool_values_borrow = fun_ctx.bool_values.borrow_mut();
+                let option = bool_values_borrow
                     .get_mut(id.as_usize())
                     .expect("vector should be initialized with the correct length");
                 *option = Some(
@@ -528,7 +585,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_return_expression(
         &mut self,
-        fun_ctx: &mut FunctionContext<'c>,
+        fun_ctx: &FunctionContext<'c>,
         expression: InstructionId,
         operand_type: &Type,
     ) -> Result<(), CodeGenError> {
@@ -536,6 +593,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             Type::Int => {
                 let operand = fun_ctx
                     .int_values
+                    .borrow()
                     .get(expression.as_usize())
                     .expect("vector should be initialized with the correct length")
                     .expect("return expression should be an int");
@@ -544,6 +602,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             Type::Boolean => {
                 let operand = fun_ctx
                     .bool_values
+                    .borrow()
                     .get(expression.as_usize())
                     .expect("vector should be initialized with the correct length")
                     .expect("return expression should be a bool");
@@ -611,6 +670,11 @@ fn add(x: int, y: int) -> int {
 
 fn greater(x: int, y: int) -> boolean {
   return x > y;
+}
+
+fn declare_var() {
+    let x = 1;
+    let y = true;
 }
 ",
         );
