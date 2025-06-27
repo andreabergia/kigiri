@@ -30,10 +30,17 @@ pub struct FunctionArgument {
     pub argument_type: Type,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Variable {
+    pub name: StringId,
+    pub variable_type: Type,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct BasicBlock<'a> {
     pub id: BlockId,
     pub instructions: RefCell<BumpVec<'a, &'a Instruction>>,
+    pub variables: RefCell<BumpVec<'a, Variable>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -154,6 +161,17 @@ impl Display for Function<'_> {
 impl Display for BasicBlock<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{{ #{}", self.id.0)?;
+
+        let variables = self.variables.borrow();
+        for var in variables.iter() {
+            writeln!(
+                f,
+                "  var {}: {}",
+                resolve_string_id(var.name).expect("variable name"),
+                var.variable_type
+            )?;
+        }
+
         let instructions = self.instructions.borrow();
         for instr in instructions.iter() {
             writeln!(f, "  {}", instr)?;
@@ -344,6 +362,7 @@ impl IrAllocator {
         self.arena.alloc(BasicBlock {
             id: self.next_basic_block_id(),
             instructions: RefCell::new(BumpVec::new_in(&self.arena)),
+            variables: RefCell::new(BumpVec::new_in(&self.arena)),
         })
     }
 

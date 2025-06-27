@@ -1,7 +1,8 @@
-use crate::FunctionSignature;
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
+use crate::{FunctionSignature, ir};
+use ir::Variable;
 use semantic_analysis::{
-    SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
+    Symbol, SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
 };
 
 struct FunctionIrBuilder<'i> {
@@ -83,6 +84,7 @@ impl<'i> FunctionIrBuilder<'i> {
                     self.ir_allocator
                         .new_let(symbol.name, symbol.symbol_type, initializer.id);
                 self.push_to_current_bb(instruction);
+                self.push_variable_to_current_bb(symbol);
                 FoundReturn::No
             }
             TypedStatement::Assignment { .. } => todo!(),
@@ -165,6 +167,13 @@ impl<'i> FunctionIrBuilder<'i> {
 
     fn push_to_current_bb(&self, instruction: &'i Instruction) {
         self.current_bb.instructions.borrow_mut().push(instruction);
+    }
+
+    fn push_variable_to_current_bb(&self, symbol: &Symbol) {
+        self.current_bb.variables.borrow_mut().push(Variable {
+            name: symbol.name,
+            variable_type: symbol.symbol_type,
+        });
     }
 }
 
@@ -389,6 +398,7 @@ fn empty(
 fn var(
 ) -> i
 { #0
+  var y: int
   00000 i const 1i
   00001 i let y = @0
   00002 i load y
