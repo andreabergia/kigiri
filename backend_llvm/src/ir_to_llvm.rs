@@ -12,7 +12,7 @@ use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
 #[error("Code generation error: {message}")]
-struct CodeGenError {
+pub struct CodeGenError {
     message: String,
 }
 
@@ -661,35 +661,38 @@ where
     'c: 'ir,
 {
     context: &'c Context,
-    llvm_module: Module<'c>,
     builder: Builder<'c>,
     ir_module: &'ir codegen::Module<'ir2>,
 }
 
 impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     fn new(context: &'c Context, ir_module: &'m codegen::Module<'m2>) -> Self {
-        let llvm_module =
-            context.create_module(resolve_string_id(ir_module.name).expect("module name"));
         let builder = context.create_builder();
         Self {
             context,
-            llvm_module,
             builder,
             ir_module,
         }
     }
 
-    fn generate(&self) -> Result<String, CodeGenError> {
+    fn generate(&self) -> Result<Module<'c>, CodeGenError> {
+        let llvm_module = self
+            .context
+            .create_module(resolve_string_id(self.ir_module.name).expect("module name"));
+
         for function in self.ir_module.functions.iter() {
             let fun_generator = LlvmFunctionGenerator::new(self.context, &self.builder, function);
-            fun_generator.generate(&self.llvm_module)?;
+            fun_generator.generate(&llvm_module)?;
         }
-        Ok(self.llvm_module.to_string())
+        Ok(llvm_module)
     }
 }
 
 #[allow(unused)]
-fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<String, CodeGenError> {
+pub fn ir_to_llvm<'c>(
+    context: &'c Context,
+    module: &codegen::Module,
+) -> Result<Module<'c>, CodeGenError> {
     let mut builder = LlvmGenerator::new(context, module);
     builder.generate()
 }
@@ -730,7 +733,7 @@ mod tests {
         let ir_allocator = IrAllocator::new();
         let module = handle_module(&ir_allocator, function_source);
         let context = Context::create();
-        ir_to_llvm(&context, module).unwrap()
+        ir_to_llvm(&context, module).unwrap().to_string()
     }
 
     #[test]
