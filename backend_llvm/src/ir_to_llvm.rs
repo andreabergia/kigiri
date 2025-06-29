@@ -197,7 +197,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     value,
                     ..
                 } => {
-                    self.handle_store(fun, instruction, operand_type, *symbol_kind, *value)?;
+                    self.handle_store(fun, operand_type, *symbol_kind, *value)?;
                 }
                 InstructionPayload::Let {
                     variable_index,
@@ -229,7 +229,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
                 match operand_type {
                     Type::Int => {
-                        self.int_values.borrow_mut()[instruction.id.as_usize()] = Some(
+                        self.store_int_value(
+                            instruction.id,
                             self.builder
                                 .build_load(
                                     self.context.i64_type(),
@@ -240,7 +241,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                         );
                     }
                     Type::Boolean => {
-                        self.bool_values.borrow_mut()[instruction.id.as_usize()] = Some(
+                        self.store_bool_value(
+                            instruction.id,
                             self.builder
                                 .build_load(
                                     self.context.bool_type(),
@@ -259,12 +261,10 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     .expect("valid argument number");
                 match operand_type {
                     Type::Int => {
-                        self.int_values.borrow_mut()[instruction.id.as_usize()] =
-                            Some(value.into_int_value());
+                        self.store_int_value(instruction.id, value.into_int_value());
                     }
                     Type::Boolean => {
-                        self.bool_values.borrow_mut()[instruction.id.as_usize()] =
-                            Some(value.into_int_value());
+                        self.store_bool_value(instruction.id, value.into_int_value());
                     }
                     Type::Double => {
                         todo!()
@@ -278,12 +278,53 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     fn handle_store(
         &self,
         fun: FunctionValue<'c>,
-        instruction: &Instruction,
         operand_type: &Type,
         symbol_kind: SymbolKind,
         value: InstructionId,
     ) -> Result<(), CodeGenError> {
-        todo!()
+        match symbol_kind {
+            SymbolKind::Function => todo!(),
+            SymbolKind::Variable { index } => {
+                let variable_index: usize = index.into();
+                let var_pointer = *self
+                    .int_bool_variable
+                    .borrow()
+                    .get(variable_index)
+                    .expect("variable index should be valid");
+
+                match operand_type {
+                    Type::Int => {
+                        self.builder
+                            .build_store(var_pointer, self.get_int_value(value))?;
+                    }
+                    Type::Boolean => {
+                        self.builder
+                            .build_store(var_pointer, self.get_bool_value(value))?;
+                    }
+                    Type::Double => todo!(),
+                }
+            }
+            SymbolKind::Argument { index } => {
+                todo!("llvm actually does not support this, need to create a variable in the IR")
+                // let param = fun
+                //     .get_nth_param(index.into())
+                //     .expect("valid argument number");
+                // match operand_type {
+                //     Type::Int => {
+                //         self.builder
+                //             .build_store(param.into_pointer_value(), self.get_int_value(value))?;
+                //     }
+                //     Type::Boolean => {
+                //         self.builder
+                //             .build_store(param.into_pointer_value(), self.get_bool_value(value))?;
+                //     }
+                //     Type::Double => {
+                //         todo!()
+                //     }
+                // }
+            }
+        };
+        Ok(())
     }
 
     fn handle_let(
@@ -732,6 +773,13 @@ fn use_var() -> boolean {
     let y = true;
     return y && !x;
 }
+
+fn set_var() {
+    let x = 0;
+    x = 1;
+    let y = false;
+    y = true;
+}
 ",
         );
 
@@ -787,6 +835,17 @@ fn use_var() -> boolean {
           %not_6 = xor i1 %load_5, true
           %and_7 = and i1 %load_4, %not_6
           ret i1 %and_7
+        }
+
+        define void @set_var() {
+        entry:
+          %x = alloca i64, align 8
+          %y = alloca i1, align 1
+          store i64 0, ptr %x, align 4
+          store i64 1, ptr %x, align 4
+          store i1 false, ptr %y, align 1
+          store i1 true, ptr %y, align 1
+          ret void
         }
         "#);
     }

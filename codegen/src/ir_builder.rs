@@ -430,10 +430,10 @@ fn var(
         test_module_ir!(
             variable_assignment,
             r"fn var() -> int {
-            let y = 1;
-            y = 2;
-            return y;
-        }",
+    let y = 1;
+    y = 2;
+    return y;
+}",
             r"module test
 
 fn var(
@@ -446,6 +446,23 @@ fn var(
   00003 i store var y = @2
   00004 i load var y
   00005 i ret @4
+}
+"
+        );
+        test_module_ir!(
+            parameter_reassignment,
+            r"fn param_assign(x: int) {
+    x = 1;
+}",
+            r"module test
+
+fn param_assign(
+  x: int,
+) -> void
+{ #0
+  00000 i const 1i
+  00001 i store param x = @0
+  00002 v ret
 }
 "
         );

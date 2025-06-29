@@ -23,3 +23,6 @@ find-unused-dependencies:
 
 fmt:
     cargo fmt --all
+
+insta:
+    cargo insta review
