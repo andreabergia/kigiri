@@ -151,8 +151,9 @@ impl<'i> FunctionIrBuilder<'i> {
                 instruction
             }
             TypedExpression::Binary {
-                resolved_type,
+                result_type,
                 operator,
+                operand_type,
                 left,
                 right,
             } => {
@@ -161,7 +162,8 @@ impl<'i> FunctionIrBuilder<'i> {
 
                 let instruction = self.ir_allocator.new_binary(
                     operator.clone(),
-                    resolved_type,
+                    result_type,
+                    operand_type,
                     left_instruction,
                     right_instruction,
                 );

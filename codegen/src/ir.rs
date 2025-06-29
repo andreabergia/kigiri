@@ -72,6 +72,7 @@ pub enum InstructionPayload {
     Binary {
         result_type: Type,
         operator: BinaryOperator,
+        operand_type: Type,
         left: InstructionId,
         right: InstructionId,
     },
@@ -331,7 +332,8 @@ impl IrAllocator {
     pub fn new_binary<'s>(
         &'s self,
         operator: BinaryOperator,
-        resolved_type: &Type,
+        result_type: &Type,
+        operand_type: &Type,
         left: &'s Instruction,
         right: &'s Instruction,
     ) -> &'s Instruction {
@@ -341,8 +343,9 @@ impl IrAllocator {
         assert_eq!(Some(left_type), right.instruction_type());
 
         self.new_instruction(InstructionPayload::Binary {
-            result_type: *resolved_type,
+            result_type: *result_type,
             operator,
+            operand_type: *operand_type,
             left: left.id,
             right: right.id,
         })
@@ -471,7 +474,13 @@ mod tests {
         assert_eq!(
             "00002 i add @0, @1",
             ir_allocator
-                .new_binary(BinaryOperator::Add, &Type::Int, const_0, const_1)
+                .new_binary(
+                    BinaryOperator::Add,
+                    &Type::Int,
+                    &Type::Int,
+                    const_0,
+                    const_1
+                )
                 .to_string()
         )
     }

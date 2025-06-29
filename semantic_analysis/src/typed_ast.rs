@@ -115,8 +115,9 @@ pub enum TypedExpression<'a> {
         operand: &'a TypedExpression<'a>,
     },
     Binary {
-        resolved_type: Type,
+        result_type: Type,
         operator: BinaryOperator,
+        operand_type: Type,
         left: &'a TypedExpression<'a>,
         right: &'a TypedExpression<'a>,
     },
@@ -324,12 +325,13 @@ impl TypedExpression<'_> {
                 write!(f, ")")
             }
             TypedExpression::Binary {
-                resolved_type,
+                result_type,
                 operator,
                 left,
                 right,
+                ..
             } => {
-                write!(f, "({}{} ", operator, resolved_type.to_string_short());
+                write!(f, "({}{} ", operator, result_type.to_string_short());
                 left.fmt_with_symbol_table(f, symbol_table)?;
                 write!(f, " ")?;
                 right.fmt_with_symbol_table(f, symbol_table)?;
@@ -444,7 +446,7 @@ impl TypedExpression<'_> {
             TypedExpression::Identifier { resolved_type, .. } => *resolved_type,
             TypedExpression::Literal { resolved_type, .. } => *resolved_type,
             TypedExpression::Unary { resolved_type, .. } => *resolved_type,
-            TypedExpression::Binary { resolved_type, .. } => *resolved_type,
+            TypedExpression::Binary { result_type, .. } => *result_type,
         }
     }
 }
@@ -457,8 +459,9 @@ mod tests {
     #[test]
     fn display_contains_type_after_operator() {
         let typed_expression = TypedExpression::Binary {
-            resolved_type: Type::Int,
+            result_type: Type::Int,
             operator: BinaryOperator::Add,
+            operand_type: Type::Int,
             left: &TypedExpression::Literal {
                 resolved_type: Type::Int,
                 value: LiteralValue::Integer(1),

@@ -269,8 +269,9 @@ impl SemanticAnalyzer {
                 let right_type = typed_right.resolved_type();
                 if Self::bin_op_is_allowed(operator.clone(), left_type, right_type) {
                     Ok(self.alloc(TypedExpression::Binary {
-                        resolved_type: Self::type_of_operator(operator.clone(), left_type),
+                        result_type: Self::type_of_operator(operator.clone(), left_type),
                         operator: operator.clone(),
+                        operand_type: left_type,
                         left: typed_left,
                         right: typed_right,
                     }))

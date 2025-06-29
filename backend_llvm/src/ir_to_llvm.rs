@@ -71,6 +71,20 @@ impl<'c> FunctionContext<'c> {
         }
         Ok(())
     }
+
+    // TODO: this is a sort of setter; add a getter too
+
+    fn store_int(&self, value_type: &Type, id: InstructionId, value: IntValue<'c>) {
+        match value_type {
+            Type::Int => {
+                self.int_values.borrow_mut()[id.as_usize()] = Some(value);
+            }
+            Type::Boolean => {
+                self.bool_values.borrow_mut()[id.as_usize()] = Some(value);
+            }
+            _ => panic!("invalid store_int call for type: {:?}", value_type),
+        }
+    }
 }
 
 struct LlvmGenerator<'c, 'm, 'm2>
@@ -145,16 +159,18 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     self.handle_unary(&fun_ctx, instruction.id, operand_type, operator, *operand)?;
                 }
                 InstructionPayload::Binary {
-                    result_type: operand_type,
+                    result_type,
                     operator,
+                    operand_type,
                     left,
                     right,
                 } => {
                     self.handle_binary(
                         &fun_ctx,
                         instruction.id,
-                        operand_type,
+                        result_type,
                         operator,
+                        operand_type,
                         *left,
                         *right,
                     )?;
@@ -320,18 +336,19 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         &mut self,
         fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
-        operand_type: &Type,
+        result_type: &Type,
         operator: &BinaryOperator,
+        operand_type: &Type,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                self.handle_binary_int(fun_ctx, id, operator, left, right)?;
+                self.handle_binary_int(fun_ctx, id, operator, result_type, left, right)?;
             }
 
             Type::Boolean => {
-                self.handle_binary_boolean(fun_ctx, id, operator, left, right)?;
+                self.handle_binary_boolean(fun_ctx, id, operator, result_type, left, right)?;
             }
             Type::Double => todo!(),
         }
@@ -343,57 +360,62 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operator: &BinaryOperator,
+        result_type: &Type,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        // TODO: this is wrong, the left and right could be other type (imagine a > b)
         let left = fun_ctx
             .bool_values
             .borrow()
             .get(left.as_usize())
             .expect("vector should be initialized with the correct length")
-            .expect("binary operand should be a bool");
+            .expect("binary operand should be present");
         let right = fun_ctx
             .bool_values
             .borrow()
             .get(right.as_usize())
             .expect("vector should be initialized with the correct length")
-            .expect("binary operand should be a bool");
+            .expect("binary operand should be present");
 
-        fun_ctx.bool_values.borrow_mut()[id.as_usize()] = Some(match operator {
-            BinaryOperator::Add
-            | BinaryOperator::Sub
-            | BinaryOperator::Mul
-            | BinaryOperator::Div
-            | BinaryOperator::Rem
-            | BinaryOperator::Exp
-            | BinaryOperator::Lt
-            | BinaryOperator::Lte
-            | BinaryOperator::Gt
-            | BinaryOperator::Gte
-            | BinaryOperator::BitwiseAnd
-            | BinaryOperator::BitwiseOr
-            | BinaryOperator::BitwiseXor
-            | BinaryOperator::BitwiseShl
-            | BinaryOperator::BitwiseShr => unreachable!(),
+        fun_ctx.store_int(
+            result_type,
+            id,
+            match operator {
+                BinaryOperator::Add
+                | BinaryOperator::Sub
+                | BinaryOperator::Mul
+                | BinaryOperator::Div
+                | BinaryOperator::Rem
+                | BinaryOperator::Exp
+                | BinaryOperator::Lt
+                | BinaryOperator::Lte
+                | BinaryOperator::Gt
+                | BinaryOperator::Gte
+                | BinaryOperator::BitwiseAnd
+                | BinaryOperator::BitwiseOr
+                | BinaryOperator::BitwiseXor
+                | BinaryOperator::BitwiseShl
+                | BinaryOperator::BitwiseShr => unreachable!(),
 
-            BinaryOperator::Eq => self.builder.build_int_compare(
-                IntPredicate::EQ,
-                left,
-                right,
-                &Self::name("eq", id),
-            )?,
-            BinaryOperator::Neq => self.builder.build_int_compare(
-                IntPredicate::NE,
-                left,
-                right,
-                &Self::name("neq", id),
-            )?,
-            BinaryOperator::And => self
-                .builder
-                .build_and(left, right, &Self::name("and", id))?,
-            BinaryOperator::Or => self.builder.build_or(left, right, &Self::name("or", id))?,
-        });
+                BinaryOperator::Eq => self.builder.build_int_compare(
+                    IntPredicate::EQ,
+                    left,
+                    right,
+                    &Self::name("eq", id),
+                )?,
+                BinaryOperator::Neq => self.builder.build_int_compare(
+                    IntPredicate::NE,
+                    left,
+                    right,
+                    &Self::name("neq", id),
+                )?,
+                BinaryOperator::And => {
+                    self.builder
+                        .build_and(left, right, &Self::name("and", id))?
+                }
+                BinaryOperator::Or => self.builder.build_or(left, right, &Self::name("or", id))?,
+            },
+        );
         Ok(())
     }
 
@@ -402,6 +424,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         fun_ctx: &FunctionContext<'c>,
         id: InstructionId,
         operator: &BinaryOperator,
+        result_type: &Type,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
@@ -418,93 +441,97 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             .expect("vector should be initialized with the correct length")
             .expect("binary operand should be an int");
 
-        fun_ctx.int_values.borrow_mut()[id.as_usize()] = Some(match operator {
-            BinaryOperator::Add => {
-                self.builder
-                    .build_int_add(left, right, &Self::name("add", id))?
-            }
-            BinaryOperator::Sub => {
-                self.builder
-                    .build_int_sub(left, right, &Self::name("sub", id))?
-            }
-            BinaryOperator::Mul => {
-                self.builder
-                    .build_int_mul(left, right, &Self::name("mul", id))?
-            }
-            BinaryOperator::Div => {
-                self.builder
-                    .build_int_signed_div(left, right, &Self::name("div", id))?
-            }
-            BinaryOperator::Rem => {
-                todo!()
-            }
-            BinaryOperator::Exp => {
-                todo!()
-            }
-            BinaryOperator::Eq => self.builder.build_int_compare(
-                IntPredicate::EQ,
-                left,
-                right,
-                &Self::name("eq", id),
-            )?,
-            BinaryOperator::Neq => self.builder.build_int_compare(
-                IntPredicate::NE,
-                left,
-                right,
-                &Self::name("neq", id),
-            )?,
-            BinaryOperator::Lt => self.builder.build_int_compare(
-                IntPredicate::SLT,
-                left,
-                right,
-                &Self::name("lt", id),
-            )?,
-            BinaryOperator::Lte => self.builder.build_int_compare(
-                IntPredicate::SLE,
-                left,
-                right,
-                &Self::name("lte", id),
-            )?,
-            BinaryOperator::Gt => self.builder.build_int_compare(
-                IntPredicate::SGT,
-                left,
-                right,
-                &Self::name("gt", id),
-            )?,
-            BinaryOperator::Gte => self.builder.build_int_compare(
-                IntPredicate::SGE,
-                left,
-                right,
-                &Self::name("gte", id),
-            )?,
-            BinaryOperator::BitwiseAnd => {
-                self.builder
-                    .build_and(left, right, &Self::name("bitwise_and", id))?
-            }
-            BinaryOperator::BitwiseOr => {
-                self.builder
-                    .build_or(left, right, &Self::name("bitwise_or", id))?
-            }
-            BinaryOperator::BitwiseXor => {
-                self.builder
-                    .build_xor(left, right, &Self::name("bitwise_xor", id))?
-            }
-            BinaryOperator::BitwiseShl => {
-                self.builder
-                    .build_left_shift(left, right, &Self::name("bitwise_shl", id))?
-            }
-            BinaryOperator::BitwiseShr => self.builder.build_right_shift(
-                left,
-                right,
-                false,
-                &Self::name("bitwise_shr", id),
-            )?,
+        fun_ctx.store_int(
+            result_type,
+            id,
+            match operator {
+                BinaryOperator::Add => {
+                    self.builder
+                        .build_int_add(left, right, &Self::name("add", id))?
+                }
+                BinaryOperator::Sub => {
+                    self.builder
+                        .build_int_sub(left, right, &Self::name("sub", id))?
+                }
+                BinaryOperator::Mul => {
+                    self.builder
+                        .build_int_mul(left, right, &Self::name("mul", id))?
+                }
+                BinaryOperator::Div => {
+                    self.builder
+                        .build_int_signed_div(left, right, &Self::name("div", id))?
+                }
+                BinaryOperator::Rem => {
+                    todo!()
+                }
+                BinaryOperator::Exp => {
+                    todo!()
+                }
+                BinaryOperator::Eq => self.builder.build_int_compare(
+                    IntPredicate::EQ,
+                    left,
+                    right,
+                    &Self::name("eq", id),
+                )?,
+                BinaryOperator::Neq => self.builder.build_int_compare(
+                    IntPredicate::NE,
+                    left,
+                    right,
+                    &Self::name("neq", id),
+                )?,
+                BinaryOperator::Lt => self.builder.build_int_compare(
+                    IntPredicate::SLT,
+                    left,
+                    right,
+                    &Self::name("lt", id),
+                )?,
+                BinaryOperator::Lte => self.builder.build_int_compare(
+                    IntPredicate::SLE,
+                    left,
+                    right,
+                    &Self::name("lte", id),
+                )?,
+                BinaryOperator::Gt => self.builder.build_int_compare(
+                    IntPredicate::SGT,
+                    left,
+                    right,
+                    &Self::name("gt", id),
+                )?,
+                BinaryOperator::Gte => self.builder.build_int_compare(
+                    IntPredicate::SGE,
+                    left,
+                    right,
+                    &Self::name("gte", id),
+                )?,
+                BinaryOperator::BitwiseAnd => {
+                    self.builder
+                        .build_and(left, right, &Self::name("bitwise_and", id))?
+                }
+                BinaryOperator::BitwiseOr => {
+                    self.builder
+                        .build_or(left, right, &Self::name("bitwise_or", id))?
+                }
+                BinaryOperator::BitwiseXor => {
+                    self.builder
+                        .build_xor(left, right, &Self::name("bitwise_xor", id))?
+                }
+                BinaryOperator::BitwiseShl => {
+                    self.builder
+                        .build_left_shift(left, right, &Self::name("bitwise_shl", id))?
+                }
+                BinaryOperator::BitwiseShr => self.builder.build_right_shift(
+                    left,
+                    right,
+                    false,
+                    &Self::name("bitwise_shr", id),
+                )?,
 
-            BinaryOperator::And | BinaryOperator::Or => {
-                // TODO
-                unreachable!()
-            }
-        });
+                BinaryOperator::And | BinaryOperator::Or => {
+                    // TODO
+                    unreachable!()
+                }
+            },
+        );
         Ok(())
     }
 
@@ -691,12 +718,6 @@ mod tests {
         let ir_allocator = IrAllocator::new();
         let basic_block = handle_module(
             &ir_allocator,
-            // TODO: this is broken
-            /*
-                        fn greater(x: int, y: int) -> boolean {
-                          return x > y;
-                        }
-            */
             r"
 fn empty() {
 }
@@ -707,6 +728,10 @@ fn add_one(x: int) -> int {
 
 fn add(x: int, y: int) -> int {
   return x + y;
+}
+
+fn greater(x: int, y: int) -> boolean {
+  return x > y;
 }
 
 fn declare_var() {
@@ -746,6 +771,12 @@ fn use_var() -> boolean {
         entry:
           %add_2 = add i64 %x, %y
           ret i64 %add_2
+        }
+
+        define i1 @greater(i64 %x, i64 %y) {
+        entry:
+          %gt_2 = icmp sgt i64 %x, %y
+          ret i1 %gt_2
         }
 
         define void @declare_var() {
