@@ -10,6 +10,3 @@ Language as a whole
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
 - [ ] verify functions have a return on all paths, with a coherent type
 - [ ] keep track of mutable/immutable variables
-
-Testing
-- [ ] semantic testing of linked object
