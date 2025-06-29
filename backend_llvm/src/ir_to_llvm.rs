@@ -191,13 +191,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 } => {
                     self.handle_load(fun, instruction, operand_type, *symbol_kind)?;
                 }
-                InstructionPayload::Store {
+                InstructionPayload::StoreVar {
                     operand_type,
-                    symbol_kind,
+                    variable_index,
                     value,
                     ..
                 } => {
-                    self.handle_store(fun, operand_type, *symbol_kind, *value)?;
+                    self.handle_store_var(operand_type, *variable_index, *value)?;
                 }
                 InstructionPayload::Let {
                     variable_index,
@@ -275,54 +275,29 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(())
     }
 
-    fn handle_store(
+    fn handle_store_var(
         &self,
-        fun: FunctionValue<'c>,
         operand_type: &Type,
-        symbol_kind: SymbolKind,
+        variable_index: VariableIndex,
         value: InstructionId,
     ) -> Result<(), CodeGenError> {
-        match symbol_kind {
-            SymbolKind::Function => todo!(),
-            SymbolKind::Variable { index } => {
-                let variable_index: usize = index.into();
-                let var_pointer = *self
-                    .int_bool_variable
-                    .borrow()
-                    .get(variable_index)
-                    .expect("variable index should be valid");
+        let variable_index: usize = variable_index.into();
+        let var_pointer = *self
+            .int_bool_variable
+            .borrow()
+            .get(variable_index)
+            .expect("variable index should be valid");
 
-                match operand_type {
-                    Type::Int => {
-                        self.builder
-                            .build_store(var_pointer, self.get_int_value(value))?;
-                    }
-                    Type::Boolean => {
-                        self.builder
-                            .build_store(var_pointer, self.get_bool_value(value))?;
-                    }
-                    Type::Double => todo!(),
-                }
+        match operand_type {
+            Type::Int => {
+                self.builder
+                    .build_store(var_pointer, self.get_int_value(value))?;
             }
-            SymbolKind::Argument { index } => {
-                todo!("llvm actually does not support this, need to create a variable in the IR")
-                // let param = fun
-                //     .get_nth_param(index.into())
-                //     .expect("valid argument number");
-                // match operand_type {
-                //     Type::Int => {
-                //         self.builder
-                //             .build_store(param.into_pointer_value(), self.get_int_value(value))?;
-                //     }
-                //     Type::Boolean => {
-                //         self.builder
-                //             .build_store(param.into_pointer_value(), self.get_bool_value(value))?;
-                //     }
-                //     Type::Double => {
-                //         todo!()
-                //     }
-                // }
+            Type::Boolean => {
+                self.builder
+                    .build_store(var_pointer, self.get_bool_value(value))?;
             }
+            Type::Double => todo!(),
         };
         Ok(())
     }

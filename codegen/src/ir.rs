@@ -81,16 +81,16 @@ pub enum InstructionPayload {
         operand_type: Type,
         symbol_kind: SymbolKind,
     },
-    Store {
+    StoreVar {
         name: StringId,
         operand_type: Type,
-        symbol_kind: SymbolKind,
+        variable_index: VariableIndex,
         value: InstructionId,
     },
     Let {
-        variable_index: VariableIndex,
         name: StringId,
         operand_type: Type,
+        variable_index: VariableIndex,
         initializer: InstructionId,
     },
 }
@@ -112,7 +112,7 @@ impl InstructionPayload {
             InstructionPayload::Unary { result_type, .. } => Some(*result_type),
             InstructionPayload::Binary { result_type, .. } => Some(*result_type),
             InstructionPayload::Load { operand_type, .. } => Some(*operand_type),
-            InstructionPayload::Store { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::StoreVar { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Let { operand_type, .. } => Some(*operand_type),
         }
     }
@@ -236,16 +236,10 @@ impl Display for InstructionPayload {
                     resolve_string_id(*name).expect("should find symbol name")
                 )
             }
-            InstructionPayload::Store {
-                name,
-                symbol_kind,
-                value,
-                ..
-            } => {
+            InstructionPayload::StoreVar { name, value, .. } => {
                 write!(
                     f,
-                    "store {} {} = @{}",
-                    symbol_kind.prefix(),
+                    "store var {} = @{}",
                     resolve_string_id(*name).expect("should find symbol name"),
                     value
                 )
@@ -390,11 +384,17 @@ impl IrAllocator {
         })
     }
 
-    pub fn new_store(&self, symbol: &Symbol, value: &Instruction) -> &Instruction {
-        self.new_instruction(InstructionPayload::Store {
-            name: symbol.name,
-            operand_type: symbol.symbol_type,
-            symbol_kind: symbol.kind,
+    pub fn new_store(
+        &self,
+        name: StringId,
+        operand_type: Type,
+        variable_index: VariableIndex,
+        value: &Instruction,
+    ) -> &Instruction {
+        self.new_instruction(InstructionPayload::StoreVar {
+            name,
+            operand_type,
+            variable_index,
             value: value.id,
         })
     }

@@ -2,6 +2,10 @@ Parser
 - [ ] comments
 - [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
 
+Semantic analysis
+- [ ] ensure we cannot assign to a function parameter
+- [ ] keep track of mutable/immutable variables
+
 IR generator
 - [x] ensure there's always a return
 

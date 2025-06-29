@@ -101,7 +101,17 @@ impl<'i> FunctionIrBuilder<'i> {
                     .expect("should find symbol in symbol table");
                 let value = self.handle_expression(value, symbol_table);
 
-                let instruction = self.ir_allocator.new_store(symbol, value);
+                let variable_index = if let SymbolKind::Variable { index } = symbol.kind {
+                    index
+                } else {
+                    panic!("expected a variable symbol kind for let statement");
+                };
+                let instruction = self.ir_allocator.new_store(
+                    symbol.name,
+                    symbol.symbol_type,
+                    variable_index,
+                    value,
+                );
                 self.push_to_current_bb(instruction);
                 FoundReturn::No
             }
@@ -446,23 +456,6 @@ fn var(
   00003 i store var y = @2
   00004 i load var y
   00005 i ret @4
-}
-"
-        );
-        test_module_ir!(
-            parameter_reassignment,
-            r"fn param_assign(x: int) {
-    x = 1;
-}",
-            r"module test
-
-fn param_assign(
-  x: int,
-) -> void
-{ #0
-  00000 i const 1i
-  00001 i store param x = @0
-  00002 v ret
 }
 "
         );
