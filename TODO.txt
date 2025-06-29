@@ -1,6 +1,6 @@
 Parser
 - [x] comments
-- [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
+- [x] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
 
 Semantic analysis
 - [x] ensure we cannot assign to a function parameter
