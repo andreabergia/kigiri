@@ -124,6 +124,24 @@ mod tests {
 
     #[test]
     fn grammar_can_parse_module() {
-        assert_can_be_parsed_as("fn main() { }\nfn foo() { let x = 1; }", Rule::module);
+        assert_can_be_parsed_as(
+            r"fn main() { }
+fn foo() { let x = 1; }",
+            Rule::module,
+        );
+    }
+
+    #[test]
+    fn grammar_can_parse_comments() {
+        assert_can_be_parsed_as(
+            r#"
+        // This is a comment
+        fn main() {
+            /* This is another comment */
+            let x = 1; // And another one
+        }
+        "#,
+            Rule::module,
+        );
     }
 }

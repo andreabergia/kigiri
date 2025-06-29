@@ -1,5 +1,5 @@
 Parser
-- [ ] comments
+- [x] comments
 - [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
 
 Semantic analysis

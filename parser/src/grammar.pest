@@ -68,4 +68,8 @@ boolean = {"true" | "false"}
 
 identifier = @{ (XID_START | "_") ~ XID_CONTINUE* }
 
+COMMENT = _{ block_comment | line_comment }
+block_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+line_comment = { "//" ~ (!NEWLINE ~ ANY)* }
+
 WHITESPACE = _{ " " | "\t" | NEWLINE }
