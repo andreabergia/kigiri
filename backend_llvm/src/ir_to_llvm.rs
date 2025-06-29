@@ -1,4 +1,4 @@
-use codegen::{BasicBlock, Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
+use codegen::{Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
 use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
@@ -24,7 +24,11 @@ impl From<BuilderError> for CodeGenError {
     }
 }
 
-struct FunctionContext<'c> {
+struct LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
+    context: &'c Context,
+    builder: &'c2 Builder<'c>,
+    function: &'ir Function<'ir2>,
+
     // Vectors are indexed by instruction id. There's a bit of space wasted,
     // but it makes everything quite simple and fast.
     int_values: RefCell<Vec<Option<IntValue<'c>>>>,
@@ -34,35 +38,48 @@ struct FunctionContext<'c> {
     int_bool_variable: RefCell<Vec<PointerValue<'c>>>,
 }
 
-impl<'c> FunctionContext<'c> {
-    fn new(block: &BasicBlock) -> Self {
-        let num_instructions = block.instructions.borrow().len();
+enum IntOrBool {
+    Int,
+    Bool,
+}
+
+impl IntOrBool {
+    fn from_type(t: &Type) -> Self {
+        match t {
+            Type::Int => IntOrBool::Int,
+            Type::Boolean => IntOrBool::Bool,
+            _ => panic!("unexpected type in IntOrBool"),
+        }
+    }
+}
+
+impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
+    fn new(context: &'c Context, builder: &'c2 Builder<'c>, function: &'ir Function<'ir2>) -> Self {
+        let num_instructions = function.body.instructions.borrow().len();
 
         let mut int_values = Vec::with_capacity(num_instructions);
         int_values.resize(num_instructions, None);
         let mut bool_values = Vec::with_capacity(num_instructions);
         bool_values.resize(num_instructions, None);
 
-        let int_bool_variable = Vec::with_capacity(block.variables.borrow().len());
+        let int_bool_variable = Vec::with_capacity(function.body.variables.borrow().len());
 
         Self {
+            context,
+            builder,
+            function,
             int_values: int_values.into(),
             bool_values: bool_values.into(),
             int_bool_variable: int_bool_variable.into(),
         }
     }
 
-    fn alloca_variables(
-        &self,
-        block: &BasicBlock,
-        context: &'c Context,
-        builder: &Builder<'c>,
-    ) -> Result<(), CodeGenError> {
-        for var in block.variables.borrow().iter() {
-            let value = builder.build_alloca(
+    fn alloca_variables(&self) -> Result<(), CodeGenError> {
+        for var in self.function.body.variables.borrow().iter() {
+            let value = self.builder.build_alloca(
                 match var.variable_type {
-                    Type::Int => context.i64_type(),
-                    Type::Boolean => context.bool_type(),
+                    Type::Int => self.context.i64_type(),
+                    Type::Boolean => self.context.bool_type(),
                     Type::Double => todo!(),
                 },
                 resolve_string_id(var.name).expect("variable name"),
@@ -72,91 +89,75 @@ impl<'c> FunctionContext<'c> {
         Ok(())
     }
 
-    // TODO: this is a sort of setter; add a getter too
-
-    fn store_int(&self, value_type: &Type, id: InstructionId, value: IntValue<'c>) {
-        match value_type {
-            Type::Int => {
-                self.int_values.borrow_mut()[id.as_usize()] = Some(value);
+    fn store_int_bool_value(&self, int_or_bool: IntOrBool, id: InstructionId, value: IntValue<'c>) {
+        match int_or_bool {
+            IntOrBool::Int => {
+                self.store_int_value(id, value);
             }
-            Type::Boolean => {
-                self.bool_values.borrow_mut()[id.as_usize()] = Some(value);
+            IntOrBool::Bool => {
+                self.store_bool_value(id, value);
             }
-            _ => panic!("invalid store_int call for type: {:?}", value_type),
-        }
-    }
-}
-
-struct LlvmGenerator<'c, 'm, 'm2>
-where
-    'c: 'm,
-{
-    context: &'c Context,
-    llvm_module: Module<'c>,
-    builder: Builder<'c>,
-    ir_module: &'m codegen::Module<'m2>,
-}
-
-impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
-    fn new(context: &'c Context, ir_module: &'m codegen::Module<'m2>) -> Self {
-        let llvm_module =
-            context.create_module(resolve_string_id(ir_module.name).expect("module name"));
-        let builder = context.create_builder();
-        Self {
-            context,
-            llvm_module,
-            builder,
-            ir_module,
         }
     }
 
-    fn generate(&mut self) -> Result<String, CodeGenError> {
-        for function in self.ir_module.functions.iter() {
-            self.generate_fun(function)?;
-        }
-        Ok(self.llvm_module.to_string())
+    fn store_int_value(&self, id: InstructionId, value: IntValue<'c>) {
+        self.int_values.borrow_mut()[id.as_usize()] = Some(value);
     }
 
-    fn generate_fun(&mut self, function: &'m Function) -> Result<(), CodeGenError> {
-        let fn_type = self.make_fun_type(function);
-        let fun = self.llvm_module.add_function(
-            resolve_string_id(function.signature.name).expect("function name"),
+    fn store_bool_value(&self, id: InstructionId, value: IntValue<'c>) {
+        self.bool_values.borrow_mut()[id.as_usize()] = Some(value);
+    }
+
+    fn get_int_value(&self, id: InstructionId) -> IntValue<'c> {
+        self.int_values
+            .borrow()
+            .get(id.as_usize())
+            .expect("vector should be initialized with the correct length")
+            .expect("int value should be present")
+    }
+
+    fn get_bool_value(&self, id: InstructionId) -> IntValue<'c> {
+        self.bool_values
+            .borrow()
+            .get(id.as_usize())
+            .expect("vector should be initialized with the correct length")
+            .expect("int value should be present")
+    }
+
+    fn generate(&self, llvm_module: &Module<'c>) -> Result<FunctionValue<'c>, CodeGenError> {
+        let fn_type = self.make_fun_type();
+        let fun = llvm_module.add_function(
+            resolve_string_id(self.function.signature.name).expect("function name"),
             fn_type,
             None,
         );
-        Self::setup_fun_arg(function, fun)?;
 
-        self.build(function, fun)?;
+        self.setup_fun_arg(fun)?;
+        self.generate_body(fun)?;
 
         if !fun.verify(true) {
-            panic!("Invalid function");
+            panic!("LLVM says we have built an invalid function; this is a bug :-(");
         }
-
-        Ok(())
+        Ok(fun)
     }
 
-    fn build(
-        &mut self,
-        function: &'m Function,
-        fun: FunctionValue<'c>,
-    ) -> Result<(), CodeGenError> {
+    fn generate_body(&self, fun: FunctionValue<'c>) -> Result<(), CodeGenError> {
         let bb = self.context.append_basic_block(fun, "entry");
         self.builder.position_at_end(bb);
 
-        let fun_ctx = FunctionContext::new(function.body);
-        fun_ctx.alloca_variables(function.body, self.context, &self.builder)?;
+        self.alloca_variables()?;
 
-        for instruction in function.body.instructions.borrow().iter() {
+        for instruction in self.function.body.instructions.borrow().iter() {
             match &instruction.payload {
                 InstructionPayload::Constant { constant, .. } => {
-                    self.handle_constant(&fun_ctx, instruction.id, constant);
+                    self.handle_constant(instruction.id, constant);
                 }
                 InstructionPayload::Unary {
                     result_type: operand_type,
                     operator,
                     operand,
                 } => {
-                    self.handle_unary(&fun_ctx, instruction.id, operand_type, operator, *operand)?;
+                    self.handle_unary(instruction.id, operand_type, operator, *operand)?;
                 }
                 InstructionPayload::Binary {
                     result_type,
@@ -166,7 +167,6 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     right,
                 } => {
                     self.handle_binary(
-                        &fun_ctx,
                         instruction.id,
                         result_type,
                         operator,
@@ -182,21 +182,21 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     expression,
                     operand_type,
                 } => {
-                    self.handle_return_expression(&fun_ctx, *expression, operand_type)?;
+                    self.handle_return_expression(*expression, operand_type)?;
                 }
                 InstructionPayload::Load {
                     operand_type,
                     symbol_kind,
                     ..
                 } => {
-                    self.handle_load(fun, &fun_ctx, instruction, operand_type, *symbol_kind)?;
+                    self.handle_load(fun, instruction, operand_type, *symbol_kind)?;
                 }
                 InstructionPayload::Let {
                     variable_index,
                     operand_type,
                     initializer,
                     ..
-                } => self.handle_let(&fun_ctx, *variable_index, operand_type, *initializer)?,
+                } => self.handle_let(*variable_index, operand_type, *initializer)?,
             }
         }
         Ok(())
@@ -205,7 +205,6 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     fn handle_load(
         &self,
         fun: FunctionValue<'c>,
-        fun_ctx: &FunctionContext<'c>,
         instruction: &Instruction,
         operand_type: &Type,
         symbol_kind: SymbolKind,
@@ -214,7 +213,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             SymbolKind::Function => todo!(),
             SymbolKind::Variable { index } => {
                 let variable_index: usize = index.into();
-                let var_pointer = *fun_ctx
+                let var_pointer = *self
                     .int_bool_variable
                     .borrow()
                     .get(variable_index)
@@ -222,7 +221,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
                 match operand_type {
                     Type::Int => {
-                        fun_ctx.int_values.borrow_mut()[instruction.id.as_usize()] = Some(
+                        self.int_values.borrow_mut()[instruction.id.as_usize()] = Some(
                             self.builder
                                 .build_load(
                                     self.context.i64_type(),
@@ -233,7 +232,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                         );
                     }
                     Type::Boolean => {
-                        fun_ctx.bool_values.borrow_mut()[instruction.id.as_usize()] = Some(
+                        self.bool_values.borrow_mut()[instruction.id.as_usize()] = Some(
                             self.builder
                                 .build_load(
                                     self.context.bool_type(),
@@ -252,11 +251,11 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                     .expect("valid argument number");
                 match operand_type {
                     Type::Int => {
-                        fun_ctx.int_values.borrow_mut()[instruction.id.as_usize()] =
+                        self.int_values.borrow_mut()[instruction.id.as_usize()] =
                             Some(value.into_int_value());
                     }
                     Type::Boolean => {
-                        fun_ctx.bool_values.borrow_mut()[instruction.id.as_usize()] =
+                        self.bool_values.borrow_mut()[instruction.id.as_usize()] =
                             Some(value.into_int_value());
                     }
                     Type::Double => {
@@ -270,26 +269,25 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
 
     fn handle_let(
         &self,
-        fun_ctx: &FunctionContext<'c>,
         variable_index: VariableIndex,
         operand_type: &Type,
         initializer: InstructionId,
     ) -> Result<(), CodeGenError> {
         let variable_index: usize = variable_index.into();
-        let var_pointer = *fun_ctx
+        let var_pointer = *self
             .int_bool_variable
             .borrow()
             .get(variable_index)
             .expect("variable index should be valid");
 
         let initializer = match operand_type {
-            Type::Int => fun_ctx
+            Type::Int => self
                 .int_values
                 .borrow()
                 .get(initializer.as_usize())
                 .expect("vector should be initialized with the correct length")
                 .expect("let initializer should be an int"),
-            Type::Boolean => fun_ctx
+            Type::Boolean => self
                 .bool_values
                 .borrow()
                 .get(initializer.as_usize())
@@ -302,8 +300,9 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         Ok(())
     }
 
-    fn make_fun_type(&mut self, function: &Function) -> FunctionType<'c> {
-        let arguments = function
+    fn make_fun_type(&self) -> FunctionType<'c> {
+        let arguments = self
+            .function
             .signature
             .arguments
             .iter()
@@ -314,7 +313,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             })
             .collect::<Vec<_>>();
 
-        match &function.signature.return_type {
+        match &self.function.signature.return_type {
             None => self.context.void_type().fn_type(&arguments, false),
             Some(t) => match t {
                 Type::Int => self.context.i64_type().fn_type(&arguments, false),
@@ -324,8 +323,8 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
         }
     }
 
-    fn setup_fun_arg(function: &Function, fun: FunctionValue<'c>) -> Result<(), CodeGenError> {
-        for (i, arg) in function.signature.arguments.iter().enumerate() {
+    fn setup_fun_arg(&self, fun: FunctionValue<'c>) -> Result<(), CodeGenError> {
+        for (i, arg) in self.function.signature.arguments.iter().enumerate() {
             let arg_value = fun.get_nth_param(i as u32).expect("should have argument");
             arg_value.set_name(resolve_string_id(arg.name).expect("function argument name"));
         }
@@ -333,8 +332,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     }
 
     fn handle_binary(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
+        &self,
         id: InstructionId,
         result_type: &Type,
         operator: &BinaryOperator,
@@ -344,200 +342,170 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                self.handle_binary_int(fun_ctx, id, operator, result_type, left, right)?;
+                self.handle_binary_int_operands(id, operator, result_type, left, right)?;
             }
 
             Type::Boolean => {
-                self.handle_binary_boolean(fun_ctx, id, operator, result_type, left, right)?;
+                self.handle_binary_boolean_operands(id, operator, result_type, left, right)?;
             }
             Type::Double => todo!(),
         }
         Ok(())
     }
 
-    fn handle_binary_boolean(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
+    fn handle_binary_boolean_operands(
+        &self,
         id: InstructionId,
         operator: &BinaryOperator,
         result_type: &Type,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = fun_ctx
-            .bool_values
-            .borrow()
-            .get(left.as_usize())
-            .expect("vector should be initialized with the correct length")
-            .expect("binary operand should be present");
-        let right = fun_ctx
-            .bool_values
-            .borrow()
-            .get(right.as_usize())
-            .expect("vector should be initialized with the correct length")
-            .expect("binary operand should be present");
+        let left = self.get_bool_value(left);
+        let right = self.get_bool_value(right);
+        let result = match operator {
+            BinaryOperator::Add
+            | BinaryOperator::Sub
+            | BinaryOperator::Mul
+            | BinaryOperator::Div
+            | BinaryOperator::Rem
+            | BinaryOperator::Exp
+            | BinaryOperator::Lt
+            | BinaryOperator::Lte
+            | BinaryOperator::Gt
+            | BinaryOperator::Gte
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::BitwiseShl
+            | BinaryOperator::BitwiseShr => unreachable!(),
 
-        fun_ctx.store_int(
-            result_type,
-            id,
-            match operator {
-                BinaryOperator::Add
-                | BinaryOperator::Sub
-                | BinaryOperator::Mul
-                | BinaryOperator::Div
-                | BinaryOperator::Rem
-                | BinaryOperator::Exp
-                | BinaryOperator::Lt
-                | BinaryOperator::Lte
-                | BinaryOperator::Gt
-                | BinaryOperator::Gte
-                | BinaryOperator::BitwiseAnd
-                | BinaryOperator::BitwiseOr
-                | BinaryOperator::BitwiseXor
-                | BinaryOperator::BitwiseShl
-                | BinaryOperator::BitwiseShr => unreachable!(),
+            BinaryOperator::Eq => self.builder.build_int_compare(
+                IntPredicate::EQ,
+                left,
+                right,
+                &Self::name("eq", id),
+            )?,
+            BinaryOperator::Neq => self.builder.build_int_compare(
+                IntPredicate::NE,
+                left,
+                right,
+                &Self::name("neq", id),
+            )?,
+            BinaryOperator::And => self
+                .builder
+                .build_and(left, right, &Self::name("and", id))?,
+            BinaryOperator::Or => self.builder.build_or(left, right, &Self::name("or", id))?,
+        };
 
-                BinaryOperator::Eq => self.builder.build_int_compare(
-                    IntPredicate::EQ,
-                    left,
-                    right,
-                    &Self::name("eq", id),
-                )?,
-                BinaryOperator::Neq => self.builder.build_int_compare(
-                    IntPredicate::NE,
-                    left,
-                    right,
-                    &Self::name("neq", id),
-                )?,
-                BinaryOperator::And => {
-                    self.builder
-                        .build_and(left, right, &Self::name("and", id))?
-                }
-                BinaryOperator::Or => self.builder.build_or(left, right, &Self::name("or", id))?,
-            },
-        );
+        self.store_int_bool_value(IntOrBool::from_type(result_type), id, result);
         Ok(())
     }
 
-    fn handle_binary_int(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
+    fn handle_binary_int_operands(
+        &self,
         id: InstructionId,
         operator: &BinaryOperator,
         result_type: &Type,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = fun_ctx
-            .int_values
-            .borrow()
-            .get(left.as_usize())
-            .expect("vector should be initialized with the correct length")
-            .expect("binary operand should be an int");
-        let right = fun_ctx
-            .int_values
-            .borrow()
-            .get(right.as_usize())
-            .expect("vector should be initialized with the correct length")
-            .expect("binary operand should be an int");
+        let left = self.get_int_value(left);
+        let right = self.get_int_value(right);
+        let result = match operator {
+            BinaryOperator::Add => {
+                self.builder
+                    .build_int_add(left, right, &Self::name("add", id))?
+            }
+            BinaryOperator::Sub => {
+                self.builder
+                    .build_int_sub(left, right, &Self::name("sub", id))?
+            }
+            BinaryOperator::Mul => {
+                self.builder
+                    .build_int_mul(left, right, &Self::name("mul", id))?
+            }
+            BinaryOperator::Div => {
+                self.builder
+                    .build_int_signed_div(left, right, &Self::name("div", id))?
+            }
+            BinaryOperator::Rem => {
+                todo!()
+            }
+            BinaryOperator::Exp => {
+                todo!()
+            }
+            BinaryOperator::Eq => self.builder.build_int_compare(
+                IntPredicate::EQ,
+                left,
+                right,
+                &Self::name("eq", id),
+            )?,
+            BinaryOperator::Neq => self.builder.build_int_compare(
+                IntPredicate::NE,
+                left,
+                right,
+                &Self::name("neq", id),
+            )?,
+            BinaryOperator::Lt => self.builder.build_int_compare(
+                IntPredicate::SLT,
+                left,
+                right,
+                &Self::name("lt", id),
+            )?,
+            BinaryOperator::Lte => self.builder.build_int_compare(
+                IntPredicate::SLE,
+                left,
+                right,
+                &Self::name("lte", id),
+            )?,
+            BinaryOperator::Gt => self.builder.build_int_compare(
+                IntPredicate::SGT,
+                left,
+                right,
+                &Self::name("gt", id),
+            )?,
+            BinaryOperator::Gte => self.builder.build_int_compare(
+                IntPredicate::SGE,
+                left,
+                right,
+                &Self::name("gte", id),
+            )?,
+            BinaryOperator::BitwiseAnd => {
+                self.builder
+                    .build_and(left, right, &Self::name("bitwise_and", id))?
+            }
+            BinaryOperator::BitwiseOr => {
+                self.builder
+                    .build_or(left, right, &Self::name("bitwise_or", id))?
+            }
+            BinaryOperator::BitwiseXor => {
+                self.builder
+                    .build_xor(left, right, &Self::name("bitwise_xor", id))?
+            }
+            BinaryOperator::BitwiseShl => {
+                self.builder
+                    .build_left_shift(left, right, &Self::name("bitwise_shl", id))?
+            }
+            BinaryOperator::BitwiseShr => self.builder.build_right_shift(
+                left,
+                right,
+                false,
+                &Self::name("bitwise_shr", id),
+            )?,
 
-        fun_ctx.store_int(
-            result_type,
-            id,
-            match operator {
-                BinaryOperator::Add => {
-                    self.builder
-                        .build_int_add(left, right, &Self::name("add", id))?
-                }
-                BinaryOperator::Sub => {
-                    self.builder
-                        .build_int_sub(left, right, &Self::name("sub", id))?
-                }
-                BinaryOperator::Mul => {
-                    self.builder
-                        .build_int_mul(left, right, &Self::name("mul", id))?
-                }
-                BinaryOperator::Div => {
-                    self.builder
-                        .build_int_signed_div(left, right, &Self::name("div", id))?
-                }
-                BinaryOperator::Rem => {
-                    todo!()
-                }
-                BinaryOperator::Exp => {
-                    todo!()
-                }
-                BinaryOperator::Eq => self.builder.build_int_compare(
-                    IntPredicate::EQ,
-                    left,
-                    right,
-                    &Self::name("eq", id),
-                )?,
-                BinaryOperator::Neq => self.builder.build_int_compare(
-                    IntPredicate::NE,
-                    left,
-                    right,
-                    &Self::name("neq", id),
-                )?,
-                BinaryOperator::Lt => self.builder.build_int_compare(
-                    IntPredicate::SLT,
-                    left,
-                    right,
-                    &Self::name("lt", id),
-                )?,
-                BinaryOperator::Lte => self.builder.build_int_compare(
-                    IntPredicate::SLE,
-                    left,
-                    right,
-                    &Self::name("lte", id),
-                )?,
-                BinaryOperator::Gt => self.builder.build_int_compare(
-                    IntPredicate::SGT,
-                    left,
-                    right,
-                    &Self::name("gt", id),
-                )?,
-                BinaryOperator::Gte => self.builder.build_int_compare(
-                    IntPredicate::SGE,
-                    left,
-                    right,
-                    &Self::name("gte", id),
-                )?,
-                BinaryOperator::BitwiseAnd => {
-                    self.builder
-                        .build_and(left, right, &Self::name("bitwise_and", id))?
-                }
-                BinaryOperator::BitwiseOr => {
-                    self.builder
-                        .build_or(left, right, &Self::name("bitwise_or", id))?
-                }
-                BinaryOperator::BitwiseXor => {
-                    self.builder
-                        .build_xor(left, right, &Self::name("bitwise_xor", id))?
-                }
-                BinaryOperator::BitwiseShl => {
-                    self.builder
-                        .build_left_shift(left, right, &Self::name("bitwise_shl", id))?
-                }
-                BinaryOperator::BitwiseShr => self.builder.build_right_shift(
-                    left,
-                    right,
-                    false,
-                    &Self::name("bitwise_shr", id),
-                )?,
+            BinaryOperator::And | BinaryOperator::Or => {
+                // TODO
+                unreachable!()
+            }
+        };
 
-                BinaryOperator::And | BinaryOperator::Or => {
-                    // TODO
-                    unreachable!()
-                }
-            },
-        );
+        self.store_int_bool_value(IntOrBool::from_type(result_type), id, result);
         Ok(())
     }
 
     fn handle_unary(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
+        &self,
         id: InstructionId,
         operand_type: &Type,
         operator: &UnaryOperator,
@@ -545,56 +513,42 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                self.handle_unary_int(fun_ctx, id, operator, operand)?;
+                self.handle_unary_int_operand(id, operator, operand)?;
             }
             Type::Boolean => {
-                self.handle_unary_boolean(fun_ctx, id, operator, operand)?;
+                self.handle_unary_boolean_operand(id, operator, operand)?;
             }
             Type::Double => todo!(),
         }
         Ok(())
     }
 
-    fn name(prefix: &str, id: InstructionId) -> String {
-        format!("{}_{}", prefix, id)
-    }
-
-    fn handle_unary_boolean(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
+    fn handle_unary_boolean_operand(
+        &self,
         id: InstructionId,
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = fun_ctx
-            .bool_values
-            .borrow()
-            .get(operand.as_usize())
-            .expect("vector should be initialized with the correct length")
-            .expect("unary operand should be a bool");
-        fun_ctx.bool_values.borrow_mut()[id.as_usize()] = Some(match operator {
+        let operand = self.get_bool_value(operand);
+        let result = match operator {
             UnaryOperator::Neg | UnaryOperator::BitwiseNot => {
                 unreachable!()
             }
             UnaryOperator::Not => self.builder.build_not(operand, &Self::name("not", id))?,
-        });
+        };
+
+        self.store_bool_value(id, result);
         Ok(())
     }
 
-    fn handle_unary_int(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
+    fn handle_unary_int_operand(
+        &self,
         id: InstructionId,
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = fun_ctx
-            .int_values
-            .borrow()
-            .get(operand.as_usize())
-            .expect("vector should be initialized with the correct length")
-            .expect("unary operand should be an int");
-        fun_ctx.int_values.borrow_mut()[id.as_usize()] = Some(match operator {
+        let operand = self.get_int_value(operand);
+        let result = match operator {
             UnaryOperator::Neg => self
                 .builder
                 .build_int_neg(operand, &Self::name("neg", id))?,
@@ -611,30 +565,20 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
                 // TODO: error
                 unreachable!("unexpected not operator with int type")
             }
-        });
+        };
+
+        self.store_int_value(id, result);
         Ok(())
     }
 
-    fn handle_constant(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
-        id: InstructionId,
-        constant: &LiteralValue,
-    ) {
+    fn handle_constant(&self, id: InstructionId, constant: &LiteralValue) {
         match constant {
             LiteralValue::Integer(value) => {
-                let mut int_values_borrow = fun_ctx.int_values.borrow_mut();
-                let option = int_values_borrow
-                    .get_mut(id.as_usize())
-                    .expect("vector should be initialized with the correct length");
-                *option = Some(self.context.i64_type().const_int(*value as u64, false));
+                self.store_int_value(id, self.context.i64_type().const_int(*value as u64, false));
             }
             LiteralValue::Boolean(value) => {
-                let mut bool_values_borrow = fun_ctx.bool_values.borrow_mut();
-                let option = bool_values_borrow
-                    .get_mut(id.as_usize())
-                    .expect("vector should be initialized with the correct length");
-                *option = Some(
+                self.store_bool_value(
+                    id,
                     self.context
                         .bool_type()
                         .const_int(if *value { 1 } else { 0 }, false),
@@ -645,33 +589,58 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     }
 
     fn handle_return_expression(
-        &mut self,
-        fun_ctx: &FunctionContext<'c>,
+        &self,
         expression: InstructionId,
         operand_type: &Type,
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                let operand = fun_ctx
-                    .int_values
-                    .borrow()
-                    .get(expression.as_usize())
-                    .expect("vector should be initialized with the correct length")
-                    .expect("return expression should be an int");
+                let operand = self.get_int_value(expression);
                 self.builder.build_return(Some(&operand))?;
             }
             Type::Boolean => {
-                let operand = fun_ctx
-                    .bool_values
-                    .borrow()
-                    .get(expression.as_usize())
-                    .expect("vector should be initialized with the correct length")
-                    .expect("return expression should be a bool");
+                let operand = self.get_bool_value(expression);
                 self.builder.build_return(Some(&operand))?;
             }
             Type::Double => todo!(),
         }
         Ok(())
+    }
+
+    fn name(prefix: &str, id: InstructionId) -> String {
+        format!("{}_{}", prefix, id)
+    }
+}
+
+struct LlvmGenerator<'c, 'ir, 'ir2>
+where
+    'c: 'ir,
+{
+    context: &'c Context,
+    llvm_module: Module<'c>,
+    builder: Builder<'c>,
+    ir_module: &'ir codegen::Module<'ir2>,
+}
+
+impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
+    fn new(context: &'c Context, ir_module: &'m codegen::Module<'m2>) -> Self {
+        let llvm_module =
+            context.create_module(resolve_string_id(ir_module.name).expect("module name"));
+        let builder = context.create_builder();
+        Self {
+            context,
+            llvm_module,
+            builder,
+            ir_module,
+        }
+    }
+
+    fn generate(&self) -> Result<String, CodeGenError> {
+        for function in self.ir_module.functions.iter() {
+            let fun_generator = LlvmFunctionGenerator::new(self.context, &self.builder, function);
+            fun_generator.generate(&self.llvm_module)?;
+        }
+        Ok(self.llvm_module.to_string())
     }
 }
 
