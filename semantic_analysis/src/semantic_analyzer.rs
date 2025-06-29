@@ -2,7 +2,7 @@ use crate::typed_ast::{
     SymbolId, SymbolTable, TypedBlock, TypedFunctionDeclaration, TypedFunctionSignature,
     TypedFunctionSignaturesByName, TypedModule, TypedStatement,
 };
-use crate::{SymbolKind, Type, TypedExpression, VariableIndex};
+use crate::{ArgumentIndex, SymbolKind, Type, TypedExpression, VariableIndex};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator, resolve_string_id,
@@ -92,7 +92,7 @@ impl SemanticAnalyzer {
                         argument.name,
                         arg_type,
                         SymbolKind::Argument {
-                            index: index as u16,
+                            index: ArgumentIndex::from(index as u32),
                         },
                     )
                 })
@@ -762,7 +762,12 @@ mod tests {
                 .lookup_by_name(parser::get_or_create_string("x"))
                 .expect("should have found argument x");
             assert_eq!(Type::Int, symbol.symbol_type);
-            assert_eq!(SymbolKind::Argument { index: 0 }, symbol.kind);
+            assert_eq!(
+                SymbolKind::Argument {
+                    index: ArgumentIndex::from(0)
+                },
+                symbol.kind
+            );
         }
 
         test_ok!(

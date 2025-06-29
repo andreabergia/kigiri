@@ -9,7 +9,7 @@ Semantic analysis
 
 IR generator
 - [x] ensure there's always a return
-- [ ] split Load into multiple instructions (param, variable)
+- [x] split Load into multiple instructions (param, variable)
 
 LLVM backend
 - [x] variables

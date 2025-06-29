@@ -146,7 +146,17 @@ impl<'i> FunctionIrBuilder<'i> {
                     .lookup_by_id(*symbol_id)
                     .expect("should find identifier in symbol table");
 
-                let instruction = self.ir_allocator.new_load(symbol);
+                let instruction = match symbol.kind {
+                    SymbolKind::Function => todo!(),
+                    SymbolKind::Variable { index } => {
+                        self.ir_allocator
+                            .new_load_var(symbol.name, symbol.symbol_type, index)
+                    }
+                    SymbolKind::Argument { index } => {
+                        self.ir_allocator
+                            .new_load_arg(symbol.name, symbol.symbol_type, index)
+                    }
+                };
 
                 self.push_to_current_bb(instruction);
                 instruction
@@ -380,7 +390,7 @@ fn add_one(
 ) -> i
 { #0
   00000 i const 1i
-  00001 i load arg x
+  00001 i loadarg x
   00002 i add @0, @1
   00003 i ret @2
 }
@@ -432,7 +442,7 @@ fn var(
   var y: int
   00000 i const 1i
   00001 i let y = @0
-  00002 i load var y
+  00002 i loadvar y
   00003 i ret @2
 }
 "
@@ -453,8 +463,8 @@ fn var(
   00000 i const 1i
   00001 i let y = @0
   00002 i const 2i
-  00003 i store var y = @2
-  00004 i load var y
+  00003 i storevar y = @2
+  00004 i loadvar y
   00005 i ret @4
 }
 "
@@ -472,11 +482,11 @@ fn arg_assign(
 ) -> i
 { #0
   var x: int
-  00000 i load arg x
+  00000 i loadarg x
   00001 i const 1i
   00002 i add @0, @1
   00003 i let x = @2
-  00004 i load var x
+  00004 i loadvar x
   00005 i ret @4
 }
 "

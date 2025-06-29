@@ -1,6 +1,6 @@
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
-use semantic_analysis::{Symbol, SymbolKind, Type, VariableIndex};
+use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::any::Any;
 use std::cell::RefCell;
 use std::fmt::{Binary, Display, Formatter};
@@ -76,10 +76,15 @@ pub enum InstructionPayload {
         left: InstructionId,
         right: InstructionId,
     },
-    Load {
+    LoadVar {
         name: StringId,
         operand_type: Type,
-        symbol_kind: SymbolKind,
+        variable_index: VariableIndex,
+    },
+    LoadArg {
+        name: StringId,
+        operand_type: Type,
+        argument_index: ArgumentIndex,
     },
     StoreVar {
         name: StringId,
@@ -111,7 +116,8 @@ impl InstructionPayload {
             InstructionPayload::Constant { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Unary { result_type, .. } => Some(*result_type),
             InstructionPayload::Binary { result_type, .. } => Some(*result_type),
-            InstructionPayload::Load { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::LoadVar { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::LoadArg { operand_type, .. } => Some(*operand_type),
             InstructionPayload::StoreVar { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Let { operand_type, .. } => Some(*operand_type),
         }
@@ -226,26 +232,38 @@ impl Display for InstructionPayload {
                 right,
                 ..
             } => write!(f, "{} @{}, @{}", operator.name(), left, right),
-            InstructionPayload::Load {
-                name, symbol_kind, ..
+            InstructionPayload::LoadVar { name, .. } => {
+                write!(
+                    f,
+                    "loadvar {}",
+                    resolve_string_id(*name).expect("should find variable name")
+                )
+            }
+            InstructionPayload::LoadArg { name, .. } => {
+                write!(
+                    f,
+                    "loadarg {}",
+                    resolve_string_id(*name).expect("should find argument name")
+                )
+            }
+            InstructionPayload::StoreVar {
+                name,
+                value,
+                variable_index,
+                ..
             } => {
                 write!(
                     f,
-                    "load {} {}",
-                    symbol_kind.prefix(),
-                    resolve_string_id(*name).expect("should find symbol name")
-                )
-            }
-            InstructionPayload::StoreVar { name, value, .. } => {
-                write!(
-                    f,
-                    "store var {} = @{}",
-                    resolve_string_id(*name).expect("should find symbol name"),
+                    "storevar {} = @{}",
+                    resolve_string_id(*name).expect("should find variable name"),
                     value
                 )
             }
             InstructionPayload::Let {
-                name, initializer, ..
+                name,
+                initializer,
+                variable_index,
+                ..
             } => {
                 write!(
                     f,
@@ -360,12 +378,29 @@ impl IrAllocator {
         })
     }
 
-    pub fn new_load(&self, symbol: &Symbol) -> &Instruction {
-        // TODO: do we need to distinguish between load of variable and arguments?
-        self.new_instruction(InstructionPayload::Load {
-            name: symbol.name,
-            operand_type: symbol.symbol_type,
-            symbol_kind: symbol.kind,
+    pub fn new_load_var(
+        &self,
+        name: StringId,
+        operand_type: Type,
+        index: VariableIndex,
+    ) -> &Instruction {
+        self.new_instruction(InstructionPayload::LoadVar {
+            name,
+            operand_type,
+            variable_index: index,
+        })
+    }
+
+    pub fn new_load_arg(
+        &self,
+        name: StringId,
+        operand_type: Type,
+        index: ArgumentIndex,
+    ) -> &Instruction {
+        self.new_instruction(InstructionPayload::LoadArg {
+            name,
+            operand_type,
+            argument_index: index,
         })
     }
 

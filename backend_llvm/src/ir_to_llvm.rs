@@ -1,12 +1,12 @@
 use codegen::{Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
-use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::{FunctionValue, IntValue, PointerValue};
-use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
-use semantic_analysis::{SymbolKind, Type, VariableIndex};
+use inkwell::IntPredicate;
+use parser::{resolve_string_id, BinaryOperator, UnaryOperator};
+use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
 use thiserror::Error;
 
@@ -184,12 +184,19 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 } => {
                     self.handle_return_expression(*expression, operand_type)?;
                 }
-                InstructionPayload::Load {
+                InstructionPayload::LoadVar {
                     operand_type,
-                    symbol_kind,
+                    variable_index,
                     ..
                 } => {
-                    self.handle_load(fun, instruction, operand_type, *symbol_kind)?;
+                    self.handle_load_var(instruction, operand_type, *variable_index)?;
+                }
+                InstructionPayload::LoadArg {
+                    operand_type,
+                    argument_index,
+                    ..
+                } => {
+                    self.handle_load_arg(fun, instruction, operand_type, *argument_index)?;
                 }
                 InstructionPayload::StoreVar {
                     operand_type,
@@ -210,68 +217,70 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(())
     }
 
-    fn handle_load(
+    fn handle_load_var(
+        &self,
+        instruction: &Instruction,
+        operand_type: &Type,
+        variable_index: VariableIndex,
+    ) -> Result<(), CodeGenError> {
+        let variable_index: usize = variable_index.into();
+        let var_pointer = *self
+            .int_bool_variable
+            .borrow()
+            .get(variable_index)
+            .expect("variable index should be valid");
+
+        match operand_type {
+            Type::Int => {
+                self.store_int_value(
+                    instruction.id,
+                    self.builder
+                        .build_load(
+                            self.context.i64_type(),
+                            var_pointer,
+                            &Self::name("load", instruction.id),
+                        )?
+                        .into_int_value(),
+                );
+            }
+            Type::Boolean => {
+                self.store_bool_value(
+                    instruction.id,
+                    self.builder
+                        .build_load(
+                            self.context.bool_type(),
+                            var_pointer,
+                            &Self::name("load", instruction.id),
+                        )?
+                        .into_int_value(),
+                );
+            }
+            Type::Double => todo!(),
+        };
+        Ok(())
+    }
+
+    fn handle_load_arg(
         &self,
         fun: FunctionValue<'c>,
         instruction: &Instruction,
         operand_type: &Type,
-        symbol_kind: SymbolKind,
+        argument_index: ArgumentIndex,
     ) -> Result<(), CodeGenError> {
-        match symbol_kind {
-            SymbolKind::Function => todo!(),
-            SymbolKind::Variable { index } => {
-                let variable_index: usize = index.into();
-                let var_pointer = *self
-                    .int_bool_variable
-                    .borrow()
-                    .get(variable_index)
-                    .expect("variable index should be valid");
-
-                match operand_type {
-                    Type::Int => {
-                        self.store_int_value(
-                            instruction.id,
-                            self.builder
-                                .build_load(
-                                    self.context.i64_type(),
-                                    var_pointer,
-                                    &Self::name("load", instruction.id),
-                                )?
-                                .into_int_value(),
-                        );
-                    }
-                    Type::Boolean => {
-                        self.store_bool_value(
-                            instruction.id,
-                            self.builder
-                                .build_load(
-                                    self.context.bool_type(),
-                                    var_pointer,
-                                    &Self::name("load", instruction.id),
-                                )?
-                                .into_int_value(),
-                        );
-                    }
-                    Type::Double => todo!(),
-                }
+        let value = fun
+            .get_nth_param(argument_index.into())
+            .expect("valid argument number");
+        match operand_type {
+            Type::Int => {
+                self.store_int_value(instruction.id, value.into_int_value());
             }
-            SymbolKind::Argument { index } => {
-                let value = fun
-                    .get_nth_param(index.into())
-                    .expect("valid argument number");
-                match operand_type {
-                    Type::Int => {
-                        self.store_int_value(instruction.id, value.into_int_value());
-                    }
-                    Type::Boolean => {
-                        self.store_bool_value(instruction.id, value.into_int_value());
-                    }
-                    Type::Double => {
-                        todo!()
-                    }
-                }
+            Type::Boolean => {
+                self.store_bool_value(instruction.id, value.into_int_value());
             }
-        }
+            Type::Double => {
+                todo!()
+            }
+        };
         Ok(())
     }
 
@@ -688,11 +697,11 @@ fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<String, Cod
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::IrAllocator;
     use codegen::build_ir_module;
+    use codegen::IrAllocator;
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedModule};
-    use std::io::{Write, stderr};
+    use std::io::{stderr, Write};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(

@@ -66,11 +66,16 @@ pub struct VariableIndex {
     index: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArgumentIndex {
+    index: u32,
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum SymbolKind {
     Function,
     Variable { index: VariableIndex },
-    Argument { index: u16 },
+    Argument { index: ArgumentIndex },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -221,13 +226,15 @@ impl Display for Symbol {
     }
 }
 
-impl SymbolKind {
-    pub fn prefix(&self) -> &'static str {
-        match self {
-            SymbolKind::Variable { .. } => "var",
-            SymbolKind::Argument { .. } => "arg",
-            SymbolKind::Function => "fn",
-        }
+impl Display for ArgumentIndex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.index)
+    }
+}
+
+impl Display for VariableIndex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.index)
     }
 }
 
@@ -370,6 +377,18 @@ impl From<VariableIndex> for usize {
 impl From<usize> for VariableIndex {
     fn from(val: usize) -> Self {
         VariableIndex { index: val }
+    }
+}
+
+impl From<ArgumentIndex> for u32 {
+    fn from(val: ArgumentIndex) -> Self {
+        val.index
+    }
+}
+
+impl From<u32> for ArgumentIndex {
+    fn from(val: u32) -> Self {
+        ArgumentIndex { index: val }
     }
 }
 
