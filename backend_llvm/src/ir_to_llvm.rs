@@ -191,6 +191,14 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 } => {
                     self.handle_load(fun, instruction, operand_type, *symbol_kind)?;
                 }
+                InstructionPayload::Store {
+                    operand_type,
+                    symbol_kind,
+                    value,
+                    ..
+                } => {
+                    self.handle_store(fun, instruction, operand_type, *symbol_kind, *value)?;
+                }
                 InstructionPayload::Let {
                     variable_index,
                     operand_type,
@@ -265,6 +273,17 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             }
         }
         Ok(())
+    }
+
+    fn handle_store(
+        &self,
+        fun: FunctionValue<'c>,
+        instruction: &Instruction,
+        operand_type: &Type,
+        symbol_kind: SymbolKind,
+        value: InstructionId,
+    ) -> Result<(), CodeGenError> {
+        todo!()
     }
 
     fn handle_let(

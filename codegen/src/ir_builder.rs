@@ -2,8 +2,8 @@ use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator
 use crate::{FunctionSignature, ir};
 use ir::Variable;
 use semantic_analysis::{
-    Symbol, SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
-    VariableIndex,
+    Symbol, SymbolKind, SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule,
+    TypedStatement, VariableIndex,
 };
 
 struct FunctionIrBuilder<'i> {
@@ -75,13 +75,16 @@ impl<'i> FunctionIrBuilder<'i> {
     ) -> FoundReturn {
         match statement {
             TypedStatement::Let { symbol, value } => {
-                let initializer = self.handle_expression(value, symbol_table);
-
                 let symbol = symbol_table
                     .lookup_by_id(*symbol)
                     .expect("should find symbol in symbol table");
+                let initializer = self.handle_expression(value, symbol_table);
 
-                let variable_index = self.next_variable_index();
+                let variable_index = if let SymbolKind::Variable { index } = symbol.kind {
+                    index
+                } else {
+                    panic!("expected a variable symbol kind for let statement");
+                };
                 let instruction = self.ir_allocator.new_let(
                     variable_index,
                     symbol.name,
@@ -92,7 +95,16 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_variable_to_current_bb(variable_index, symbol);
                 FoundReturn::No
             }
-            TypedStatement::Assignment { .. } => todo!(),
+            TypedStatement::Assignment { symbol, value } => {
+                let symbol = symbol_table
+                    .lookup_by_id(*symbol)
+                    .expect("should find symbol in symbol table");
+                let value = self.handle_expression(value, symbol_table);
+
+                let instruction = self.ir_allocator.new_store(symbol, value);
+                self.push_to_current_bb(instruction);
+                FoundReturn::No
+            }
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
                     let instruction = self.handle_expression(value, symbol_table);
@@ -183,10 +195,6 @@ impl<'i> FunctionIrBuilder<'i> {
             name: symbol.name,
             variable_type: symbol.symbol_type,
         });
-    }
-
-    fn next_variable_index(&self) -> VariableIndex {
-        self.current_bb.variables.borrow().len().into()
     }
 }
 
@@ -419,27 +427,27 @@ fn var(
 }
 "
         );
-        // TODO
-        //         test_module_ir!(
-        //             variable_assignment,
-        //             r"fn var() -> int {
-        //     let y = 1;
-        //     y = 2;
-        //     return y;
-        // }",
-        //             r"module test
-        //
-        // fn var(
-        // ) -> i
-        // { #0
-        //   00000 i const 1i
-        //   00001 i let y = @0
-        //   00002 i const 2i
-        //   00003 i store y @2
-        //   00004 i load y
-        //   00005 i ret @4
-        // }
-        // "
-        //         );
+        test_module_ir!(
+            variable_assignment,
+            r"fn var() -> int {
+            let y = 1;
+            y = 2;
+            return y;
+        }",
+            r"module test
+
+fn var(
+) -> i
+{ #0
+  var y: int
+  00000 i const 1i
+  00001 i let y = @0
+  00002 i const 2i
+  00003 i store var y = @2
+  00004 i load var y
+  00005 i ret @4
+}
+"
+        );
     }
 }

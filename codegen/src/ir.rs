@@ -81,6 +81,12 @@ pub enum InstructionPayload {
         operand_type: Type,
         symbol_kind: SymbolKind,
     },
+    Store {
+        name: StringId,
+        operand_type: Type,
+        symbol_kind: SymbolKind,
+        value: InstructionId,
+    },
     Let {
         variable_index: VariableIndex,
         name: StringId,
@@ -103,15 +109,10 @@ impl InstructionPayload {
             InstructionPayload::RetExpr { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Ret => None,
             InstructionPayload::Constant { operand_type, .. } => Some(*operand_type),
-            InstructionPayload::Unary {
-                result_type: operand_type,
-                ..
-            } => Some(*operand_type),
-            InstructionPayload::Binary {
-                result_type: operand_type,
-                ..
-            } => Some(*operand_type),
+            InstructionPayload::Unary { result_type, .. } => Some(*result_type),
+            InstructionPayload::Binary { result_type, .. } => Some(*result_type),
             InstructionPayload::Load { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::Store { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Let { operand_type, .. } => Some(*operand_type),
         }
     }
@@ -233,6 +234,20 @@ impl Display for InstructionPayload {
                     "load {} {}",
                     symbol_kind.prefix(),
                     resolve_string_id(*name).expect("should find symbol name")
+                )
+            }
+            InstructionPayload::Store {
+                name,
+                symbol_kind,
+                value,
+                ..
+            } => {
+                write!(
+                    f,
+                    "store {} {} = @{}",
+                    symbol_kind.prefix(),
+                    resolve_string_id(*name).expect("should find symbol name"),
+                    value
                 )
             }
             InstructionPayload::Let {
@@ -372,6 +387,15 @@ impl IrAllocator {
             name,
             operand_type,
             initializer,
+        })
+    }
+
+    pub fn new_store(&self, symbol: &Symbol, value: &Instruction) -> &Instruction {
+        self.new_instruction(InstructionPayload::Store {
+            name: symbol.name,
+            operand_type: symbol.symbol_type,
+            symbol_kind: symbol.kind,
+            value: value.id,
         })
     }
 
