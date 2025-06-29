@@ -225,7 +225,7 @@ impl SymbolKind {
     pub fn prefix(&self) -> &'static str {
         match self {
             SymbolKind::Variable { .. } => "var",
-            SymbolKind::Argument { .. } => "param",
+            SymbolKind::Argument { .. } => "arg",
             SymbolKind::Function => "fn",
         }
     }

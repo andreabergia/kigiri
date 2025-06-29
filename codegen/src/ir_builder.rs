@@ -1,5 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{ir, FunctionSignature};
+use crate::{FunctionSignature, ir};
 use ir::Variable;
 use semantic_analysis::{
     Symbol, SymbolKind, SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule,
@@ -380,7 +380,7 @@ fn add_one(
 ) -> i
 { #0
   00000 i const 1i
-  00001 i load param x
+  00001 i load arg x
   00002 i add @0, @1
   00003 i ret @2
 }
@@ -460,19 +460,19 @@ fn var(
 "
         );
         test_module_ir!(
-            parameter_reassignment,
-            r"fn param_assign(x: int) -> int {
+            argument_reassignment,
+            r"fn arg_assign(x: int) -> int {
     x = x + 1;
     return x;
 }",
             r"module test
 
-fn param_assign(
+fn arg_assign(
   x: int,
 ) -> i
 { #0
   var x: int
-  00000 i load param x
+  00000 i load arg x
   00001 i const 1i
   00002 i add @0, @1
   00003 i let x = @2

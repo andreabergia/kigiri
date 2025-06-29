@@ -3,7 +3,7 @@ Parser
 - [ ] leading whitespace in blocks breaks parser, e.g. r"\n{}" can't be parsed
 
 Semantic analysis
-- [ ] ensure we cannot assign to a function parameter
+- [x] ensure we cannot assign to a function parameter
 - [ ] store function in the module symbol table (see last test in semantic_analyzer.rs)
 - [ ] keep track of mutable/immutable variables
 
@@ -12,7 +12,7 @@ IR generator
 - [ ] split Load into multiple instructions (param, variable)
 
 LLVM backend
-- [ ] variables
+- [x] variables
 - [ ] float math
 
 Language as a whole
@@ -22,7 +22,7 @@ Language as a whole
 - [ ] verify functions have a return on all paths, with a coherent type
 
 Clean-ups
-- [ ] use _always_ either argument or parameter
+- [x] use _always_ either argument or parameter
 
 Testing
 - [ ] get rid of insta and split llvm tests
