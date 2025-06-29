@@ -12,5 +12,4 @@ Language as a whole
 - [ ] keep track of mutable/immutable variables
 
 Testing
-- [ ] get rid of insta and split llvm tests
 - [ ] semantic testing of linked object

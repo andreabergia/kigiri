@@ -1,11 +1,11 @@
 use codegen::{Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
+use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::{FunctionValue, IntValue, PointerValue};
-use inkwell::IntPredicate;
-use parser::{resolve_string_id, BinaryOperator, UnaryOperator};
+use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
 use thiserror::Error;
@@ -697,11 +697,11 @@ fn ir_to_llvm(context: &Context, module: &codegen::Module) -> Result<String, Cod
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::build_ir_module;
     use codegen::IrAllocator;
+    use codegen::build_ir_module;
     use inkwell::context::Context;
     use semantic_analysis::{SemanticAnalyzer, TypedModule};
-    use std::io::{stderr, Write};
+    use std::io::{Write, stderr};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
@@ -726,57 +726,16 @@ mod tests {
         module
     }
 
-    #[test]
-    fn test_ir_to_llvm() {
+    fn compile_function_to_llvm(function_source: &str) -> String {
         let ir_allocator = IrAllocator::new();
-        let basic_block = handle_module(
-            &ir_allocator,
-            r"
-fn empty() {
-}
-
-fn add_one(x: int) -> int {
-  return 1 + x;
-}
-
-fn add(x: int, y: int) -> int {
-  return x + y;
-}
-
-fn greater(x: int, y: int) -> boolean {
-  return x > y;
-}
-
-fn declare_var() {
-    let x = 1;
-    let y = true;
-}
-
-fn use_var() -> boolean {
-    let x = false;
-    let y = true;
-    return y && !x;
-}
-
-fn set_var() {
-    let x = 0;
-    x = 1;
-    let y = false;
-    y = true;
-}
-
-fn set_param(x: int) -> int {
-    x = x + 1;
-    return x;
-}
-",
-        );
-
+        let module = handle_module(&ir_allocator, function_source);
         let context = Context::create();
-        let llvm_ir = ir_to_llvm(&context, basic_block).unwrap();
+        ir_to_llvm(&context, module).unwrap()
+    }
 
-        println!("Generated LLVM IR:\n{}", llvm_ir);
-
+    #[test]
+    fn test_empty_function() {
+        let llvm_ir = compile_function_to_llvm("fn empty() { }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
@@ -785,24 +744,61 @@ fn set_param(x: int) -> int {
         entry:
           ret void
         }
+        "#);
+    }
+
+    #[test]
+    fn test_add_one_function() {
+        let llvm_ir = compile_function_to_llvm("fn add_one(x: int) -> int { return 1 + x; }");
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
 
         define i64 @add_one(i64 %x) {
         entry:
           %add_2 = add i64 1, %x
           ret i64 %add_2
         }
+        "#);
+    }
+
+    #[test]
+    fn test_add_function() {
+        let llvm_ir = compile_function_to_llvm("fn add(x: int, y: int) -> int { return x + y; }");
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
 
         define i64 @add(i64 %x, i64 %y) {
         entry:
           %add_2 = add i64 %x, %y
           ret i64 %add_2
         }
+        "#);
+    }
+
+    #[test]
+    fn test_greater_function() {
+        let llvm_ir =
+            compile_function_to_llvm("fn greater(x: int, y: int) -> boolean { return x > y; }");
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
 
         define i1 @greater(i64 %x, i64 %y) {
         entry:
           %gt_2 = icmp sgt i64 %x, %y
           ret i1 %gt_2
         }
+        "#);
+    }
+
+    #[test]
+    fn test_declare_var_function() {
+        let llvm_ir = compile_function_to_llvm("fn declare_var() { let x = 1; let y = true; }");
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
 
         define void @declare_var() {
         entry:
@@ -812,6 +808,17 @@ fn set_param(x: int) -> int {
           store i1 true, ptr %y, align 1
           ret void
         }
+        "#);
+    }
+
+    #[test]
+    fn test_use_var_function() {
+        let llvm_ir = compile_function_to_llvm(
+            "fn use_var() -> boolean { let x = false; let y = true; return y && !x; }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
 
         define i1 @use_var() {
         entry:
@@ -825,6 +832,16 @@ fn set_param(x: int) -> int {
           %and_7 = and i1 %load_4, %not_6
           ret i1 %and_7
         }
+        "#);
+    }
+
+    #[test]
+    fn test_set_var_function() {
+        let llvm_ir =
+            compile_function_to_llvm("fn set_var() { let x = 0; x = 1; let y = false; y = true; }");
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
 
         define void @set_var() {
         entry:
@@ -836,6 +853,16 @@ fn set_param(x: int) -> int {
           store i1 true, ptr %y, align 1
           ret void
         }
+        "#);
+    }
+
+    #[test]
+    fn test_set_param_function() {
+        let llvm_ir =
+            compile_function_to_llvm("fn set_param(x: int) -> int { x = x + 1; return x; }");
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
 
         define i64 @set_param(i64 %x) {
         entry:
