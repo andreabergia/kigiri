@@ -2,10 +2,10 @@ use crate::typed_ast::{
     SymbolId, SymbolTable, TypedBlock, TypedFunctionDeclaration, TypedFunctionSignature,
     TypedFunctionSignaturesByName, TypedModule, TypedStatement,
 };
-use crate::{SymbolKind, Type, TypedExpression};
+use crate::{SymbolKind, Type, TypedExpression, VariableIndex};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator, resolve_string_id,
+    resolve_string_id, BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator,
 };
 use thiserror::Error;
 
@@ -32,6 +32,8 @@ pub enum SemanticAnalysisError {
         symbol_type: Type,
         expression_type: Type,
     },
+    #[error("cannot assign value to function \"{name}\"")]
+    CannotAssignToFunction { name: String },
     #[error("type not found: \"{type_name}\"")]
     TypeNotFound { type_name: String },
 }
@@ -157,7 +159,7 @@ impl SemanticAnalyzer {
                         initializer.name,
                         value.resolved_type(),
                         SymbolKind::Variable {
-                            index: symbol_table.num_variables().into(),
+                            index: next_variable_index(symbol_table),
                         },
                     );
                     statements.push(self.alloc(TypedStatement::Let { symbol, value }));
@@ -184,10 +186,36 @@ impl SemanticAnalyzer {
                             });
                         }
 
-                        statements.push(self.alloc(TypedStatement::Assignment {
-                            symbol: symbol.id,
-                            value,
-                        }))
+                        match symbol.kind {
+                            SymbolKind::Function => {
+                                return Err(SemanticAnalysisError::CannotAssignToFunction {
+                                    name: symbol_name,
+                                });
+                            }
+                            SymbolKind::Variable { .. } => {
+                                statements.push(self.alloc(TypedStatement::Assignment {
+                                    symbol: symbol.id,
+                                    value,
+                                }))
+                            }
+                            SymbolKind::Argument { index } => {
+                                // We actually need to create a new variable and assign to that
+                                // one, because LLVM (and thus our IR) does not allow reassigning
+                                // a function argument.
+                                let new_variable = symbol_table.add_symbol(
+                                    &self.arena,
+                                    *name,
+                                    value.resolved_type(),
+                                    SymbolKind::Variable {
+                                        index: next_variable_index(symbol_table),
+                                    },
+                                );
+                                statements.push(self.alloc(TypedStatement::Let {
+                                    symbol: new_variable,
+                                    value,
+                                }));
+                            }
+                        }
                     }
                 }
             }
@@ -351,6 +379,10 @@ impl SemanticAnalyzer {
     pub fn symbol_table<'a>(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
         self.alloc(SymbolTable::new(&self.arena, parent))
     }
+}
+
+fn next_variable_index(symbol_table: &SymbolTable) -> VariableIndex {
+    symbol_table.num_variables().into()
 }
 
 #[cfg(test)]
@@ -751,16 +783,18 @@ fn inc(
         );
         test_ok!(
             can_assign_to_function_argument,
-            r"fn inc(x: int) {
-  x = 1;
+            r"fn inc(x: int) -> int {
+  x = x + 1;
+  return x;
 }",
             r"module test
 
 fn inc(
   x: int,
-) -> void
+) -> int
 { #0
-  x = 1i;
+  let x: int = (+i x 1i);
+  return x;
 }
 
 "
@@ -773,6 +807,18 @@ fn inc(
 }",
             "symbol not found: \"x\""
         );
+
+        // TODO
+        //         test_ko!(
+        //             cannot_assign_to_function,
+        //             r"fn a() {}
+        //
+        // fn b() {
+        //   a = 1;
+        // }",
+        //             "symbol not found: \"x\""
+        //         );
+
         // TODO: all return match expected type? here or in separate pass?
     }
 }

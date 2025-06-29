@@ -4,10 +4,12 @@ Parser
 
 Semantic analysis
 - [ ] ensure we cannot assign to a function parameter
+- [ ] store function in the module symbol table (see last test in semantic_analyzer.rs)
 - [ ] keep track of mutable/immutable variables
 
 IR generator
 - [x] ensure there's always a return
+- [ ] split Load into multiple instructions (param, variable)
 
 LLVM backend
 - [ ] variables
@@ -18,3 +20,10 @@ Language as a whole
 - [ ] function calls
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
 - [ ] verify functions have a return on all paths, with a coherent type
+
+Clean-ups
+- [ ] use _always_ either argument or parameter
+
+Testing
+- [ ] get rid of insta and split llvm tests
+- [ ] semantic testing of linked object

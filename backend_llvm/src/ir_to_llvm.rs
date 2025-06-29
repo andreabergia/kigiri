@@ -755,6 +755,11 @@ fn set_var() {
     let y = false;
     y = true;
 }
+
+fn set_param(x: int) -> int {
+    x = x + 1;
+    return x;
+}
 ",
         );
 
@@ -821,6 +826,15 @@ fn set_var() {
           store i1 false, ptr %y, align 1
           store i1 true, ptr %y, align 1
           ret void
+        }
+
+        define i64 @set_param(i64 %x) {
+        entry:
+          %x1 = alloca i64, align 8
+          %add_2 = add i64 %x, 1
+          store i64 %add_2, ptr %x1, align 4
+          %load_4 = load i64, ptr %x1, align 4
+          ret i64 %load_4
         }
         "#);
     }
