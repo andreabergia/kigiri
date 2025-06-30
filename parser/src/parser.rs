@@ -5,9 +5,9 @@ use crate::ast::{
 use crate::grammar::{Grammar, Rule};
 use crate::symbols::get_or_create_string;
 use bumpalo::collections::Vec as BumpVec;
-use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -37,34 +37,29 @@ fn parse_expression<'a>(
     rule: Pair<'_, Rule>,
 ) -> &'a Expression<'a> {
     PRATT_PARSER
-        .map_primary(|primary| {
-            match primary.as_rule() {
-                Rule::number => {
-                    let pair = primary.into_inner().next().unwrap();
-                    let text = pair.as_str();
-                    match pair.as_rule() {
-                        Rule::integerNumber => {
-                            ast_allocator.literal_integer(i64::from_str(text).unwrap())
-                        }
-                        Rule::hexNumber => ast_allocator.literal_integer(
-                            i64::from_str_radix(
-                                text.to_ascii_lowercase().trim_start_matches("0x"),
-                                16,
-                            )
-                            .unwrap(),
-                        ),
-                        Rule::doubleNumber => {
-                            ast_allocator.literal_double(f64::from_str(text).unwrap())
-                        }
-                        _ => unreachable!(""),
+        .map_primary(|primary| match primary.as_rule() {
+            Rule::number => {
+                let pair = primary.into_inner().next().unwrap();
+                let text = pair.as_str();
+                match pair.as_rule() {
+                    Rule::integerNumber => {
+                        ast_allocator.literal_integer(i64::from_str(text).unwrap())
                     }
+                    Rule::hexNumber => ast_allocator.literal_integer(
+                        i64::from_str_radix(text.to_ascii_lowercase().trim_start_matches("0x"), 16)
+                            .unwrap(),
+                    ),
+                    Rule::doubleNumber => {
+                        ast_allocator.literal_double(f64::from_str(text).unwrap())
+                    }
+                    _ => unreachable!(""),
                 }
-                Rule::identifier => ast_allocator.identifier(primary.as_str()),
-                Rule::expression => parse_expression(ast_allocator, primary),
-                Rule::boolean => ast_allocator.literal_boolean(primary.as_str().parse().unwrap()),
-                // Rule::functionCall => Expression::FunctionCall(parse_function_call(primary)),
-                _ => unreachable!(""),
             }
+            Rule::identifier => ast_allocator.identifier(primary.as_str()),
+            Rule::expression => parse_expression(ast_allocator, primary),
+            Rule::boolean => ast_allocator.literal_boolean(primary.as_str().parse().unwrap()),
+            Rule::functionCall => parse_function_call(ast_allocator, primary),
+            _ => unreachable!(""),
         })
         .map_prefix(|prefix, operand| match prefix.as_rule() {
             Rule::neg => ast_allocator.unary(UnaryOperator::Neg, operand),
@@ -95,6 +90,21 @@ fn parse_expression<'a>(
             _ => unreachable!(),
         })
         .parse(rule.into_inner())
+}
+
+fn parse_function_call<'a>(
+    ast_allocator: &'a AstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Expression<'a> {
+    let mut inner = rule.into_inner();
+    let name = inner.next().unwrap().as_str();
+
+    let mut args = ast_allocator.function_call_arguments();
+    for arg in inner.next().unwrap().into_inner() {
+        args.push(parse_expression(ast_allocator, arg));
+    }
+
+    ast_allocator.function_call(name, args)
 }
 
 fn parse_let_statement<'a>(
@@ -333,6 +343,14 @@ mod tests {
     test_expression!(precedence_23, "1 && ! 2", "(&& 1i (! 2i))");
 
     test_expression!(parenthesis, "(1 + 2) * 3", "(* (+ 1i 2i) 3i)");
+
+    test_expression!(function_call_no_args, "foo()", "foo()");
+    test_expression!(function_call_one_arg, "foo(1)", "foo(1i)");
+    test_expression!(
+        function_call_multiple_args,
+        "foo(1, 2, 3)",
+        "foo(1i, 2i, 3i)"
+    );
 
     test_block!(
         statement_expression,

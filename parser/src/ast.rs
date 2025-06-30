@@ -67,11 +67,11 @@ pub struct LetInitializer<'a> {
     pub value: &'a Expression<'a>,
 }
 
-// #[derive(Debug, PartialEq)]
-// pub struct FunctionCall<'input> {
-//     pub name: &'input str,
-//     pub args: Vec<Expression<'input>>,
-// }
+#[derive(Debug, PartialEq)]
+pub struct FunctionCall<'a> {
+    pub name: StringId,
+    pub args: BumpVec<'a, &'a Expression<'a>>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum UnaryOperator {
@@ -125,7 +125,7 @@ pub enum Expression<'a> {
         left: &'a Expression<'a>,
         right: &'a Expression<'a>,
     },
-    // FunctionCall(FunctionCall<'input>),
+    FunctionCall(&'a FunctionCall<'a>),
 }
 
 impl Display for Module<'_> {
@@ -337,6 +337,19 @@ impl Display for Expression<'_> {
                 left,
                 right,
             } => write!(f, "({} {} {})", operator, left, right),
+            Expression::FunctionCall(call) => {
+                let name = resolve_string_id(call.name).expect("invalid function call name");
+                write!(f, "{}(", name)?;
+                let mut first = true;
+                for arg in call.args.iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -398,6 +411,24 @@ impl AstAllocator {
             left,
             right,
         })
+    }
+
+    pub fn function_call_arguments(&self) -> BumpVec<&Expression> {
+        BumpVec::new_in(&self.arena)
+    }
+
+    pub fn function_call<'s, 'e>(
+        &'s self,
+        name: &str,
+        args: BumpVec<'e, &'e Expression<'e>>,
+    ) -> &'s Expression<'s>
+    where
+        'e: 's,
+    {
+        self.alloc(Expression::FunctionCall(self.alloc(FunctionCall {
+            name: get_or_create_string(name),
+            args,
+        })))
     }
 
     pub fn statements(&self) -> BumpVec<&Statement> {

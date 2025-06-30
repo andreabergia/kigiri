@@ -54,6 +54,8 @@ mod tests {
         assert_can_be_parsed_as("42", Rule::expression);
         assert_can_be_parsed_as("-3", Rule::expression);
         assert_can_be_parsed_as("f()", Rule::expression);
+        assert_can_be_parsed_as("f(a)", Rule::expression);
+        assert_can_be_parsed_as("f(a, 1)", Rule::expression);
         assert_can_be_parsed_as("1 + 2", Rule::expression);
         assert_can_be_parsed_as("1 * 2", Rule::expression);
         assert_can_be_parsed_as("1 - 2", Rule::expression);
