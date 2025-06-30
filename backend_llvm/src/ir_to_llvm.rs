@@ -1,10 +1,10 @@
 use codegen::{Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
-use inkwell::IntPredicate;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
-use inkwell::values::{FunctionValue, IntValue, PointerValue};
+use inkwell::values::{FloatValue, FunctionValue, IntValue, PointerValue};
+use inkwell::{FloatPredicate, IntPredicate};
 use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
@@ -33,9 +33,10 @@ struct LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     // but it makes everything quite simple and fast.
     int_values: RefCell<Vec<Option<IntValue<'c>>>>,
     bool_values: RefCell<Vec<Option<IntValue<'c>>>>,
+    float_values: RefCell<Vec<Option<FloatValue<'c>>>>,
 
     // Variables are indexed by their progressive number
-    int_bool_variable: RefCell<Vec<PointerValue<'c>>>,
+    variables: RefCell<Vec<PointerValue<'c>>>,
 }
 
 enum IntOrBool {
@@ -61,8 +62,10 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         int_values.resize(num_instructions, None);
         let mut bool_values = Vec::with_capacity(num_instructions);
         bool_values.resize(num_instructions, None);
+        let mut float_values = Vec::with_capacity(num_instructions);
+        float_values.resize(num_instructions, None);
 
-        let int_bool_variable = Vec::with_capacity(function.body.variables.borrow().len());
+        let variables = Vec::with_capacity(function.body.variables.borrow().len());
 
         Self {
             context,
@@ -70,21 +73,20 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             function,
             int_values: int_values.into(),
             bool_values: bool_values.into(),
-            int_bool_variable: int_bool_variable.into(),
+            float_values: float_values.into(),
+            variables: variables.into(),
         }
     }
 
     fn alloca_variables(&self) -> Result<(), CodeGenError> {
         for var in self.function.body.variables.borrow().iter() {
-            let value = self.builder.build_alloca(
-                match var.variable_type {
-                    Type::Int => self.context.i64_type(),
-                    Type::Boolean => self.context.bool_type(),
-                    Type::Double => todo!(),
-                },
-                resolve_string_id(var.name).expect("variable name"),
-            )?;
-            self.int_bool_variable.borrow_mut().push(value);
+            let name = resolve_string_id(var.name).expect("variable name");
+            let value = match var.variable_type {
+                Type::Int => self.builder.build_alloca(self.context.i64_type(), name)?,
+                Type::Boolean => self.builder.build_alloca(self.context.bool_type(), name)?,
+                Type::Double => self.builder.build_alloca(self.context.f64_type(), name)?,
+            };
+            self.variables.borrow_mut().push(value);
         }
         Ok(())
     }
@@ -108,6 +110,10 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         self.bool_values.borrow_mut()[id.as_usize()] = Some(value);
     }
 
+    fn store_float_value(&self, id: InstructionId, value: FloatValue<'c>) {
+        self.float_values.borrow_mut()[id.as_usize()] = Some(value);
+    }
+
     fn get_int_value(&self, id: InstructionId) -> IntValue<'c> {
         self.int_values
             .borrow()
@@ -122,6 +128,14 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             .get(id.as_usize())
             .expect("vector should be initialized with the correct length")
             .expect("int value should be present")
+    }
+
+    fn get_float_value(&self, id: InstructionId) -> FloatValue<'c> {
+        self.float_values
+            .borrow()
+            .get(id.as_usize())
+            .expect("vector should be initialized with the correct length")
+            .expect("float value should be present")
     }
 
     fn generate(&self, llvm_module: &Module<'c>) -> Result<FunctionValue<'c>, CodeGenError> {
@@ -225,7 +239,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     ) -> Result<(), CodeGenError> {
         let variable_index: usize = variable_index.into();
         let var_pointer = *self
-            .int_bool_variable
+            .variables
             .borrow()
             .get(variable_index)
             .expect("variable index should be valid");
@@ -255,7 +269,18 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                         .into_int_value(),
                 );
             }
-            Type::Double => todo!(),
+            Type::Double => {
+                self.store_float_value(
+                    instruction.id,
+                    self.builder
+                        .build_load(
+                            self.context.f64_type(),
+                            var_pointer,
+                            &Self::name("load", instruction.id),
+                        )?
+                        .into_float_value(),
+                );
+            }
         };
         Ok(())
     }
@@ -278,7 +303,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 self.store_bool_value(instruction.id, value.into_int_value());
             }
             Type::Double => {
-                todo!()
+                self.store_float_value(instruction.id, value.into_float_value());
             }
         };
         Ok(())
@@ -292,7 +317,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     ) -> Result<(), CodeGenError> {
         let variable_index: usize = variable_index.into();
         let var_pointer = *self
-            .int_bool_variable
+            .variables
             .borrow()
             .get(variable_index)
             .expect("variable index should be valid");
@@ -306,7 +331,10 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 self.builder
                     .build_store(var_pointer, self.get_bool_value(value))?;
             }
-            Type::Double => todo!(),
+            Type::Double => {
+                self.builder
+                    .build_store(var_pointer, self.get_float_value(value))?;
+            }
         };
         Ok(())
     }
@@ -319,28 +347,18 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     ) -> Result<(), CodeGenError> {
         let variable_index: usize = variable_index.into();
         let var_pointer = *self
-            .int_bool_variable
+            .variables
             .borrow()
             .get(variable_index)
             .expect("variable index should be valid");
 
-        let initializer = match operand_type {
-            Type::Int => self
-                .int_values
-                .borrow()
-                .get(initializer.as_usize())
-                .expect("vector should be initialized with the correct length")
-                .expect("let initializer should be an int"),
-            Type::Boolean => self
-                .bool_values
-                .borrow()
-                .get(initializer.as_usize())
-                .expect("vector should be initialized with the correct length")
-                .expect("let initializer should be a bool"),
-            Type::Double => todo!(),
+        let initializer_value: inkwell::values::BasicValueEnum = match operand_type {
+            Type::Int => self.get_int_value(initializer).into(),
+            Type::Boolean => self.get_bool_value(initializer).into(),
+            Type::Double => self.get_float_value(initializer).into(),
         };
 
-        self.builder.build_store(var_pointer, initializer)?;
+        self.builder.build_store(var_pointer, initializer_value)?;
         Ok(())
     }
 
@@ -392,7 +410,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             Type::Boolean => {
                 self.handle_binary_boolean_operands(id, operator, result_type, left, right)?;
             }
-            Type::Double => todo!(),
+            Type::Double => {
+                self.handle_binary_float_operands(id, operator, left, right)?;
+            }
         }
         Ok(())
     }
@@ -548,6 +568,69 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(())
     }
 
+    fn handle_binary_float_operands(
+        &self,
+        id: InstructionId,
+        operator: &BinaryOperator,
+        left: InstructionId,
+        right: InstructionId,
+    ) -> Result<(), CodeGenError> {
+        let left = self.get_float_value(left);
+        let right = self.get_float_value(right);
+
+        match operator {
+            BinaryOperator::Add => {
+                let result = self
+                    .builder
+                    .build_float_add(left, right, &Self::name("add", id))?;
+                self.store_float_value(id, result);
+            }
+            BinaryOperator::Sub => {
+                let result = self
+                    .builder
+                    .build_float_sub(left, right, &Self::name("sub", id))?;
+                self.store_float_value(id, result);
+            }
+            BinaryOperator::Mul => {
+                let result = self
+                    .builder
+                    .build_float_mul(left, right, &Self::name("mul", id))?;
+                self.store_float_value(id, result);
+            }
+            BinaryOperator::Div => {
+                let result = self
+                    .builder
+                    .build_float_div(left, right, &Self::name("div", id))?;
+                self.store_float_value(id, result);
+            }
+            BinaryOperator::Eq
+            | BinaryOperator::Neq
+            | BinaryOperator::Lt
+            | BinaryOperator::Lte
+            | BinaryOperator::Gt
+            | BinaryOperator::Gte => {
+                let predicate = match operator {
+                    BinaryOperator::Eq => FloatPredicate::OEQ,
+                    BinaryOperator::Neq => FloatPredicate::ONE,
+                    BinaryOperator::Lt => FloatPredicate::OLT,
+                    BinaryOperator::Lte => FloatPredicate::OLE,
+                    BinaryOperator::Gt => FloatPredicate::OGT,
+                    BinaryOperator::Gte => FloatPredicate::OGE,
+                    _ => unreachable!(),
+                };
+                let result = self.builder.build_float_compare(
+                    predicate,
+                    left,
+                    right,
+                    &Self::name("fcmp", id),
+                )?;
+                self.store_bool_value(id, result);
+            }
+            _ => unreachable!(),
+        }
+        Ok(())
+    }
+
     fn handle_unary(
         &self,
         id: InstructionId,
@@ -562,7 +645,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             Type::Boolean => {
                 self.handle_unary_boolean_operand(id, operator, operand)?;
             }
-            Type::Double => todo!(),
+            Type::Double => {
+                self.handle_unary_float_operand(id, operator, operand)?;
+            }
         }
         Ok(())
     }
@@ -606,12 +691,31 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 )?
             }
             UnaryOperator::Not => {
-                // TODO: error
                 unreachable!("unexpected not operator with int type")
             }
         };
 
         self.store_int_value(id, result);
+        Ok(())
+    }
+
+    fn handle_unary_float_operand(
+        &self,
+        id: InstructionId,
+        operator: &UnaryOperator,
+        operand: InstructionId,
+    ) -> Result<(), CodeGenError> {
+        let operand = self.get_float_value(operand);
+        let result = match operator {
+            UnaryOperator::Neg => self
+                .builder
+                .build_float_neg(operand, &Self::name("neg", id))?,
+            UnaryOperator::Not | UnaryOperator::BitwiseNot => {
+                unreachable!()
+            }
+        };
+
+        self.store_float_value(id, result);
         Ok(())
     }
 
@@ -628,7 +732,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                         .const_int(if *value { 1 } else { 0 }, false),
                 );
             }
-            LiteralValue::Double(..) => todo!(),
+            LiteralValue::Double(value) => {
+                self.store_float_value(id, self.context.f64_type().const_float(*value));
+            }
         };
     }
 
@@ -646,7 +752,10 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 let operand = self.get_bool_value(expression);
                 self.builder.build_return(Some(&operand))?;
             }
-            Type::Double => todo!(),
+            Type::Double => {
+                let operand = self.get_float_value(expression);
+                self.builder.build_return(Some(&operand))?;
+            }
         }
         Ok(())
     }
@@ -766,22 +875,38 @@ mod tests {
     }
 
     #[test]
-    fn test_add_function() {
-        let llvm_ir = compile_function_to_llvm("fn add(x: int, y: int) -> int { return x + y; }");
+    fn test_add_one_float_function() {
+        let llvm_ir =
+            compile_function_to_llvm("fn add(x: double, y: double) -> double { return x + y; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @add(i64 %x, i64 %y) {
+        define double @add(double %x, double %y) {
         entry:
-          %add_2 = add i64 %x, %y
-          ret i64 %add_2
+          %add_2 = fadd double %x, %y
+          ret double %add_2
         }
         "#);
     }
 
     #[test]
-    fn test_greater_function() {
+    fn test_neg_float_function() {
+        let llvm_ir = compile_function_to_llvm("fn neg(x: double) -> double { return -x; }");
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define double @neg(double %x) {
+        entry:
+          %neg_1 = fneg double %x
+          ret double %neg_1
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_comparison_int() {
         let llvm_ir =
             compile_function_to_llvm("fn greater(x: int, y: int) -> boolean { return x > y; }");
         insta::assert_snapshot!(llvm_ir, @r#"
@@ -792,6 +917,23 @@ mod tests {
         entry:
           %gt_2 = icmp sgt i64 %x, %y
           ret i1 %gt_2
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_comparison_float() {
+        let llvm_ir = compile_function_to_llvm(
+            "fn greater(x: double, y: double) -> boolean { return x > y; }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i1 @greater(double %x, double %y) {
+        entry:
+          %fcmp_2 = fcmp ogt double %x, %y
+          ret i1 %fcmp_2
         }
         "#);
     }
@@ -855,6 +997,29 @@ mod tests {
           store i1 false, ptr %y, align 1
           store i1 true, ptr %y, align 1
           ret void
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_float_variable() {
+        let llvm_ir = compile_function_to_llvm(
+            "fn vars() -> double { let x = 1.0; let y = 2.0; return x + y; }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define double @vars() {
+        entry:
+          %x = alloca double, align 8
+          %y = alloca double, align 8
+          store double 1.000000e+00, ptr %x, align 8
+          store double 2.000000e+00, ptr %y, align 8
+          %load_4 = load double, ptr %x, align 8
+          %load_5 = load double, ptr %y, align 8
+          %add_6 = fadd double %load_4, %load_5
+          ret double %add_6
         }
         "#);
     }

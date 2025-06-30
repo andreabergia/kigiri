@@ -2,7 +2,6 @@ Semantic analysis
 - [ ] store function in the module symbol table (see last test in semantic_analyzer.rs)
 
 LLVM backend
-- [ ] float math
 
 Language as a whole
 - [ ] cast
