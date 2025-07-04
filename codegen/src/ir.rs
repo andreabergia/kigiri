@@ -168,7 +168,7 @@ impl Display for Function<'_> {
             self.signature
                 .return_type
                 .as_ref()
-                .map_or("void".to_string(), |t| t.to_string_short())
+                .map_or("void", |t| t.to_string_short())
         )?;
         write!(f, "{}", self.body)
     }
@@ -205,7 +205,7 @@ impl Display for Instruction {
             self.payload
                 .instruction_type()
                 .map(|t| t.to_string_short())
-                .unwrap_or("v".to_string()),
+                .unwrap_or("v"),
             self.payload
         )
     }

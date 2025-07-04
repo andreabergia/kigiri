@@ -2,11 +2,15 @@ use crate::typed_ast::{
     SymbolId, SymbolTable, TypedBlock, TypedFunctionDeclaration, TypedFunctionSignature,
     TypedFunctionSignaturesByName, TypedModule, TypedStatement,
 };
-use crate::{ArgumentIndex, SymbolKind, Type, TypedExpression, VariableIndex};
+use crate::{
+    ArgumentIndex, CompilationPhase, PhaseTypeResolved, SymbolKind, Type, TypedExpression,
+    VariableIndex,
+};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator, resolve_string_id,
 };
+use std::marker::PhantomData;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -14,13 +18,13 @@ pub enum SemanticAnalysisError {
     #[error("cannot apply operator {operator} to type {operand_type}")]
     CannotApplyUnaryOperatorToType {
         operator: UnaryOperator,
-        operand_type: Type,
+        operand_type: String,
     },
     #[error("cannot apply operator {operator} to types {left_type} and {right_type}")]
     CannotApplyBinaryOperatorToType {
         operator: BinaryOperator,
-        left_type: Type,
-        right_type: Type,
+        left_type: String,
+        right_type: String,
     },
     #[error("symbol not found: \"{name}\"")]
     SymbolNotFound { name: String },
@@ -34,20 +38,31 @@ pub enum SemanticAnalysisError {
     },
     #[error("cannot assign value to function \"{name}\"")]
     CannotAssignToFunction { name: String },
+    #[error("cannot assign void value to variable \"{name}\"")]
+    CannotAssignVoidValue { name: String },
     #[error("type not found: \"{type_name}\"")]
     TypeNotFound { type_name: String },
 }
 
-#[derive(Default)]
-pub struct SemanticAnalyzer {
+pub struct SemanticAnalyzer<Phase: CompilationPhase> {
     arena: bumpalo::Bump,
+    phantom: PhantomData<Phase>,
 }
 
-impl SemanticAnalyzer {
-    pub fn analyze_module<'a>(
+impl<Phase: CompilationPhase> Default for SemanticAnalyzer<Phase> {
+    fn default() -> Self {
+        SemanticAnalyzer {
+            arena: bumpalo::Bump::new(),
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
+    pub fn analyze_module(
         &'a self,
         module: &Module,
-    ) -> Result<&'a TypedModule<'a>, SemanticAnalysisError> {
+    ) -> Result<&'a TypedModule<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut function_signatures =
             TypedFunctionSignaturesByName::with_capacity(module.function_signatures.len());
         let mut functions = BumpVec::with_capacity_in(module.functions.len(), &self.arena);
@@ -67,10 +82,11 @@ impl SemanticAnalyzer {
         }))
     }
 
-    fn analyze_function<'a>(
+    fn analyze_function(
         &'a self,
         function: &parser::FunctionDeclaration,
-    ) -> Result<&'a TypedFunctionDeclaration<'a>, SemanticAnalysisError> {
+    ) -> Result<&'a TypedFunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
+    {
         let symbol_table = self.symbol_table(None);
 
         let return_type = function
@@ -127,11 +143,11 @@ impl SemanticAnalyzer {
         }
     }
 
-    fn analyze_block<'a>(
+    fn analyze_block(
         &'a self,
         block: &parser::Block,
         parent_symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a TypedBlock<'a>, SemanticAnalysisError> {
+    ) -> Result<&'a TypedBlock<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut statements = BumpVec::with_capacity_in(block.statements.len(), &self.arena);
         for statement in &block.statements {
             self.analyze_statement(statement, &mut statements, parent_symbol_table)?;
@@ -143,10 +159,10 @@ impl SemanticAnalyzer {
         }))
     }
 
-    fn analyze_statement<'a>(
+    fn analyze_statement(
         &'a self,
         statement: &Statement,
-        statements: &mut BumpVec<'a, &'a TypedStatement<'a>>,
+        statements: &mut BumpVec<'a, &'a TypedStatement<'a, PhaseTypeResolved<'a>>>,
         symbol_table: &'a SymbolTable<'a>,
     ) -> Result<(), SemanticAnalysisError> {
         match statement {
@@ -154,10 +170,20 @@ impl SemanticAnalyzer {
                 for initializer in initializers {
                     let value = self.analyze_expression(initializer.value, symbol_table)?;
 
+                    let resolved_type = if let Some(resolved_type) = value.resolved_type() {
+                        resolved_type
+                    } else {
+                        return Err(SemanticAnalysisError::CannotAssignVoidValue {
+                            name: resolve_string_id(initializer.name)
+                                .expect("let variable name")
+                                .to_owned(),
+                        });
+                    };
+
                     let symbol = symbol_table.add_symbol(
                         &self.arena,
                         initializer.name,
-                        value.resolved_type(),
+                        resolved_type,
                         SymbolKind::Variable {
                             index: next_variable_index(symbol_table),
                         },
@@ -178,11 +204,20 @@ impl SemanticAnalyzer {
                     }
                     Some(symbol) => {
                         let value = self.analyze_expression(expression, symbol_table)?;
-                        if value.resolved_type() != symbol.symbol_type {
+
+                        let expression_type = value.resolved_type().ok_or(
+                            SemanticAnalysisError::CannotAssignVoidValue {
+                                name: resolve_string_id(symbol.name)
+                                    .expect("assignment target")
+                                    .to_owned(),
+                            },
+                        )?;
+
+                        if expression_type != symbol.symbol_type {
                             return Err(SemanticAnalysisError::MismatchedAssignmentType {
                                 symbol_name,
                                 symbol_type: symbol.symbol_type,
-                                expression_type: value.resolved_type(),
+                                expression_type,
                             });
                         }
 
@@ -205,7 +240,7 @@ impl SemanticAnalyzer {
                                 let new_variable = symbol_table.add_symbol(
                                     &self.arena,
                                     *name,
-                                    value.resolved_type(),
+                                    expression_type,
                                     SymbolKind::Variable {
                                         index: next_variable_index(symbol_table),
                                     },
@@ -240,18 +275,18 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    pub fn analyze_expression<'a>(
+    pub fn analyze_expression(
         &'a self,
         expr: &Expression,
         symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a TypedExpression<'a>, SemanticAnalysisError> {
+    ) -> Result<&'a TypedExpression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         match expr {
             Expression::Identifier { name: symbol_id } => {
                 let symbol = symbol_table.lookup_by_name(*symbol_id);
                 match symbol {
                     Some(symbol) => Ok(self.alloc(TypedExpression::Identifier {
                         symbol_id: symbol.id,
-                        resolved_type: symbol.symbol_type,
+                        resolved_type: Some(symbol.symbol_type),
                     })),
                     None => Err(SemanticAnalysisError::SymbolNotFound {
                         name: resolve_string_id(*symbol_id)
@@ -261,9 +296,13 @@ impl SemanticAnalyzer {
                 }
             }
 
+            Expression::FunctionCall(call) => {
+                todo!()
+            }
+
             // Literals will never fail
             Expression::Literal(value) => Ok(self.alloc(TypedExpression::Literal {
-                resolved_type: Type::of_literal(value),
+                resolved_type: Some(Type::of_literal(value)),
                 value: value.clone(),
             })),
 
@@ -271,6 +310,13 @@ impl SemanticAnalyzer {
             Expression::Unary { operator, operand } => {
                 let typed_operand = self.analyze_expression(operand, symbol_table)?;
                 let operand_type = typed_operand.resolved_type();
+
+                let operand_type =
+                    operand_type.ok_or(SemanticAnalysisError::CannotApplyUnaryOperatorToType {
+                        operator: operator.clone(),
+                        operand_type: "void".to_string(),
+                    })?;
+
                 if (Self::unary_op_is_allowed(operator.clone(), operand_type)) {
                     Ok(self.alloc(TypedExpression::Unary {
                         resolved_type: operand_type,
@@ -280,7 +326,7 @@ impl SemanticAnalyzer {
                 } else {
                     Err(SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                         operator: operator.clone(),
-                        operand_type,
+                        operand_type: operand_type.to_string(),
                     })
                 }
             }
@@ -295,6 +341,22 @@ impl SemanticAnalyzer {
                 let typed_right = self.analyze_expression(right, symbol_table)?;
                 let left_type = typed_left.resolved_type();
                 let right_type = typed_right.resolved_type();
+
+                let left_type = left_type.ok_or_else(|| {
+                    SemanticAnalysisError::CannotApplyBinaryOperatorToType {
+                        operator: operator.clone(),
+                        left_type: "void".to_owned(),
+                        right_type: Type::name(right_type),
+                    }
+                })?;
+                let right_type = right_type.ok_or_else(|| {
+                    SemanticAnalysisError::CannotApplyBinaryOperatorToType {
+                        operator: operator.clone(),
+                        left_type: left_type.to_string(),
+                        right_type: "void".to_owned(),
+                    }
+                })?;
+
                 if Self::bin_op_is_allowed(operator.clone(), left_type, right_type) {
                     Ok(self.alloc(TypedExpression::Binary {
                         result_type: Self::type_of_operator(operator.clone(), left_type),
@@ -306,8 +368,8 @@ impl SemanticAnalyzer {
                 } else {
                     Err(SemanticAnalysisError::CannotApplyBinaryOperatorToType {
                         operator: operator.clone(),
-                        left_type,
-                        right_type,
+                        left_type: left_type.to_string(),
+                        right_type: right_type.to_string(),
                     })
                 }
             }
@@ -376,7 +438,7 @@ impl SemanticAnalyzer {
         self.arena.alloc(value)
     }
 
-    pub fn symbol_table<'a>(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
+    pub fn symbol_table(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
         self.alloc(SymbolTable::new(&self.arena, parent))
     }
 }
@@ -445,7 +507,7 @@ mod tests {
             "- false",
             SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                 operator: UnaryOperator::Neg,
-                operand_type: Type::Boolean
+                operand_type: "boolean".to_string()
             }
         );
 
@@ -454,7 +516,7 @@ mod tests {
             "! 3",
             SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                 operator: UnaryOperator::Not,
-                operand_type: Type::Int
+                operand_type: "int".to_string()
             }
         );
         test_ko!(
@@ -462,7 +524,7 @@ mod tests {
             "! 3.14",
             SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                 operator: UnaryOperator::Not,
-                operand_type: Type::Double
+                operand_type: "double".to_string()
             }
         );
         test_ok!(unary_not_boolean, "! false", "(!b false)");
@@ -473,7 +535,7 @@ mod tests {
             "~ 3.14",
             SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                 operator: UnaryOperator::BitwiseNot,
-                operand_type: Type::Double
+                operand_type: "double".to_string()
             }
         );
         test_ko!(
@@ -481,7 +543,7 @@ mod tests {
             "~ false",
             SemanticAnalysisError::CannotApplyUnaryOperatorToType {
                 operator: UnaryOperator::BitwiseNot,
-                operand_type: Type::Boolean
+                operand_type: "boolean".to_string()
             }
         );
 
@@ -492,8 +554,8 @@ mod tests {
             "1 + 3.14",
             SemanticAnalysisError::CannotApplyBinaryOperatorToType {
                 operator: BinaryOperator::Add,
-                left_type: Type::Int,
-                right_type: Type::Double,
+                left_type: "int".to_string(),
+                right_type: "double".to_string(),
             }
         );
         test_ok!(binary_compare, "1 > 2", "(>b 1i 2i)");
@@ -501,6 +563,7 @@ mod tests {
 
     mod blocks {
         use super::*;
+        use crate::PhaseTypeResolved;
 
         macro_rules! test_ok {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -530,7 +593,7 @@ mod tests {
                     let ast_allocator = parser::AstAllocator::default();
                     let block = parser::parse_as_block(&ast_allocator, $source);
 
-                    let analyzer = SemanticAnalyzer::default();
+                    let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
                     let result = analyzer.analyze_block(block, symbol_table);
 
@@ -699,6 +762,7 @@ mod tests {
 
     mod modules {
         use super::*;
+        use crate::PhaseTypeResolved;
 
         macro_rules! test_ok {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -727,7 +791,7 @@ mod tests {
                     let ast_allocator = parser::AstAllocator::default();
                     let module = parser::parse(&ast_allocator, "test", $source);
 
-                    let analyzer = SemanticAnalyzer::default();
+                    let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
                     let result = analyzer.analyze_module(module);
 
                     assert_eq!(
@@ -749,7 +813,7 @@ mod tests {
                 "fn inc(x: int) -> int { return 1 + x; }",
             );
 
-            let analyzer = SemanticAnalyzer::default();
+            let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
             let result = analyzer
                 .analyze_module(module)
                 .expect("should have passed semantic analysis");

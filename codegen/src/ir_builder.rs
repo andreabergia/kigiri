@@ -2,8 +2,8 @@ use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator
 use crate::{FunctionSignature, ir};
 use ir::Variable;
 use semantic_analysis::{
-    Symbol, SymbolKind, SymbolTable, TypedExpression, TypedFunctionDeclaration, TypedModule,
-    TypedStatement, VariableIndex,
+    PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, TypedExpression, TypedFunctionDeclaration,
+    TypedModule, TypedStatement, VariableIndex,
 };
 
 struct FunctionIrBuilder<'i> {
@@ -29,7 +29,7 @@ impl<'i> FunctionIrBuilder<'i> {
         }
     }
 
-    fn generate(&self, function: &TypedFunctionDeclaration) -> &'i Function<'i> {
+    fn generate(&self, function: &TypedFunctionDeclaration<PhaseTypeResolved>) -> &'i Function<'i> {
         let signature = self.generate_function_signature(function);
 
         let first_bb = self.first_bb;
@@ -49,7 +49,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
     fn generate_function_signature(
         &self,
-        function: &TypedFunctionDeclaration,
+        function: &TypedFunctionDeclaration<PhaseTypeResolved>,
     ) -> &'i FunctionSignature<'i> {
         self.ir_allocator.function_signature(
             function.signature.name,
@@ -70,7 +70,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
     fn handle_statement(
         &self,
-        statement: &TypedStatement,
+        statement: &TypedStatement<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
     ) -> FoundReturn {
         match statement {
@@ -134,7 +134,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
     fn handle_expression(
         &self,
-        expression: &TypedExpression,
+        expression: &TypedExpression<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
     ) -> &'i Instruction {
         match expression {
@@ -202,6 +202,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 instruction
             }
+            TypedExpression::FunctionCall { .. } => todo!(),
         }
     }
 
@@ -220,7 +221,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
 fn build_ir_expression<'i>(
     ir_allocator: &'i IrAllocator,
-    expression: &TypedExpression,
+    expression: &TypedExpression<PhaseTypeResolved<'_>>,
     symbol_table: &SymbolTable,
 ) -> &'i BasicBlock<'i> {
     let builder = FunctionIrBuilder::new(ir_allocator);
@@ -228,7 +229,10 @@ fn build_ir_expression<'i>(
     builder.first_bb
 }
 
-pub fn build_ir_module<'i>(ir_allocator: &'i IrAllocator, module: &TypedModule) -> &'i Module<'i> {
+pub fn build_ir_module<'i>(
+    ir_allocator: &'i IrAllocator,
+    module: &TypedModule<PhaseTypeResolved>,
+) -> &'i Module<'i> {
     let mut functions = ir_allocator.functions();
     for function in &module.functions {
         let fn_builder = FunctionIrBuilder::new(ir_allocator);
@@ -246,9 +250,9 @@ mod tests {
         use super::*;
 
         fn analyze_expression<'s>(
-            semantic_analyzer: &'s SemanticAnalyzer,
+            semantic_analyzer: &'s SemanticAnalyzer<PhaseTypeResolved>,
             source: &str,
-        ) -> &'s TypedExpression<'s> {
+        ) -> &'s TypedExpression<'s, PhaseTypeResolved<'s>> {
             let ast_allocator = parser::AstAllocator::default();
             let expression = parser::parse_as_expression(&ast_allocator, source);
             let symbol_table = semantic_analyzer.symbol_table(None);

@@ -20,11 +20,11 @@ impl Display for Type {
 }
 
 impl Type {
-    pub fn to_string_short(&self) -> String {
+    pub fn to_string_short(&self) -> &'static str {
         match self {
-            Type::Int => "i".to_string(),
-            Type::Double => "d".to_string(),
-            Type::Boolean => "b".to_string(),
+            Type::Int => "i",
+            Type::Double => "d",
+            Type::Boolean => "b",
         }
     }
 
@@ -34,5 +34,9 @@ impl Type {
             LiteralValue::Double(_) => Type::Double,
             LiteralValue::Boolean(_) => Type::Boolean,
         }
+    }
+
+    pub fn name(t: Option<Type>) -> String {
+        t.map_or("void".to_owned(), |t| t.to_string())
     }
 }

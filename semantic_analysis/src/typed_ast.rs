@@ -5,22 +5,48 @@ use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, res
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
 use std::sync::{LazyLock, Mutex};
 
 pub type TypedFunctionSignaturesByName<'a> = HashMap<StringId, &'a TypedFunctionSignature<'a>>;
 
+pub struct PhaseFunctionSignatureCollection;
+
+#[derive(Debug)]
+pub struct PhaseTypeResolved<'a> {
+    phantom: PhantomData<&'a ()>,
+}
+
+pub trait CompilationPhase {
+    type ExpressionType: Debug + PartialEq;
+    type UnaryBinaryOperandType: Debug + PartialEq;
+    type FunctionCallData: Debug + PartialEq;
+}
+
+impl CompilationPhase for PhaseFunctionSignatureCollection {
+    type ExpressionType = ();
+    type UnaryBinaryOperandType = ();
+    type FunctionCallData = ();
+}
+
+impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
+    type ExpressionType = Option<Type>;
+    type UnaryBinaryOperandType = Type;
+    type FunctionCallData = &'a TypedFunctionSignature<'a>;
+}
+
 #[derive(Debug, PartialEq)]
-pub struct TypedModule<'a> {
+pub struct TypedModule<'a, Phase: CompilationPhase> {
     pub name: StringId,
-    pub functions: BumpVec<'a, &'a TypedFunctionDeclaration<'a>>,
+    pub functions: BumpVec<'a, &'a TypedFunctionDeclaration<'a, Phase>>,
     pub function_signatures: TypedFunctionSignaturesByName<'a>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct TypedFunctionDeclaration<'a> {
+pub struct TypedFunctionDeclaration<'a, Phase: CompilationPhase> {
     pub signature: &'a TypedFunctionSignature<'a>,
-    pub body: &'a TypedBlock<'a>,
+    pub body: &'a TypedBlock<'a, Phase>,
     pub symbol_table: &'a SymbolTable<'a>,
 }
 
@@ -32,32 +58,32 @@ pub struct TypedFunctionSignature<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum TypedStatement<'a> {
+pub enum TypedStatement<'a, Phase: CompilationPhase> {
     // Let gets flattened, i.e. one statement in the AST with multiple variables
     // will be represented as multiple Let typed statements.
     Let {
         symbol: SymbolId,
-        value: &'a TypedExpression<'a>,
+        value: &'a TypedExpression<'a, Phase>,
     },
     Assignment {
         symbol: SymbolId,
-        value: &'a TypedExpression<'a>,
+        value: &'a TypedExpression<'a, Phase>,
     },
     Return {
-        value: Option<&'a TypedExpression<'a>>,
+        value: Option<&'a TypedExpression<'a, Phase>>,
     },
     Expression {
-        expression: &'a TypedExpression<'a>,
+        expression: &'a TypedExpression<'a, Phase>,
     },
     NestedBlock {
-        block: &'a TypedBlock<'a>,
+        block: &'a TypedBlock<'a, Phase>,
     },
 }
 
 #[derive(Debug, PartialEq)]
-pub struct TypedBlock<'a> {
+pub struct TypedBlock<'a, Phase: CompilationPhase> {
     pub id: BlockId,
-    pub statements: BumpVec<'a, &'a TypedStatement<'a>>,
+    pub statements: BumpVec<'a, &'a TypedStatement<'a, Phase>>,
     pub symbol_table: &'a SymbolTable<'a>,
 }
 
@@ -105,32 +131,37 @@ pub(crate) struct SymbolIdSequencer {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum TypedExpression<'a> {
+pub enum TypedExpression<'a, Phase: CompilationPhase> {
     Identifier {
-        resolved_type: Type,
+        resolved_type: Phase::ExpressionType,
         symbol_id: SymbolId,
     },
     Literal {
-        resolved_type: Type,
+        resolved_type: Phase::ExpressionType,
         value: LiteralValue,
     },
     Unary {
-        resolved_type: Type,
+        resolved_type: Phase::UnaryBinaryOperandType,
         operator: UnaryOperator,
-        operand: &'a TypedExpression<'a>,
+        operand: &'a TypedExpression<'a, Phase>,
     },
     Binary {
-        result_type: Type,
+        result_type: Phase::UnaryBinaryOperandType,
         operator: BinaryOperator,
-        operand_type: Type,
-        left: &'a TypedExpression<'a>,
-        right: &'a TypedExpression<'a>,
+        operand_type: Phase::UnaryBinaryOperandType,
+        left: &'a TypedExpression<'a, Phase>,
+        right: &'a TypedExpression<'a, Phase>,
+    },
+    FunctionCall {
+        name: StringId,
+        args: BumpVec<'a, &'a TypedExpression<'a, Phase>>,
+        function_call_data: Phase::FunctionCallData,
     },
 }
 
 // Display
 
-impl Display for TypedModule<'_> {
+impl Display for TypedModule<'_, PhaseTypeResolved<'_>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -145,7 +176,7 @@ impl Display for TypedModule<'_> {
     }
 }
 
-impl Display for TypedFunctionDeclaration<'_> {
+impl Display for TypedFunctionDeclaration<'_, PhaseTypeResolved<'_>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -173,7 +204,7 @@ impl Display for TypedFunctionDeclaration<'_> {
     }
 }
 
-impl Display for TypedBlock<'_> {
+impl Display for TypedBlock<'_, PhaseTypeResolved<'_>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.fmt_with_context(
             f,
@@ -200,7 +231,7 @@ impl DisplayTypedAstContext<'_> {
     }
 }
 
-impl TypedBlock<'_> {
+impl TypedBlock<'_, PhaseTypeResolved<'_>> {
     fn fmt_with_context(
         &self,
         f: &mut Formatter<'_>,
@@ -238,7 +269,7 @@ impl Display for VariableIndex {
     }
 }
 
-impl TypedStatement<'_> {
+impl TypedStatement<'_, PhaseTypeResolved<'_>> {
     fn fmt_with_context(
         &self,
         f: &mut Formatter<'_>,
@@ -284,18 +315,18 @@ impl TypedStatement<'_> {
     }
 }
 
-struct TypedExpressionSymbolTableDisplayHelper<'e, 's, 't> {
-    expression: &'e TypedExpression<'e>,
+struct TypedExpressionSymbolTableDisplayHelper<'e, 's, 't, 'p> {
+    expression: &'e TypedExpression<'e, PhaseTypeResolved<'p>>,
     symbol_table: &'s SymbolTable<'t>,
 }
 
-impl Display for TypedExpressionSymbolTableDisplayHelper<'_, '_, '_> {
+impl Display for TypedExpressionSymbolTableDisplayHelper<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.expression.fmt_with_symbol_table(f, self.symbol_table)
     }
 }
 
-impl TypedExpression<'_> {
+impl TypedExpression<'_, PhaseTypeResolved<'_>> {
     pub fn to_string_with_symbol_table(&self, symbol_table: &SymbolTable<'_>) -> String {
         TypedExpressionSymbolTableDisplayHelper {
             expression: self,
@@ -338,10 +369,23 @@ impl TypedExpression<'_> {
                 right,
                 ..
             } => {
-                write!(f, "({}{} ", operator, result_type.to_string_short());
+                write!(f, "({}{} ", operator, result_type.to_string_short(),);
                 left.fmt_with_symbol_table(f, symbol_table)?;
                 write!(f, " ")?;
                 right.fmt_with_symbol_table(f, symbol_table)?;
+                write!(f, ")")
+            }
+            TypedExpression::FunctionCall { name, args, .. } => {
+                let name = resolve_string_id(*name).expect("function name");
+                write!(f, "{}(", name)?;
+                let mut first = true;
+                for arg in args.iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    arg.fmt_with_symbol_table(f, symbol_table)?;
+                    first = false;
+                }
                 write!(f, ")")
             }
         }
@@ -459,13 +503,16 @@ impl<'a> SymbolTable<'a> {
     }
 }
 
-impl TypedExpression<'_> {
-    pub fn resolved_type(&self) -> Type {
+impl TypedExpression<'_, PhaseTypeResolved<'_>> {
+    pub fn resolved_type(&self) -> Option<Type> {
         match self {
             TypedExpression::Identifier { resolved_type, .. } => *resolved_type,
             TypedExpression::Literal { resolved_type, .. } => *resolved_type,
-            TypedExpression::Unary { resolved_type, .. } => *resolved_type,
-            TypedExpression::Binary { result_type, .. } => *result_type,
+            TypedExpression::Unary { resolved_type, .. } => Some(*resolved_type),
+            TypedExpression::Binary { result_type, .. } => Some(*result_type),
+            TypedExpression::FunctionCall {
+                function_call_data, ..
+            } => function_call_data.return_type,
         }
     }
 }
@@ -477,16 +524,16 @@ mod tests {
 
     #[test]
     fn display_contains_type_after_operator() {
-        let typed_expression = TypedExpression::Binary {
+        let typed_expression: TypedExpression<PhaseTypeResolved> = TypedExpression::Binary {
             result_type: Type::Int,
             operator: BinaryOperator::Add,
             operand_type: Type::Int,
             left: &TypedExpression::Literal {
-                resolved_type: Type::Int,
+                resolved_type: Some(Type::Int),
                 value: LiteralValue::Integer(1),
             },
             right: &TypedExpression::Literal {
-                resolved_type: Type::Int,
+                resolved_type: Some(Type::Int),
                 value: LiteralValue::Integer(2),
             },
         };
@@ -503,7 +550,7 @@ mod tests {
     #[test]
     fn display_block() {
         let arena = Bump::new();
-        let block = make_block_with_return_1i(&arena);
+        let block: &TypedBlock<PhaseTypeResolved> = make_block_with_return_1i(&arena);
         assert_eq!(
             block.to_string(),
             r"{ #1
@@ -513,7 +560,7 @@ mod tests {
         );
     }
 
-    fn make_block_with_return_1i(arena: &Bump) -> &TypedBlock {
+    fn make_block_with_return_1i(arena: &Bump) -> &TypedBlock<PhaseTypeResolved> {
         let mut block = arena.alloc(TypedBlock {
             id: BlockId(1),
             statements: BumpVec::new_in(arena),
@@ -521,7 +568,7 @@ mod tests {
         });
         block.statements.push(arena.alloc(TypedStatement::Return {
             value: Some(arena.alloc(TypedExpression::Literal {
-                resolved_type: Type::Int,
+                resolved_type: Some(Type::Int),
                 value: LiteralValue::Integer(1),
             })),
         }));
@@ -533,7 +580,7 @@ mod tests {
         let arena = Bump::new();
 
         let outer_symbol_table = arena.alloc(SymbolTable::new(&arena, None));
-        let mut outer = TypedBlock {
+        let mut outer: TypedBlock<PhaseTypeResolved> = TypedBlock {
             id: BlockId(2),
             statements: BumpVec::new_in(&arena),
             symbol_table: outer_symbol_table,
