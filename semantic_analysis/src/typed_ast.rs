@@ -72,11 +72,8 @@ pub struct TypedFunctionSignature<'a, Phase: CompilationPhase> {
 
 #[derive(Debug, PartialEq)]
 pub enum TypedStatement<'a, Phase: CompilationPhase> {
-    // Let gets flattened, i.e. one statement in the AST with multiple variables
-    // will be represented as multiple Let typed statements.
     Let {
-        variable: <Phase as CompilationPhase>::IdentifierType,
-        value: &'a TypedExpression<'a, Phase>,
+        initializers: BumpVec<'a, TypedLetInitializer<'a, Phase>>,
     },
     Assignment {
         target: <Phase as CompilationPhase>::IdentifierType,
@@ -91,6 +88,12 @@ pub enum TypedStatement<'a, Phase: CompilationPhase> {
     NestedBlock {
         block: &'a TypedBlock<'a, Phase>,
     },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedLetInitializer<'a, Phase: CompilationPhase> {
+    pub variable: <Phase as CompilationPhase>::IdentifierType,
+    pub value: &'a TypedExpression<'a, Phase>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -286,18 +289,27 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
     fn fmt_with_context(
         &self,
         f: &mut Formatter<'_>,
-        mut context: &DisplayTypedAstContext,
+        context: &DisplayTypedAstContext,
     ) -> std::fmt::Result {
         match self {
-            TypedStatement::Let { variable, value } => {
-                let symbol = context.symbol_table.lookup_by_id(*variable);
-                if let Some(symbol) = symbol {
-                    write!(f, "{}  let {} = ", context.indent, symbol)?;
-                    value.fmt_with_symbol_table(f, context.symbol_table)?;
-                    writeln!(f, ";")
-                } else {
-                    Err(std::fmt::Error)
+            TypedStatement::Let { initializers } => {
+                write!(f, "{}  let ", context.indent)?;
+                let mut first = true;
+                for initializer in initializers.iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    let symbol = context
+                        .symbol_table
+                        .lookup_by_id(initializer.variable)
+                        .ok_or(std::fmt::Error)?;
+                    write!(f, "{} = ", symbol)?;
+                    initializer
+                        .value
+                        .fmt_with_symbol_table(f, context.symbol_table)?;
+                    first = false;
                 }
+                writeln!(f, ";")
             }
             TypedStatement::Assignment {
                 target: symbol,

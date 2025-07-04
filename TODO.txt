@@ -15,5 +15,6 @@ Main
 - [ ] optimizations
 
 ParseTree refactoring
-- [ ] unify Let with initializers or multiple
-- [ ] 
+- [x] unify Let with initializers or multiple
+- [ ] one tree!
+- [ ] create function typing phase

@@ -74,25 +74,27 @@ impl<'i> FunctionIrBuilder<'i> {
         symbol_table: &SymbolTable,
     ) -> FoundReturn {
         match statement {
-            TypedStatement::Let { variable, value } => {
-                let symbol = symbol_table
-                    .lookup_by_id(*variable)
-                    .expect("should find symbol in symbol table");
-                let initializer = self.handle_expression(value, symbol_table);
+            TypedStatement::Let { initializers } => {
+                for initializer in initializers {
+                    let symbol = symbol_table
+                        .lookup_by_id(initializer.variable)
+                        .expect("should find symbol in symbol table");
+                    let value = self.handle_expression(initializer.value, symbol_table);
 
-                let variable_index = if let SymbolKind::Variable { index } = symbol.kind {
-                    index
-                } else {
-                    panic!("expected a variable symbol kind for let statement");
-                };
-                let instruction = self.ir_allocator.new_let(
-                    variable_index,
-                    symbol.name,
-                    symbol.symbol_type,
-                    initializer.id,
-                );
-                self.push_to_current_bb(instruction);
-                self.push_variable_to_current_bb(variable_index, symbol);
+                    let variable_index = if let SymbolKind::Variable { index } = symbol.kind {
+                        index
+                    } else {
+                        panic!("expected a variable symbol kind for let statement");
+                    };
+                    let instruction = self.ir_allocator.new_let(
+                        variable_index,
+                        symbol.name,
+                        symbol.symbol_type,
+                        value.id,
+                    );
+                    self.push_to_current_bb(instruction);
+                    self.push_variable_to_current_bb(variable_index, symbol);
+                }
                 FoundReturn::No
             }
             TypedStatement::Assignment {
@@ -451,6 +453,26 @@ fn var(
   00001 i let y = @0
   00002 i loadvar y
   00003 i ret @2
+}
+"
+        );
+        test_module_ir!(
+            multiple_variable_declaration,
+            r"fn var() { 
+    let y = 1, z = 2;
+}",
+            r"module test
+
+fn var(
+) -> void
+{ #0
+  var y: int
+  var z: int
+  00000 i const 1i
+  00001 i let y = @0
+  00002 i const 2i
+  00003 i let z = @2
+  00004 v ret
 }
 "
         );

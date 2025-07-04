@@ -4,7 +4,7 @@ use crate::typed_ast::{
 };
 use crate::{
     ArgumentIndex, CompilationPhase, PhaseTypeResolved, SymbolKind, Type, TypedExpression,
-    VariableIndex,
+    TypedLetInitializer, VariableIndex,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
@@ -167,6 +167,8 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
     ) -> Result<(), SemanticAnalysisError> {
         match statement {
             Statement::Let { initializers } => {
+                let mut typed_initializers = BumpVec::new_in(&self.arena);
+
                 for initializer in initializers {
                     let value = self.analyze_expression(initializer.value, symbol_table)?;
 
@@ -188,8 +190,12 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                             index: next_variable_index(symbol_table),
                         },
                     );
-                    statements.push(self.alloc(TypedStatement::Let { variable, value }));
+                    typed_initializers.push(TypedLetInitializer { variable, value });
                 }
+
+                statements.push(self.alloc(TypedStatement::Let {
+                    initializers: typed_initializers,
+                }))
             }
             Statement::Assignment { name, expression } => {
                 let symbol_name = resolve_string_id(*name)
@@ -246,8 +252,13 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                                     },
                                 );
                                 statements.push(self.alloc(TypedStatement::Let {
-                                    variable: new_variable,
-                                    value,
+                                    initializers: BumpVec::from_iter_in(
+                                        [TypedLetInitializer {
+                                            variable: new_variable,
+                                            value,
+                                        }],
+                                        &self.arena,
+                                    ),
                                 }));
                             }
                         }
@@ -653,9 +664,7 @@ mod tests {
     let a = 42, b = true, c = 3.14;
 }",
             r"{ #0
-  let a: int = 42i;
-  let b: boolean = true;
-  let c: double = 3.14d;
+  let a: int = 42i, b: boolean = true, c: double = 3.14d;
 }
 "
         );
