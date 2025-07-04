@@ -3,13 +3,13 @@ use crate::typed_ast::{
     TypedFunctionSignaturesByName, TypedModule, TypedStatement,
 };
 use crate::{
-    ArgumentIndex, CompilationPhase, PhaseTypeResolved, SymbolKind, Type, TypedExpression,
-    TypedLetInitializer, VariableIndex,
+    ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, TypedExpression, TypedLetInitializer,
+    VariableIndex,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Expression, Module, PhaseParsed, Statement, StringId, UnaryOperator,
-    resolve_string_id,
+    BinaryOperator, CompilationPhase, Expression, Module, PhaseParsed, Statement, StringId,
+    UnaryOperator, resolve_string_id,
 };
 use std::marker::PhantomData;
 use thiserror::Error;

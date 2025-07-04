@@ -1,7 +1,10 @@
 use crate::types::Type;
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
+use parser::{
+    BinaryOperator, BlockId, CompilationPhase, LiteralValue, StringId, UnaryOperator,
+    resolve_string_id,
+};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -17,16 +20,8 @@ pub struct PhaseTypeResolved<'a> {
     phantom: PhantomData<&'a ()>,
 }
 
-pub trait CompilationPhase {
-    type SymbolTableType: Debug + PartialEq;
-    type FunctionArgumentType: Debug + PartialEq;
-    type ExpressionType: Debug + PartialEq;
-    type UnaryBinaryOperandType: Debug + PartialEq;
-    type IdentifierType: Debug + PartialEq;
-    type FunctionSignatureData: Debug + PartialEq;
-}
-
 impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
+    type FunctionSignatureType = TypedFunctionSignaturesByName<'a, PhaseTypeResolved<'a>>;
     type SymbolTableType = &'a SymbolTable<'a>;
     type FunctionArgumentType = SymbolId;
     type ExpressionType = Option<Type>;
