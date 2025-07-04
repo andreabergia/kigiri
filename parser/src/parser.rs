@@ -1,8 +1,9 @@
 use crate::ast::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration,
-    FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator,
+    LetInitializer, Module, Statement, UnaryOperator,
 };
 use crate::grammar::{Grammar, Rule};
+use crate::parsed_ast::{FunctionSignaturesByName, PhaseParsed};
 use crate::symbols::get_or_create_string;
 use bumpalo::collections::Vec as BumpVec;
 use pest::Parser;
@@ -230,7 +231,7 @@ fn parse_module<'a>(
     ast_allocator: &'a AstAllocator,
     module_name: &str,
     rule: Pair<'_, Rule>,
-) -> &'a Module<'a> {
+) -> &'a Module<'a, PhaseParsed<'a>> {
     let mut functions = ast_allocator.functions();
     let mut function_signatures = FunctionSignaturesByName::default();
 
@@ -263,7 +264,11 @@ pub fn parse_as_block<'a>(ast_allocator: &'a AstAllocator, text: &str) -> &'a Bl
     parse_block(ast_allocator, pair)
 }
 
-pub fn parse<'a>(ast_allocator: &'a AstAllocator, module_name: &str, text: &str) -> &'a Module<'a> {
+pub fn parse<'a>(
+    ast_allocator: &'a AstAllocator,
+    module_name: &str,
+    text: &str,
+) -> &'a Module<'a, PhaseParsed<'a>> {
     let pair = Grammar::parse(Rule::module, text).unwrap().next().unwrap();
     parse_module(ast_allocator, module_name, pair)
 }

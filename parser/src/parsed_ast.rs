@@ -1,24 +1,32 @@
-use crate::parsed_ast::{FunctionSignaturesByName, PhaseParsed};
+use crate::CompilationPhase;
 use crate::symbols::{StringId, get_or_create_string, resolve_string_id};
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
 
-pub trait CompilationPhase {
-    type FunctionSignatureType: Debug + PartialEq;
-    type SymbolTableType: Debug + PartialEq;
-    type FunctionArgumentType: Debug + PartialEq;
-    type ExpressionType: Debug + PartialEq;
-    type UnaryBinaryOperandType: Debug + PartialEq;
-    type IdentifierType: Debug + PartialEq;
-    type FunctionSignatureData: Debug + PartialEq;
+pub struct PhaseParsed<'a> {
+    phantom: PhantomData<&'a ()>,
+}
+
+pub type FunctionSignaturesByName<'a> = HashMap<StringId, &'a crate::FunctionSignature<'a>>;
+
+impl<'a> CompilationPhase for PhaseParsed<'a> {
+    type FunctionSignatureType = FunctionSignaturesByName<'a>;
+    type SymbolTableType = ();
+    type FunctionArgumentType = FunctionArgument;
+    type ExpressionType = ();
+    type UnaryBinaryOperandType = ();
+    type IdentifierType = StringId;
+    type FunctionSignatureData = ();
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Module<'a, Phase: CompilationPhase> {
+pub struct Module<'a> {
     pub name: StringId,
     pub functions: BumpVec<'a, &'a FunctionDeclaration<'a>>,
-    pub function_signatures: <Phase as CompilationPhase>::FunctionSignatureType,
+    pub function_signatures: FunctionSignaturesByName<'a>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -136,7 +144,7 @@ pub enum Expression<'a> {
     FunctionCall(&'a FunctionCall<'a>),
 }
 
-impl<Phase: CompilationPhase> Display for Module<'_, Phase> {
+impl Display for Module<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -527,7 +535,7 @@ impl AstAllocator {
         module_name: &str,
         functions: BumpVec<'f, &FunctionDeclaration<'f>>,
         function_signatures: FunctionSignaturesByName<'f2>,
-    ) -> &'s Module<'s, PhaseParsed<'s>>
+    ) -> &'s Module<'s>
     where
         'f: 's,
         'f2: 's,

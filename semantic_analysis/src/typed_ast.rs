@@ -1,10 +1,7 @@
 use crate::types::Type;
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
-use parser::{
-    BinaryOperator, BlockId, FunctionArgument, LiteralValue, StringId, UnaryOperator,
-    resolve_string_id,
-};
+use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,8 +11,6 @@ use std::sync::{LazyLock, Mutex};
 
 pub type TypedFunctionSignaturesByName<'a, Phase> =
     HashMap<StringId, &'a TypedFunctionSignature<'a, Phase>>;
-
-pub struct PhaseParsed;
 
 #[derive(Debug, PartialEq)]
 pub struct PhaseTypeResolved<'a> {
@@ -29,15 +24,6 @@ pub trait CompilationPhase {
     type UnaryBinaryOperandType: Debug + PartialEq;
     type IdentifierType: Debug + PartialEq;
     type FunctionSignatureData: Debug + PartialEq;
-}
-
-impl CompilationPhase for PhaseParsed {
-    type SymbolTableType = ();
-    type FunctionArgumentType = FunctionArgument;
-    type ExpressionType = ();
-    type UnaryBinaryOperandType = ();
-    type IdentifierType = StringId;
-    type FunctionSignatureData = ();
 }
 
 impl<'a> CompilationPhase for PhaseTypeResolved<'a> {

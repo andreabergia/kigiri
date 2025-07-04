@@ -8,7 +8,8 @@ use crate::{
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Expression, Module, Statement, StringId, UnaryOperator, resolve_string_id,
+    BinaryOperator, Expression, Module, PhaseParsed, Statement, StringId, UnaryOperator,
+    resolve_string_id,
 };
 use std::marker::PhantomData;
 use thiserror::Error;
@@ -61,7 +62,7 @@ impl<Phase: CompilationPhase> Default for SemanticAnalyzer<Phase> {
 impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
     pub fn analyze_module(
         &'a self,
-        module: &Module,
+        module: &Module<PhaseParsed>,
     ) -> Result<&'a TypedModule<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut function_signatures =
             TypedFunctionSignaturesByName::with_capacity(module.function_signatures.len());
