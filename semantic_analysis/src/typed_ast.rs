@@ -1,7 +1,10 @@
 use crate::types::Type;
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
+use parser::{
+    BinaryOperator, BlockId, FunctionArgument, LiteralValue, StringId, UnaryOperator,
+    resolve_string_id,
+};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,52 +12,62 @@ use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::{LazyLock, Mutex};
 
-pub type TypedFunctionSignaturesByName<'a> = HashMap<StringId, &'a TypedFunctionSignature<'a>>;
+pub type TypedFunctionSignaturesByName<'a, Phase> =
+    HashMap<StringId, &'a TypedFunctionSignature<'a, Phase>>;
 
-pub struct PhaseFunctionSignatureCollection;
+pub struct PhaseParsed;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct PhaseTypeResolved<'a> {
     phantom: PhantomData<&'a ()>,
 }
 
 pub trait CompilationPhase {
+    type SymbolTableType: Debug + PartialEq;
+    type FunctionArgumentType: Debug + PartialEq;
     type ExpressionType: Debug + PartialEq;
     type UnaryBinaryOperandType: Debug + PartialEq;
-    type FunctionCallData: Debug + PartialEq;
+    type IdentifierType: Debug + PartialEq;
+    type FunctionSignatureData: Debug + PartialEq;
 }
 
-impl CompilationPhase for PhaseFunctionSignatureCollection {
+impl CompilationPhase for PhaseParsed {
+    type SymbolTableType = ();
+    type FunctionArgumentType = FunctionArgument;
     type ExpressionType = ();
     type UnaryBinaryOperandType = ();
-    type FunctionCallData = ();
+    type IdentifierType = StringId;
+    type FunctionSignatureData = ();
 }
 
 impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
+    type SymbolTableType = &'a SymbolTable<'a>;
+    type FunctionArgumentType = SymbolId;
     type ExpressionType = Option<Type>;
     type UnaryBinaryOperandType = Type;
-    type FunctionCallData = &'a TypedFunctionSignature<'a>;
+    type IdentifierType = SymbolId;
+    type FunctionSignatureData = &'a TypedFunctionSignature<'a, PhaseTypeResolved<'a>>;
 }
 
 #[derive(Debug, PartialEq)]
 pub struct TypedModule<'a, Phase: CompilationPhase> {
     pub name: StringId,
     pub functions: BumpVec<'a, &'a TypedFunctionDeclaration<'a, Phase>>,
-    pub function_signatures: TypedFunctionSignaturesByName<'a>,
+    pub function_signatures: TypedFunctionSignaturesByName<'a, Phase>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct TypedFunctionDeclaration<'a, Phase: CompilationPhase> {
-    pub signature: &'a TypedFunctionSignature<'a>,
+    pub signature: &'a TypedFunctionSignature<'a, Phase>,
     pub body: &'a TypedBlock<'a, Phase>,
-    pub symbol_table: &'a SymbolTable<'a>,
+    pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct TypedFunctionSignature<'a> {
+pub struct TypedFunctionSignature<'a, Phase: CompilationPhase> {
     pub name: StringId,
     pub return_type: Option<Type>,
-    pub arguments: BumpVec<'a, SymbolId>,
+    pub arguments: BumpVec<'a, <Phase as CompilationPhase>::FunctionArgumentType>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,11 +75,11 @@ pub enum TypedStatement<'a, Phase: CompilationPhase> {
     // Let gets flattened, i.e. one statement in the AST with multiple variables
     // will be represented as multiple Let typed statements.
     Let {
-        symbol: SymbolId,
+        variable: <Phase as CompilationPhase>::IdentifierType,
         value: &'a TypedExpression<'a, Phase>,
     },
     Assignment {
-        symbol: SymbolId,
+        target: <Phase as CompilationPhase>::IdentifierType,
         value: &'a TypedExpression<'a, Phase>,
     },
     Return {
@@ -84,7 +97,7 @@ pub enum TypedStatement<'a, Phase: CompilationPhase> {
 pub struct TypedBlock<'a, Phase: CompilationPhase> {
     pub id: BlockId,
     pub statements: BumpVec<'a, &'a TypedStatement<'a, Phase>>,
-    pub symbol_table: &'a SymbolTable<'a>,
+    pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,7 +147,7 @@ pub(crate) struct SymbolIdSequencer {
 pub enum TypedExpression<'a, Phase: CompilationPhase> {
     Identifier {
         resolved_type: Phase::ExpressionType,
-        symbol_id: SymbolId,
+        symbol_id: Phase::IdentifierType,
     },
     Literal {
         resolved_type: Phase::ExpressionType,
@@ -153,9 +166,9 @@ pub enum TypedExpression<'a, Phase: CompilationPhase> {
         right: &'a TypedExpression<'a, Phase>,
     },
     FunctionCall {
-        name: StringId,
+        name: Phase::IdentifierType,
         args: BumpVec<'a, &'a TypedExpression<'a, Phase>>,
-        function_call_data: Phase::FunctionCallData,
+        signature: Phase::FunctionSignatureData,
     },
 }
 
@@ -276,8 +289,8 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
         mut context: &DisplayTypedAstContext,
     ) -> std::fmt::Result {
         match self {
-            TypedStatement::Let { symbol, value } => {
-                let symbol = context.symbol_table.lookup_by_id(*symbol);
+            TypedStatement::Let { variable, value } => {
+                let symbol = context.symbol_table.lookup_by_id(*variable);
                 if let Some(symbol) = symbol {
                     write!(f, "{}  let {} = ", context.indent, symbol)?;
                     value.fmt_with_symbol_table(f, context.symbol_table)?;
@@ -286,7 +299,10 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
                     Err(std::fmt::Error)
                 }
             }
-            TypedStatement::Assignment { symbol, value } => {
+            TypedStatement::Assignment {
+                target: symbol,
+                value,
+            } => {
                 let symbol = context.symbol_table.lookup_by_id(*symbol);
                 if let Some(symbol) = symbol {
                     write!(f, "{}  {} = ", context.indent, symbol.name())?;
@@ -376,8 +392,8 @@ impl TypedExpression<'_, PhaseTypeResolved<'_>> {
                 write!(f, ")")
             }
             TypedExpression::FunctionCall { name, args, .. } => {
-                let name = resolve_string_id(*name).expect("function name");
-                write!(f, "{}(", name)?;
+                let symbol = symbol_table.lookup_by_id(*name).ok_or(std::fmt::Error)?;
+                write!(f, "{}(", symbol.name());
                 let mut first = true;
                 for arg in args.iter() {
                     if !first {
@@ -510,9 +526,7 @@ impl TypedExpression<'_, PhaseTypeResolved<'_>> {
             TypedExpression::Literal { resolved_type, .. } => *resolved_type,
             TypedExpression::Unary { resolved_type, .. } => Some(*resolved_type),
             TypedExpression::Binary { result_type, .. } => Some(*result_type),
-            TypedExpression::FunctionCall {
-                function_call_data, ..
-            } => function_call_data.return_type,
+            TypedExpression::FunctionCall { signature, .. } => signature.return_type,
         }
     }
 }
@@ -561,10 +575,11 @@ mod tests {
     }
 
     fn make_block_with_return_1i(arena: &Bump) -> &TypedBlock<PhaseTypeResolved> {
+        let symbol_table: &SymbolTable = arena.alloc(SymbolTable::new(arena, None));
         let mut block = arena.alloc(TypedBlock {
             id: BlockId(1),
             statements: BumpVec::new_in(arena),
-            symbol_table: arena.alloc(SymbolTable::new(arena, None)),
+            symbol_table,
         });
         block.statements.push(arena.alloc(TypedStatement::Return {
             value: Some(arena.alloc(TypedExpression::Literal {

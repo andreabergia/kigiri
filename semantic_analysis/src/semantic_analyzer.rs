@@ -180,7 +180,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                         });
                     };
 
-                    let symbol = symbol_table.add_symbol(
+                    let variable = symbol_table.add_symbol(
                         &self.arena,
                         initializer.name,
                         resolved_type,
@@ -188,7 +188,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                             index: next_variable_index(symbol_table),
                         },
                     );
-                    statements.push(self.alloc(TypedStatement::Let { symbol, value }));
+                    statements.push(self.alloc(TypedStatement::Let { variable, value }));
                 }
             }
             Statement::Assignment { name, expression } => {
@@ -229,7 +229,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                             }
                             SymbolKind::Variable { .. } => {
                                 statements.push(self.alloc(TypedStatement::Assignment {
-                                    symbol: symbol.id,
+                                    target: symbol.id,
                                     value,
                                 }))
                             }
@@ -246,7 +246,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                                     },
                                 );
                                 statements.push(self.alloc(TypedStatement::Let {
-                                    symbol: new_variable,
+                                    variable: new_variable,
                                     value,
                                 }));
                             }

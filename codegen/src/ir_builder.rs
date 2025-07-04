@@ -74,9 +74,9 @@ impl<'i> FunctionIrBuilder<'i> {
         symbol_table: &SymbolTable,
     ) -> FoundReturn {
         match statement {
-            TypedStatement::Let { symbol, value } => {
+            TypedStatement::Let { variable, value } => {
                 let symbol = symbol_table
-                    .lookup_by_id(*symbol)
+                    .lookup_by_id(*variable)
                     .expect("should find symbol in symbol table");
                 let initializer = self.handle_expression(value, symbol_table);
 
@@ -95,7 +95,10 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_variable_to_current_bb(variable_index, symbol);
                 FoundReturn::No
             }
-            TypedStatement::Assignment { symbol, value } => {
+            TypedStatement::Assignment {
+                target: symbol,
+                value,
+            } => {
                 let symbol = symbol_table
                     .lookup_by_id(*symbol)
                     .expect("should find symbol in symbol table");
