@@ -761,7 +761,7 @@ mod tests {
         semantic_analyzer: &'s SemanticAnalyzer<PhaseTypeResolved<'s>>,
         source: &str,
     ) -> &'s parser::Module<'s, PhaseTypeResolved<'s>> {
-        let ast_allocator = parser::AstAllocator::default();
+        let ast_allocator = parser::ParsedAstAllocator::default();
         let module = parser::parse(&ast_allocator, "test", source);
 
         let result = semantic_analyzer.analyze_module(module);

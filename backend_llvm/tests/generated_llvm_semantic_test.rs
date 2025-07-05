@@ -5,7 +5,7 @@ use inkwell::execution_engine::{ExecutionEngine, JitFunction};
 use semantic_analysis::SemanticAnalyzer;
 
 fn jit_test(source: &str, test_callback: unsafe fn(ExecutionEngine) -> ()) {
-    let ast_allocator = parser::AstAllocator::default();
+    let ast_allocator = parser::ParsedAstAllocator::default();
     let parsed_module = parser::parse(&ast_allocator, "test", source);
 
     let semantic_analyzer = SemanticAnalyzer::default();

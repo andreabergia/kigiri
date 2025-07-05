@@ -1,9 +1,9 @@
 use crate::ast::{
-    AstAllocator, BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration,
-    LetInitializer, Module, Statement, UnaryOperator,
+    BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration, LetInitializer,
+    Module, Statement, UnaryOperator,
 };
 use crate::grammar::{Grammar, Rule};
-use crate::parsed_ast::{FunctionSignaturesByName, PhaseParsed};
+use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
 use crate::symbols::get_or_create_string;
 use bumpalo::collections::Vec as BumpVec;
 use pest::Parser;
@@ -34,7 +34,7 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 fn parse_expression<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a Expression<'a, PhaseParsed<'a>> {
     PRATT_PARSER
@@ -94,7 +94,7 @@ fn parse_expression<'a>(
 }
 
 fn parse_function_call<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a Expression<'a, PhaseParsed<'a>> {
     let mut inner = rule.into_inner();
@@ -109,7 +109,7 @@ fn parse_function_call<'a>(
 }
 
 fn parse_let_statement<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a Statement<'a, PhaseParsed<'a>> {
     let mut iter = rule.into_inner();
@@ -135,7 +135,7 @@ fn parse_let_statement<'a>(
 }
 
 fn parse_statement<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a Statement<'a, PhaseParsed<'a>> {
     let pair = rule.into_inner().next().unwrap();
@@ -169,7 +169,7 @@ fn parse_statement<'a>(
 }
 
 fn parse_block<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a Block<'a, PhaseParsed<'a>> {
     // We want a parent block to have a smaller id than any nested block,
@@ -190,7 +190,7 @@ fn parse_block<'a>(
 }
 
 fn parse_function_declaration_arguments<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> BumpVec<'a, FunctionArgument> {
     let mut arguments = ast_allocator.function_arguments();
@@ -209,7 +209,7 @@ fn parse_function_declaration_arguments<'a>(
 }
 
 fn parse_function_declaration<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a FunctionDeclaration<'a, PhaseParsed<'a>> {
     let mut rule_iter = rule.into_inner();
@@ -237,7 +237,7 @@ fn parse_function_declaration<'a>(
 }
 
 fn parse_module<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     module_name: &str,
     rule: Pair<'_, Rule>,
 ) -> &'a Module<'a, PhaseParsed<'a>> {
@@ -261,7 +261,7 @@ fn parse_module<'a>(
 }
 
 pub fn parse_as_expression<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     text: &str,
 ) -> &'a Expression<'a, PhaseParsed<'a>> {
     let pair = Grammar::parse(Rule::expression, text)
@@ -272,7 +272,7 @@ pub fn parse_as_expression<'a>(
 }
 
 pub fn parse_as_block<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     text: &str,
 ) -> &'a Block<'a, PhaseParsed<'a>> {
     let pair = Grammar::parse(Rule::block, text).unwrap().next().unwrap();
@@ -280,7 +280,7 @@ pub fn parse_as_block<'a>(
 }
 
 pub fn parse<'a>(
-    ast_allocator: &'a AstAllocator,
+    ast_allocator: &'a ParsedAstAllocator,
     module_name: &str,
     text: &str,
 ) -> &'a Module<'a, PhaseParsed<'a>> {
@@ -300,7 +300,7 @@ mod tests {
         ($name: ident, $source: expr, $ast: expr) => {
             #[test]
             fn $name() {
-                let ast_allocator = AstAllocator::default();
+                let ast_allocator = ParsedAstAllocator::default();
                 let expression = parse_as_expression(&ast_allocator, $source);
                 assert_eq!(expression.to_string(), $ast);
             }
@@ -311,7 +311,7 @@ mod tests {
         ($name: ident, $source: expr, $ast: expr) => {
             #[test]
             fn $name() {
-                let ast_allocator = AstAllocator::default();
+                let ast_allocator = ParsedAstAllocator::default();
                 let block = parse_as_block(&ast_allocator, $source);
                 assert_eq!(block.to_string(), $ast);
             }
@@ -442,7 +442,7 @@ a = 1i;
 
     #[test]
     fn module_fn_with_return_type() {
-        let ast_allocator = AstAllocator::default();
+        let ast_allocator = ParsedAstAllocator::default();
         let module = parse(
             &ast_allocator,
             "test",
@@ -469,7 +469,7 @@ return (+ x y);
 
     #[test]
     fn module_fn_no_return_type() {
-        let ast_allocator = AstAllocator::default();
+        let ast_allocator = ParsedAstAllocator::default();
         let module = parse(
             &ast_allocator,
             "test",

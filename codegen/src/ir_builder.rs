@@ -256,7 +256,7 @@ mod tests {
             semantic_analyzer: &'s SemanticAnalyzer<PhaseTypeResolved>,
             source: &str,
         ) -> &'s Expression<'s, PhaseTypeResolved<'s>> {
-            let ast_allocator = parser::AstAllocator::default();
+            let ast_allocator = parser::ParsedAstAllocator::default();
             let expression = parser::parse_as_expression(&ast_allocator, source);
             let symbol_table = semantic_analyzer.symbol_table(None);
 
@@ -348,7 +348,7 @@ mod tests {
         use super::*;
 
         fn analyze_module<'i>(ir_allocator: &'i IrAllocator, source: &str) -> &'i Module<'i> {
-            let ast_allocator = parser::AstAllocator::default();
+            let ast_allocator = parser::ParsedAstAllocator::default();
             let ast_module = parser::parse(&ast_allocator, "test", source);
 
             let semantic_analyzer = SemanticAnalyzer::default();

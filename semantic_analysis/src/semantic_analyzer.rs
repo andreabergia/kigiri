@@ -474,7 +474,7 @@ mod tests {
             ($name: ident, $source: expr, $typed_ast: expr) => {
                 #[test]
                 fn $name() {
-                    let ast_allocator = parser::AstAllocator::default();
+                    let ast_allocator = parser::ParsedAstAllocator::default();
                     let expression = parser::parse_as_expression(&ast_allocator, $source);
                     let analyzer = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
@@ -494,7 +494,7 @@ mod tests {
             ($name: ident, $source: expr, $expected_error: expr) => {
                 #[test]
                 fn $name() {
-                    let ast_allocator = parser::AstAllocator::default();
+                    let ast_allocator = parser::ParsedAstAllocator::default();
                     let expression = parser::parse_as_expression(&ast_allocator, $source);
                     let analyzer = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
@@ -584,7 +584,7 @@ mod tests {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
                 #[test]
                 fn $name() {
-                    let ast_allocator = parser::AstAllocator::default();
+                    let ast_allocator = parser::ParsedAstAllocator::default();
                     let block = parser::parse_as_block(&ast_allocator, $source);
 
                     let analyzer = SemanticAnalyzer::default();
@@ -605,7 +605,7 @@ mod tests {
             ($name: ident, $source: expr, $expected_error: expr) => {
                 #[test]
                 fn $name() {
-                    let ast_allocator = parser::AstAllocator::default();
+                    let ast_allocator = parser::ParsedAstAllocator::default();
                     let block = parser::parse_as_block(&ast_allocator, $source);
 
                     let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
@@ -781,7 +781,7 @@ mod tests {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
                 #[test]
                 fn $name() {
-                    let ast_allocator = parser::AstAllocator::default();
+                    let ast_allocator = parser::ParsedAstAllocator::default();
                     let module = parser::parse(&ast_allocator, "test", $source);
 
                     let analyzer = SemanticAnalyzer::default();
@@ -801,7 +801,7 @@ mod tests {
             ($name: ident, $source: expr, $expected_error: expr) => {
                 #[test]
                 fn $name() {
-                    let ast_allocator = parser::AstAllocator::default();
+                    let ast_allocator = parser::ParsedAstAllocator::default();
                     let module = parser::parse(&ast_allocator, "test", $source);
 
                     let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
@@ -819,7 +819,7 @@ mod tests {
 
         #[test]
         fn function_symbol_map_contains_arguments() {
-            let ast_allocator = parser::AstAllocator::default();
+            let ast_allocator = parser::ParsedAstAllocator::default();
             let module = parser::parse(
                 &ast_allocator,
                 "test",
