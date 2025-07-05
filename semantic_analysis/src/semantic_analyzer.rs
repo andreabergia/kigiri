@@ -3,8 +3,8 @@ use crate::typed_ast::{
     TypedFunctionSignaturesByName, TypedModule, TypedStatement,
 };
 use crate::{
-    ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, TypedExpression, TypedLetInitializer,
-    VariableIndex,
+    ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, TypedLetInitializer, VariableIndex,
+    resolved_type,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
@@ -173,8 +173,8 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                 for initializer in initializers {
                     let value = self.analyze_expression(initializer.value, symbol_table)?;
 
-                    let resolved_type = if let Some(resolved_type) = value.resolved_type() {
-                        resolved_type
+                    let resolved_type = if let Some(rt) = resolved_type(value) {
+                        rt
                     } else {
                         return Err(SemanticAnalysisError::CannotAssignVoidValue {
                             name: resolve_string_id(initializer.variable)
@@ -212,7 +212,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                     Some(symbol) => {
                         let value = self.analyze_expression(expression, symbol_table)?;
 
-                        let expression_type = value.resolved_type().ok_or(
+                        let expression_type = resolved_type(value).ok_or(
                             SemanticAnalysisError::CannotAssignVoidValue {
                                 name: resolve_string_id(symbol.name)
                                     .expect("assignment target")
@@ -291,14 +291,14 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
         &'a self,
         expr: &Expression<PhaseParsed>,
         symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a TypedExpression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
+    ) -> Result<&'a Expression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         match expr {
             Expression::Identifier {
                 name: symbol_id, ..
             } => {
                 let symbol = symbol_table.lookup_by_name(*symbol_id);
                 match symbol {
-                    Some(symbol) => Ok(self.alloc(TypedExpression::Identifier {
+                    Some(symbol) => Ok(self.alloc(Expression::Identifier {
                         name: symbol.id,
                         resolved_type: Some(symbol.symbol_type),
                     })),
@@ -315,7 +315,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
             }
 
             // Literals will never fail
-            Expression::Literal { value, .. } => Ok(self.alloc(TypedExpression::Literal {
+            Expression::Literal { value, .. } => Ok(self.alloc(Expression::Literal {
                 resolved_type: Some(Type::of_literal(value)),
                 value: value.clone(),
             })),
@@ -325,7 +325,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                 operator, operand, ..
             } => {
                 let typed_operand = self.analyze_expression(operand, symbol_table)?;
-                let operand_type = typed_operand.resolved_type();
+                let operand_type = resolved_type(typed_operand);
 
                 let operand_type =
                     operand_type.ok_or(SemanticAnalysisError::CannotApplyUnaryOperatorToType {
@@ -334,7 +334,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                     })?;
 
                 if (Self::unary_op_is_allowed(operator.clone(), operand_type)) {
-                    Ok(self.alloc(TypedExpression::Unary {
+                    Ok(self.alloc(Expression::Unary {
                         resolved_type: operand_type,
                         operator: operator.clone(),
                         operand: typed_operand,
@@ -356,8 +356,8 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
             } => {
                 let typed_left = self.analyze_expression(left, symbol_table)?;
                 let typed_right = self.analyze_expression(right, symbol_table)?;
-                let left_type = typed_left.resolved_type();
-                let right_type = typed_right.resolved_type();
+                let left_type = resolved_type(typed_left);
+                let right_type = resolved_type(typed_right);
 
                 let left_type = left_type.ok_or_else(|| {
                     SemanticAnalysisError::CannotApplyBinaryOperatorToType {
@@ -375,7 +375,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                 })?;
 
                 if Self::bin_op_is_allowed(operator.clone(), left_type, right_type) {
-                    Ok(self.alloc(TypedExpression::Binary {
+                    Ok(self.alloc(Expression::Binary {
                         result_type: Self::type_of_operator(operator.clone(), left_type),
                         operator: operator.clone(),
                         operand_type: left_type,
@@ -470,6 +470,7 @@ mod tests {
 
     mod expressions {
         use super::*;
+        use crate::to_string_with_symbol_table;
 
         /// Generates a test case to verify the typed AST produced by a given
         /// source expression. The typed AST is passed as its string representation.
@@ -483,9 +484,10 @@ mod tests {
                     let symbol_table = analyzer.symbol_table(None);
                     let result = analyzer.analyze_expression(expression, symbol_table);
                     assert_eq!(
-                        result
-                            .expect("should have matched types correctly")
-                            .to_string_with_symbol_table(symbol_table),
+                        to_string_with_symbol_table(
+                            result.expect("should have matched types correctly"),
+                            symbol_table
+                        ),
                         $typed_ast
                     );
                 }

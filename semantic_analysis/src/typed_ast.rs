@@ -2,7 +2,7 @@ use crate::types::Type;
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, BlockId, CompilationPhase, LiteralValue, StringId, UnaryOperator,
+    BinaryOperator, BlockId, CompilationPhase, Expression, LiteralValue, StringId,
     resolve_string_id,
 };
 use std::borrow::BorrowMut;
@@ -59,13 +59,13 @@ pub enum TypedStatement<'a, Phase: CompilationPhase> {
     },
     Assignment {
         target: <Phase as CompilationPhase>::IdentifierType,
-        value: &'a TypedExpression<'a, Phase>,
+        value: &'a Expression<'a, Phase>,
     },
     Return {
-        value: Option<&'a TypedExpression<'a, Phase>>,
+        value: Option<&'a Expression<'a, Phase>>,
     },
     Expression {
-        expression: &'a TypedExpression<'a, Phase>,
+        expression: &'a Expression<'a, Phase>,
     },
     NestedBlock {
         block: &'a TypedBlock<'a, Phase>,
@@ -75,7 +75,7 @@ pub enum TypedStatement<'a, Phase: CompilationPhase> {
 #[derive(Debug, PartialEq)]
 pub struct TypedLetInitializer<'a, Phase: CompilationPhase> {
     pub variable: <Phase as CompilationPhase>::IdentifierType,
-    pub value: &'a TypedExpression<'a, Phase>,
+    pub value: &'a Expression<'a, Phase>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -126,35 +126,6 @@ pub struct SymbolTable<'a> {
 #[derive(Debug, Default)]
 pub(crate) struct SymbolIdSequencer {
     next_id: u32,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TypedExpression<'a, Phase: CompilationPhase> {
-    Identifier {
-        resolved_type: Phase::ExpressionType,
-        name: Phase::IdentifierType,
-    },
-    Literal {
-        resolved_type: Phase::ExpressionType,
-        value: LiteralValue,
-    },
-    Unary {
-        resolved_type: Phase::UnaryBinaryOperandType,
-        operator: UnaryOperator,
-        operand: &'a TypedExpression<'a, Phase>,
-    },
-    Binary {
-        result_type: Phase::UnaryBinaryOperandType,
-        operator: BinaryOperator,
-        operand_type: Phase::UnaryBinaryOperandType,
-        left: &'a TypedExpression<'a, Phase>,
-        right: &'a TypedExpression<'a, Phase>,
-    },
-    FunctionCall {
-        name: Phase::IdentifierType,
-        args: BumpVec<'a, &'a TypedExpression<'a, Phase>>,
-        signature: Phase::FunctionSignatureData,
-    },
 }
 
 // Display
@@ -286,9 +257,7 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
                         .lookup_by_id(initializer.variable)
                         .ok_or(std::fmt::Error)?;
                     write!(f, "{} = ", symbol)?;
-                    initializer
-                        .value
-                        .fmt_with_symbol_table(f, context.symbol_table)?;
+                    fmt_with_symbol_table(f, initializer.value, context.symbol_table)?;
                     first = false;
                 }
                 writeln!(f, ";")
@@ -300,7 +269,7 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
                 let symbol = context.symbol_table.lookup_by_id(*symbol);
                 if let Some(symbol) = symbol {
                     write!(f, "{}  {} = ", context.indent, symbol.name())?;
-                    value.fmt_with_symbol_table(f, context.symbol_table)?;
+                    fmt_with_symbol_table(f, value, context.symbol_table)?;
                     writeln!(f, ";")
                 } else {
                     Err(std::fmt::Error)
@@ -309,7 +278,7 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
             TypedStatement::Return { value } => {
                 if let Some(value) = value {
                     write!(f, "{}  return ", context.indent)?;
-                    value.fmt_with_symbol_table(f, context.symbol_table)?;
+                    fmt_with_symbol_table(f, value, context.symbol_table)?;
                 } else {
                     write!(f, "{}  return", context.indent,)?;
                 }
@@ -317,7 +286,7 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
             }
             TypedStatement::Expression { expression } => {
                 write!(f, "{}  ", context.indent)?;
-                expression.fmt_with_symbol_table(f, context.symbol_table)?;
+                fmt_with_symbol_table(f, expression, context.symbol_table)?;
                 writeln!(f, ";")
             }
             TypedStatement::NestedBlock { block } => block.fmt_with_context(f, context.indented()),
@@ -326,78 +295,79 @@ impl TypedStatement<'_, PhaseTypeResolved<'_>> {
 }
 
 struct TypedExpressionSymbolTableDisplayHelper<'e, 's, 't, 'p> {
-    expression: &'e TypedExpression<'e, PhaseTypeResolved<'p>>,
+    expression: &'e Expression<'e, PhaseTypeResolved<'p>>,
     symbol_table: &'s SymbolTable<'t>,
 }
 
 impl Display for TypedExpressionSymbolTableDisplayHelper<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.expression.fmt_with_symbol_table(f, self.symbol_table)
+        fmt_with_symbol_table(f, self.expression, self.symbol_table)
     }
 }
 
-impl TypedExpression<'_, PhaseTypeResolved<'_>> {
-    pub fn to_string_with_symbol_table(&self, symbol_table: &SymbolTable<'_>) -> String {
-        TypedExpressionSymbolTableDisplayHelper {
-            expression: self,
-            symbol_table,
-        }
-        .to_string()
+pub fn to_string_with_symbol_table(
+    expression: &Expression<PhaseTypeResolved>,
+    symbol_table: &SymbolTable<'_>,
+) -> String {
+    TypedExpressionSymbolTableDisplayHelper {
+        expression,
+        symbol_table,
     }
+    .to_string()
+}
 
-    fn fmt_with_symbol_table(
-        &self,
-        f: &mut Formatter<'_>,
-        symbol_table: &SymbolTable<'_>,
-    ) -> std::fmt::Result {
-        match self {
-            TypedExpression::Identifier {
-                resolved_type,
-                name: symbol_id,
-            } => match symbol_table.lookup_by_id(*symbol_id) {
-                None => Err(std::fmt::Error),
-                Some(symbol) => {
-                    write!(f, "{}", symbol.name())
+fn fmt_with_symbol_table(
+    f: &mut Formatter<'_>,
+    expression: &Expression<PhaseTypeResolved>,
+    symbol_table: &SymbolTable<'_>,
+) -> std::fmt::Result {
+    match expression {
+        Expression::Identifier {
+            resolved_type,
+            name: symbol_id,
+        } => match symbol_table.lookup_by_id(*symbol_id) {
+            None => Err(std::fmt::Error),
+            Some(symbol) => {
+                write!(f, "{}", symbol.name())
+            }
+        },
+        Expression::Literal { value, .. } => {
+            write!(f, "{}", value)
+        }
+        Expression::Unary {
+            resolved_type,
+            operator,
+            operand,
+        } => {
+            write!(f, "({}{} ", operator, resolved_type.to_string_short(),);
+            fmt_with_symbol_table(f, operand, symbol_table)?;
+            write!(f, ")")
+        }
+        Expression::Binary {
+            result_type,
+            operator,
+            left,
+            right,
+            ..
+        } => {
+            write!(f, "({}{} ", operator, result_type.to_string_short(),);
+            fmt_with_symbol_table(f, left, symbol_table)?;
+            write!(f, " ")?;
+            fmt_with_symbol_table(f, right, symbol_table)?;
+            write!(f, ")")
+        }
+        Expression::FunctionCall { name, args, .. } => {
+            let symbol = symbol_table.lookup_by_id(*name).ok_or(std::fmt::Error)?;
+            write!(f, "{}(", symbol.name());
+            let mut first = true;
+            for arg in args.iter() {
+                if !first {
+                    write!(f, ", ")?;
                 }
-            },
-            TypedExpression::Literal { value, .. } => {
-                write!(f, "{}", value)
+                fmt_with_symbol_table(f, arg, symbol_table)?;
+                first = false;
             }
-            TypedExpression::Unary {
-                resolved_type,
-                operator,
-                operand,
-            } => {
-                write!(f, "({}{} ", operator, resolved_type.to_string_short(),);
-                operand.fmt_with_symbol_table(f, symbol_table)?;
-                write!(f, ")")
-            }
-            TypedExpression::Binary {
-                result_type,
-                operator,
-                left,
-                right,
-                ..
-            } => {
-                write!(f, "({}{} ", operator, result_type.to_string_short(),);
-                left.fmt_with_symbol_table(f, symbol_table)?;
-                write!(f, " ")?;
-                right.fmt_with_symbol_table(f, symbol_table)?;
-                write!(f, ")")
-            }
-            TypedExpression::FunctionCall { name, args, .. } => {
-                let symbol = symbol_table.lookup_by_id(*name).ok_or(std::fmt::Error)?;
-                write!(f, "{}(", symbol.name());
-                let mut first = true;
-                for arg in args.iter() {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    arg.fmt_with_symbol_table(f, symbol_table)?;
-                    first = false;
-                }
-                write!(f, ")")
-            }
+            write!(f, ")")
         }
     }
 }
@@ -513,15 +483,13 @@ impl<'a> SymbolTable<'a> {
     }
 }
 
-impl TypedExpression<'_, PhaseTypeResolved<'_>> {
-    pub fn resolved_type(&self) -> Option<Type> {
-        match self {
-            TypedExpression::Identifier { resolved_type, .. } => *resolved_type,
-            TypedExpression::Literal { resolved_type, .. } => *resolved_type,
-            TypedExpression::Unary { resolved_type, .. } => Some(*resolved_type),
-            TypedExpression::Binary { result_type, .. } => Some(*result_type),
-            TypedExpression::FunctionCall { signature, .. } => signature.return_type,
-        }
+pub fn resolved_type(expression: &Expression<'_, PhaseTypeResolved<'_>>) -> Option<Type> {
+    match expression {
+        Expression::Identifier { resolved_type, .. } => *resolved_type,
+        Expression::Literal { resolved_type, .. } => *resolved_type,
+        Expression::Unary { resolved_type, .. } => Some(*resolved_type),
+        Expression::Binary { result_type, .. } => Some(*result_type),
+        Expression::FunctionCall { signature, .. } => signature.return_type,
     }
 }
 
@@ -532,15 +500,15 @@ mod tests {
 
     #[test]
     fn display_contains_type_after_operator() {
-        let typed_expression: TypedExpression<PhaseTypeResolved> = TypedExpression::Binary {
+        let typed_expression: Expression<PhaseTypeResolved> = Expression::Binary {
             result_type: Type::Int,
             operator: BinaryOperator::Add,
             operand_type: Type::Int,
-            left: &TypedExpression::Literal {
+            left: &Expression::Literal {
                 resolved_type: Some(Type::Int),
                 value: LiteralValue::Integer(1),
             },
-            right: &TypedExpression::Literal {
+            right: &Expression::Literal {
                 resolved_type: Some(Type::Int),
                 value: LiteralValue::Integer(2),
             },
@@ -550,7 +518,7 @@ mod tests {
         let symbol_table = SymbolTable::new(&arena, None);
 
         assert_eq!(
-            typed_expression.to_string_with_symbol_table(&symbol_table),
+            to_string_with_symbol_table(&typed_expression, &symbol_table),
             "(+i 1i 2i)"
         );
     }
@@ -576,7 +544,7 @@ mod tests {
             symbol_table,
         });
         block.statements.push(arena.alloc(TypedStatement::Return {
-            value: Some(arena.alloc(TypedExpression::Literal {
+            value: Some(arena.alloc(Expression::Literal {
                 resolved_type: Some(Type::Int),
                 value: LiteralValue::Integer(1),
             })),

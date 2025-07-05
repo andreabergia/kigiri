@@ -132,7 +132,7 @@ pub enum Expression<'a, Phase: CompilationPhase> {
         value: LiteralValue,
     },
     Unary {
-        resolved_type: Phase::ExpressionType,
+        resolved_type: Phase::UnaryBinaryOperandType,
         operator: UnaryOperator,
         operand: &'a Expression<'a, Phase>,
     },

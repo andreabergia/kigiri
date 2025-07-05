@@ -1,9 +1,10 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use crate::{FunctionSignature, ir};
 use ir::Variable;
+use parser::Expression;
 use semantic_analysis::{
-    PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, TypedExpression, TypedFunctionDeclaration,
-    TypedModule, TypedStatement, VariableIndex,
+    PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, TypedFunctionDeclaration, TypedModule,
+    TypedStatement, VariableIndex,
 };
 
 struct FunctionIrBuilder<'i> {
@@ -139,11 +140,11 @@ impl<'i> FunctionIrBuilder<'i> {
 
     fn handle_expression(
         &self,
-        expression: &TypedExpression<PhaseTypeResolved>,
+        expression: &Expression<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
     ) -> &'i Instruction {
         match expression {
-            TypedExpression::Identifier {
+            Expression::Identifier {
                 resolved_type,
                 name: symbol_id,
             } => {
@@ -166,7 +167,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 instruction
             }
-            TypedExpression::Literal {
+            Expression::Literal {
                 resolved_type,
                 value,
             } => {
@@ -174,7 +175,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 instruction
             }
-            TypedExpression::Unary {
+            Expression::Unary {
                 resolved_type,
                 operator,
                 operand,
@@ -187,7 +188,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 instruction
             }
-            TypedExpression::Binary {
+            Expression::Binary {
                 result_type,
                 operator,
                 operand_type,
@@ -207,7 +208,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 instruction
             }
-            TypedExpression::FunctionCall { .. } => todo!(),
+            Expression::FunctionCall { .. } => todo!(),
         }
     }
 
@@ -226,7 +227,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
 fn build_ir_expression<'i>(
     ir_allocator: &'i IrAllocator,
-    expression: &TypedExpression<PhaseTypeResolved<'_>>,
+    expression: &Expression<PhaseTypeResolved<'_>>,
     symbol_table: &SymbolTable,
 ) -> &'i BasicBlock<'i> {
     let builder = FunctionIrBuilder::new(ir_allocator);
@@ -257,7 +258,7 @@ mod tests {
         fn analyze_expression<'s>(
             semantic_analyzer: &'s SemanticAnalyzer<PhaseTypeResolved>,
             source: &str,
-        ) -> &'s TypedExpression<'s, PhaseTypeResolved<'s>> {
+        ) -> &'s Expression<'s, PhaseTypeResolved<'s>> {
             let ast_allocator = parser::AstAllocator::default();
             let expression = parser::parse_as_expression(&ast_allocator, source);
             let symbol_table = semantic_analyzer.symbol_table(None);
