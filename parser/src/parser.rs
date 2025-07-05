@@ -36,7 +36,7 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 fn parse_expression<'a>(
     ast_allocator: &'a AstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Expression<'a> {
+) -> &'a Expression<'a, PhaseParsed<'a>> {
     PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::number => {
@@ -96,7 +96,7 @@ fn parse_expression<'a>(
 fn parse_function_call<'a>(
     ast_allocator: &'a AstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Expression<'a> {
+) -> &'a Expression<'a, PhaseParsed<'a>> {
     let mut inner = rule.into_inner();
     let name = inner.next().unwrap().as_str();
 
@@ -111,7 +111,7 @@ fn parse_function_call<'a>(
 fn parse_let_statement<'a>(
     ast_allocator: &'a AstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Statement<'a> {
+) -> &'a Statement<'a, PhaseParsed<'a>> {
     let mut iter = rule.into_inner();
     let mut initializers = ast_allocator.statement_let_initializers();
     loop {
@@ -126,12 +126,18 @@ fn parse_let_statement<'a>(
         let value = initializer_rule.next().unwrap();
         let value = parse_expression(ast_allocator, value);
 
-        initializers.push(LetInitializer { name: id, value })
+        initializers.push(LetInitializer {
+            variable: id,
+            value,
+        })
     }
     ast_allocator.statement_let(initializers)
 }
 
-fn parse_statement<'a>(ast_allocator: &'a AstAllocator, rule: Pair<'_, Rule>) -> &'a Statement<'a> {
+fn parse_statement<'a>(
+    ast_allocator: &'a AstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Statement<'a, PhaseParsed<'a>> {
     let pair = rule.into_inner().next().unwrap();
     match pair.as_rule() {
         Rule::letStatement => parse_let_statement(ast_allocator, pair),
@@ -162,7 +168,10 @@ fn parse_statement<'a>(ast_allocator: &'a AstAllocator, rule: Pair<'_, Rule>) ->
     }
 }
 
-fn parse_block<'a>(ast_allocator: &'a AstAllocator, rule: Pair<'_, Rule>) -> &'a Block<'a> {
+fn parse_block<'a>(
+    ast_allocator: &'a AstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Block<'a, PhaseParsed<'a>> {
     // We want a parent block to have a smaller id than any nested block,
     // so we generate the block_id first and then recurse.
     let block_id = ast_allocator.next_block_id();
@@ -202,7 +211,7 @@ fn parse_function_declaration_arguments<'a>(
 fn parse_function_declaration<'a>(
     ast_allocator: &'a AstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a FunctionDeclaration<'a> {
+) -> &'a FunctionDeclaration<'a, PhaseParsed<'a>> {
     let mut rule_iter = rule.into_inner();
     let name = rule_iter.next().expect("function name").as_str();
 
@@ -251,7 +260,10 @@ fn parse_module<'a>(
     ast_allocator.module(module_name, functions, function_signatures)
 }
 
-pub fn parse_as_expression<'a>(ast_allocator: &'a AstAllocator, text: &str) -> &'a Expression<'a> {
+pub fn parse_as_expression<'a>(
+    ast_allocator: &'a AstAllocator,
+    text: &str,
+) -> &'a Expression<'a, PhaseParsed<'a>> {
     let pair = Grammar::parse(Rule::expression, text)
         .unwrap()
         .next()
@@ -259,7 +271,10 @@ pub fn parse_as_expression<'a>(ast_allocator: &'a AstAllocator, text: &str) -> &
     parse_expression(ast_allocator, pair)
 }
 
-pub fn parse_as_block<'a>(ast_allocator: &'a AstAllocator, text: &str) -> &'a Block<'a> {
+pub fn parse_as_block<'a>(
+    ast_allocator: &'a AstAllocator,
+    text: &str,
+) -> &'a Block<'a, PhaseParsed<'a>> {
     let pair = Grammar::parse(Rule::block, text).unwrap().next().unwrap();
     parse_block(ast_allocator, pair)
 }

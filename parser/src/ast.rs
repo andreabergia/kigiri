@@ -11,27 +11,29 @@ pub trait CompilationPhase {
     type ExpressionType: Debug + PartialEq;
     type UnaryBinaryOperandType: Debug + PartialEq;
     type IdentifierType: Debug + PartialEq;
+    type FunctionReturnType: Debug + PartialEq;
     type FunctionSignatureData: Debug + PartialEq;
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Module<'a, Phase: CompilationPhase> {
     pub name: StringId,
-    pub functions: BumpVec<'a, &'a FunctionDeclaration<'a>>,
+    pub functions: BumpVec<'a, &'a FunctionDeclaration<'a, Phase>>,
     pub function_signatures: <Phase as CompilationPhase>::FunctionSignatureType,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct FunctionDeclaration<'a> {
-    pub signature: &'a FunctionSignature<'a>,
-    pub body: &'a Block<'a>,
+pub struct FunctionDeclaration<'a, Phase: CompilationPhase> {
+    pub signature: &'a FunctionSignature<'a, Phase>,
+    pub body: &'a Block<'a, Phase>,
+    pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct FunctionSignature<'a> {
+pub struct FunctionSignature<'a, Phase: CompilationPhase> {
     pub name: StringId,
-    pub return_type: Option<StringId>,
-    pub arguments: BumpVec<'a, FunctionArgument>,
+    pub return_type: Option<<Phase as CompilationPhase>::FunctionReturnType>,
+    pub arguments: BumpVec<'a, <Phase as CompilationPhase>::FunctionArgumentType>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -44,41 +46,42 @@ pub struct FunctionArgument {
 pub struct BlockId(pub u32);
 
 #[derive(Debug, PartialEq)]
-pub struct Block<'a> {
+pub struct Block<'a, Phase: CompilationPhase> {
     pub id: BlockId,
-    pub statements: BumpVec<'a, &'a Statement<'a>>,
+    pub statements: BumpVec<'a, &'a Statement<'a, Phase>>,
+    pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Statement<'a> {
+pub enum Statement<'a, Phase: CompilationPhase> {
     Let {
-        initializers: BumpVec<'a, LetInitializer<'a>>,
+        initializers: BumpVec<'a, LetInitializer<'a, Phase>>,
     },
     Assignment {
-        name: StringId,
-        expression: &'a Expression<'a>,
+        name: <Phase as CompilationPhase>::IdentifierType,
+        expression: &'a Expression<'a, Phase>,
     },
     Return {
-        expression: Option<&'a Expression<'a>>,
+        expression: Option<&'a Expression<'a, Phase>>,
     },
     Expression {
-        expression: &'a Expression<'a>,
+        expression: &'a Expression<'a, Phase>,
     },
     NestedBlock {
-        block: &'a Block<'a>,
+        block: &'a Block<'a, Phase>,
     },
 }
 
 #[derive(Debug, PartialEq)]
-pub struct LetInitializer<'a> {
-    pub name: StringId,
-    pub value: &'a Expression<'a>,
+pub struct LetInitializer<'a, Phase: CompilationPhase> {
+    pub variable: <Phase as CompilationPhase>::IdentifierType,
+    pub value: &'a Expression<'a, Phase>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct FunctionCall<'a> {
+pub struct FunctionCall<'a, Phase: CompilationPhase> {
     pub name: StringId,
-    pub args: BumpVec<'a, &'a Expression<'a>>,
+    pub args: BumpVec<'a, &'a Expression<'a, Phase>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -119,24 +122,38 @@ pub enum LiteralValue {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Expression<'a> {
+pub enum Expression<'a, Phase: CompilationPhase> {
     Identifier {
-        name: StringId,
+        resolved_type: Phase::ExpressionType,
+        name: Phase::IdentifierType,
     },
-    Literal(LiteralValue),
+    Literal {
+        resolved_type: Phase::ExpressionType,
+        value: LiteralValue,
+    },
     Unary {
+        resolved_type: Phase::ExpressionType,
         operator: UnaryOperator,
-        operand: &'a Expression<'a>,
+        operand: &'a Expression<'a, Phase>,
     },
     Binary {
+        result_type: Phase::UnaryBinaryOperandType,
         operator: BinaryOperator,
-        left: &'a Expression<'a>,
-        right: &'a Expression<'a>,
+        operand_type: Phase::UnaryBinaryOperandType,
+        left: &'a Expression<'a, Phase>,
+        right: &'a Expression<'a, Phase>,
     },
-    FunctionCall(&'a FunctionCall<'a>),
+    FunctionCall {
+        name: Phase::IdentifierType,
+        args: BumpVec<'a, &'a Expression<'a, Phase>>,
+        signature: Phase::FunctionSignatureData,
+    },
 }
 
-impl<Phase: CompilationPhase> Display for Module<'_, Phase> {
+impl<'f, Phase: CompilationPhase> Display for Module<'f, Phase>
+where
+    FunctionDeclaration<'f, Phase>: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -151,7 +168,7 @@ impl<Phase: CompilationPhase> Display for Module<'_, Phase> {
     }
 }
 
-impl Display for FunctionDeclaration<'_> {
+impl Display for FunctionDeclaration<'_, PhaseParsed<'_>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -164,8 +181,8 @@ impl Display for FunctionDeclaration<'_> {
         writeln!(
             f,
             ") -> {}",
-            match self.signature.return_type {
-                Some(return_type) => resolve_string_id(return_type).expect("return type"),
+            match &self.signature.return_type {
+                Some(return_type) => resolve_string_id(*return_type).expect("return type"),
                 None => "void",
             }
         )?;
@@ -190,7 +207,7 @@ impl BlockId {
     }
 }
 
-impl Display for Block<'_> {
+impl Display for Block<'_, PhaseParsed<'_>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{{ #{}", self.id.0)?;
         for statement in &self.statements {
@@ -200,7 +217,7 @@ impl Display for Block<'_> {
     }
 }
 
-impl Display for Statement<'_> {
+impl Display for Statement<'_, PhaseParsed<'_>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Statement::Let { initializers } => {
@@ -210,7 +227,7 @@ impl Display for Statement<'_> {
                     if !first {
                         write!(f, ", ")?;
                     }
-                    let name = resolve_string_id(i.name).expect("invalid let initializer");
+                    let name = resolve_string_id(i.variable).expect("invalid let initializer");
                     write!(f, "{} = {}", name, i.value)?;
                     first = false;
                 }
@@ -331,25 +348,28 @@ impl Display for LiteralValue {
     }
 }
 
-impl Display for Expression<'_> {
+impl Display for Expression<'_, PhaseParsed<'_>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Identifier { name: symbol_id } => {
-                let symbol = resolve_string_id(*symbol_id).expect("invalid symbol!");
+            Expression::Identifier { name, .. } => {
+                let symbol = resolve_string_id(*name).expect("invalid symbol!");
                 write!(f, "{}", symbol)
             }
-            Expression::Literal(value) => write!(f, "{}", value),
-            Expression::Unary { operator, operand } => write!(f, "({} {})", operator, operand),
+            Expression::Literal { value, .. } => write!(f, "{}", value),
+            Expression::Unary {
+                operator, operand, ..
+            } => write!(f, "({} {})", operator, operand),
             Expression::Binary {
                 operator,
                 left,
                 right,
+                ..
             } => write!(f, "({} {} {})", operator, left, right),
-            Expression::FunctionCall(call) => {
-                let name = resolve_string_id(call.name).expect("invalid function call name");
+            Expression::FunctionCall { name, args, .. } => {
+                let name = resolve_string_id(*name).expect("invalid function call name");
                 write!(f, "{}(", name)?;
                 let mut first = true;
-                for arg in call.args.iter() {
+                for arg in args.iter() {
                     if !first {
                         write!(f, ", ")?;
                     }
@@ -375,71 +395,89 @@ impl AstAllocator {
         self.arena.alloc(value)
     }
 
-    pub fn identifier(&self, symbol: &str) -> &Expression {
+    pub fn identifier(&self, symbol: &str) -> &Expression<PhaseParsed> {
         let id = get_or_create_string(symbol);
-        self.alloc(Expression::Identifier { name: id })
+        self.alloc(Expression::Identifier {
+            resolved_type: (),
+            name: id,
+        })
     }
 
-    pub fn literal_integer(&self, value: i64) -> &Expression {
-        self.alloc(Expression::Literal(LiteralValue::Integer(value)))
+    pub fn literal_integer(&self, value: i64) -> &Expression<PhaseParsed> {
+        self.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::Integer(value),
+        })
     }
 
-    pub fn literal_double(&self, value: f64) -> &Expression {
-        self.alloc(Expression::Literal(LiteralValue::Double(value)))
+    pub fn literal_double(&self, value: f64) -> &Expression<PhaseParsed> {
+        self.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::Double(value),
+        })
     }
 
-    pub fn literal_boolean(&self, value: bool) -> &Expression {
-        self.alloc(Expression::Literal(LiteralValue::Boolean(value)))
+    pub fn literal_boolean(&self, value: bool) -> &Expression<PhaseParsed> {
+        self.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::Boolean(value),
+        })
     }
 
-    pub fn unary<'s, 'l, 'r>(
+    pub fn unary<'s, 'l>(
         &'s self,
         operator: UnaryOperator,
-        operand: &'l Expression,
-    ) -> &'s Expression<'s>
+        operand: &'l Expression<'l, PhaseParsed<'s>>,
+    ) -> &'s Expression<'s, PhaseParsed<'s>>
     where
         'l: 's,
-        'r: 's,
     {
-        self.alloc(Expression::Unary { operator, operand })
+        self.alloc(Expression::Unary {
+            resolved_type: (),
+            operator,
+            operand,
+        })
     }
 
     pub fn binary<'s, 'l, 'r>(
         &'s self,
         operator: BinaryOperator,
-        left: &'l Expression,
-        right: &'r Expression,
-    ) -> &'s Expression<'s>
+        left: &'l Expression<PhaseParsed<'s>>,
+        right: &'r Expression<PhaseParsed<'s>>,
+    ) -> &'s Expression<'s, PhaseParsed<'s>>
     where
         'l: 's,
         'r: 's,
     {
         self.alloc(Expression::Binary {
+            result_type: (),
             operator,
+            operand_type: (),
             left,
             right,
         })
     }
 
-    pub fn function_call_arguments(&self) -> BumpVec<&Expression> {
+    pub fn function_call_arguments(&self) -> BumpVec<&Expression<PhaseParsed>> {
         BumpVec::new_in(&self.arena)
     }
 
     pub fn function_call<'s, 'e>(
         &'s self,
         name: &str,
-        args: BumpVec<'e, &'e Expression<'e>>,
-    ) -> &'s Expression<'s>
+        args: BumpVec<'e, &'e Expression<'e, PhaseParsed<'s>>>,
+    ) -> &'s Expression<'s, PhaseParsed<'s>>
     where
         'e: 's,
     {
-        self.alloc(Expression::FunctionCall(self.alloc(FunctionCall {
+        self.alloc(Expression::FunctionCall {
             name: get_or_create_string(name),
             args,
-        })))
+            signature: (),
+        })
     }
 
-    pub fn statements(&self) -> BumpVec<&Statement> {
+    pub fn statements(&self) -> BumpVec<&Statement<PhaseParsed>> {
         BumpVec::new_in(&self.arena)
     }
 
@@ -452,18 +490,22 @@ impl AstAllocator {
     pub fn block_from_statements<'s, 'v>(
         &'s self,
         block_id: BlockId,
-        statements: BumpVec<'v, &'v Statement>,
-    ) -> &'s Block<'s>
+        statements: BumpVec<'v, &'v Statement<PhaseParsed<'s>>>,
+    ) -> &'s Block<'s, PhaseParsed<'s>>
     where
         'v: 's,
     {
         self.alloc(Block {
             id: block_id,
             statements,
+            symbol_table: (),
         })
     }
 
-    pub fn nested_block<'s, 'b>(&'s self, block: &'b Block<'b>) -> &'s Statement<'s>
+    pub fn nested_block<'s, 'b>(
+        &'s self,
+        block: &'b Block<'b, PhaseParsed<'s>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
     where
         'b: 's,
     {
@@ -472,8 +514,8 @@ impl AstAllocator {
 
     pub fn statement_expression<'s, 'e>(
         &'s self,
-        expression: &'e Expression<'e>,
-    ) -> &'s Statement<'s>
+        expression: &'e Expression<'e, PhaseParsed<'s>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
     where
         'e: 's,
     {
@@ -482,22 +524,22 @@ impl AstAllocator {
 
     pub fn statement_return<'s, 'e>(
         &'s self,
-        expression: Option<&'e Expression<'e>>,
-    ) -> &'s Statement<'s>
+        expression: Option<&'e Expression<'e, PhaseParsed<'s>>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
     where
         'e: 's,
     {
         self.alloc(Statement::Return { expression })
     }
 
-    pub fn statement_let_initializers(&self) -> BumpVec<LetInitializer> {
+    pub fn statement_let_initializers(&self) -> BumpVec<LetInitializer<PhaseParsed>> {
         BumpVec::new_in(&self.arena)
     }
 
     pub fn statement_let<'s, 'e>(
         &'s self,
-        initializers: BumpVec<'e, LetInitializer<'e>>,
-    ) -> &'s Statement<'s>
+        initializers: BumpVec<'e, LetInitializer<'e, PhaseParsed<'s>>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
     where
         'e: 's,
     {
@@ -507,8 +549,8 @@ impl AstAllocator {
     pub fn statement_assignment<'s, 'e>(
         &'s self,
         name: &str,
-        expression: &'e Expression<'e>,
-    ) -> &'s Statement<'s>
+        expression: &'e Expression<'e, PhaseParsed<'s>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
     where
         'e: 's,
     {
@@ -518,14 +560,14 @@ impl AstAllocator {
         })
     }
 
-    pub fn functions(&self) -> BumpVec<&FunctionDeclaration> {
+    pub fn functions(&self) -> BumpVec<&FunctionDeclaration<PhaseParsed>> {
         BumpVec::new_in(&self.arena)
     }
 
     pub fn module<'s, 'f, 'f2>(
         &'s self,
         module_name: &str,
-        functions: BumpVec<'f, &FunctionDeclaration<'f>>,
+        functions: BumpVec<'f, &'f2 FunctionDeclaration<'f, PhaseParsed<'s>>>,
         function_signatures: FunctionSignaturesByName<'f2>,
     ) -> &'s Module<'s, PhaseParsed<'s>>
     where
@@ -549,8 +591,8 @@ impl AstAllocator {
         name: &str,
         return_type: Option<StringId>,
         arguments: BumpVec<'a, FunctionArgument>,
-        body: &'b Block<'b>,
-    ) -> &'s FunctionDeclaration<'s>
+        body: &'b Block<'b, PhaseParsed<'s>>,
+    ) -> &'s FunctionDeclaration<'s, PhaseParsed<'s>>
     where
         'a: 's,
         'b: 's,
@@ -562,6 +604,7 @@ impl AstAllocator {
                 arguments,
             }),
             body,
+            symbol_table: (),
         })
     }
 }
@@ -574,7 +617,13 @@ mod tests {
     fn can_allocate_via_ast() {
         let ast_allocator = AstAllocator::default();
         let id = ast_allocator.literal_integer(1);
-        assert_eq!(id, &Expression::Literal(LiteralValue::Integer(1)));
+        assert_eq!(
+            id,
+            &Expression::Literal {
+                resolved_type: (),
+                value: LiteralValue::Integer(1)
+            }
+        );
     }
 
     #[test]

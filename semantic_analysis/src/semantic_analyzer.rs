@@ -85,7 +85,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
     fn analyze_function(
         &'a self,
-        function: &parser::FunctionDeclaration,
+        function: &parser::FunctionDeclaration<PhaseParsed>,
     ) -> Result<&'a TypedFunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
     {
         let symbol_table = self.symbol_table(None);
@@ -146,7 +146,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
     fn analyze_block(
         &'a self,
-        block: &parser::Block,
+        block: &parser::Block<PhaseParsed>,
         parent_symbol_table: &'a SymbolTable<'a>,
     ) -> Result<&'a TypedBlock<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut statements = BumpVec::with_capacity_in(block.statements.len(), &self.arena);
@@ -162,7 +162,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
     fn analyze_statement(
         &'a self,
-        statement: &Statement,
+        statement: &Statement<PhaseParsed>,
         statements: &mut BumpVec<'a, &'a TypedStatement<'a, PhaseTypeResolved<'a>>>,
         symbol_table: &'a SymbolTable<'a>,
     ) -> Result<(), SemanticAnalysisError> {
@@ -177,7 +177,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                         resolved_type
                     } else {
                         return Err(SemanticAnalysisError::CannotAssignVoidValue {
-                            name: resolve_string_id(initializer.name)
+                            name: resolve_string_id(initializer.variable)
                                 .expect("let variable name")
                                 .to_owned(),
                         });
@@ -185,7 +185,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
                     let variable = symbol_table.add_symbol(
                         &self.arena,
-                        initializer.name,
+                        initializer.variable,
                         resolved_type,
                         SymbolKind::Variable {
                             index: next_variable_index(symbol_table),
@@ -289,15 +289,17 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
     pub fn analyze_expression(
         &'a self,
-        expr: &Expression,
+        expr: &Expression<PhaseParsed>,
         symbol_table: &'a SymbolTable<'a>,
     ) -> Result<&'a TypedExpression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         match expr {
-            Expression::Identifier { name: symbol_id } => {
+            Expression::Identifier {
+                name: symbol_id, ..
+            } => {
                 let symbol = symbol_table.lookup_by_name(*symbol_id);
                 match symbol {
                     Some(symbol) => Ok(self.alloc(TypedExpression::Identifier {
-                        symbol_id: symbol.id,
+                        name: symbol.id,
                         resolved_type: Some(symbol.symbol_type),
                     })),
                     None => Err(SemanticAnalysisError::SymbolNotFound {
@@ -308,18 +310,20 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                 }
             }
 
-            Expression::FunctionCall(call) => {
+            Expression::FunctionCall { .. } => {
                 todo!()
             }
 
             // Literals will never fail
-            Expression::Literal(value) => Ok(self.alloc(TypedExpression::Literal {
+            Expression::Literal { value, .. } => Ok(self.alloc(TypedExpression::Literal {
                 resolved_type: Some(Type::of_literal(value)),
                 value: value.clone(),
             })),
 
             // Unary operators - can fail!
-            Expression::Unary { operator, operand } => {
+            Expression::Unary {
+                operator, operand, ..
+            } => {
                 let typed_operand = self.analyze_expression(operand, symbol_table)?;
                 let operand_type = typed_operand.resolved_type();
 
@@ -348,6 +352,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                 operator,
                 left,
                 right,
+                ..
             } => {
                 let typed_left = self.analyze_expression(left, symbol_table)?;
                 let typed_right = self.analyze_expression(right, symbol_table)?;

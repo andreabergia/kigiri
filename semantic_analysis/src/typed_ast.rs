@@ -27,6 +27,7 @@ impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
     type ExpressionType = Option<Type>;
     type UnaryBinaryOperandType = Type;
     type IdentifierType = SymbolId;
+    type FunctionReturnType = Type;
     type FunctionSignatureData = &'a TypedFunctionSignature<'a, PhaseTypeResolved<'a>>;
 }
 
@@ -131,7 +132,7 @@ pub(crate) struct SymbolIdSequencer {
 pub enum TypedExpression<'a, Phase: CompilationPhase> {
     Identifier {
         resolved_type: Phase::ExpressionType,
-        symbol_id: Phase::IdentifierType,
+        name: Phase::IdentifierType,
     },
     Literal {
         resolved_type: Phase::ExpressionType,
@@ -352,7 +353,7 @@ impl TypedExpression<'_, PhaseTypeResolved<'_>> {
         match self {
             TypedExpression::Identifier {
                 resolved_type,
-                symbol_id,
+                name: symbol_id,
             } => match symbol_table.lookup_by_id(*symbol_id) {
                 None => Err(std::fmt::Error),
                 Some(symbol) => {

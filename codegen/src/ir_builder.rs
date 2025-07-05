@@ -145,7 +145,7 @@ impl<'i> FunctionIrBuilder<'i> {
         match expression {
             TypedExpression::Identifier {
                 resolved_type,
-                symbol_id,
+                name: symbol_id,
             } => {
                 let symbol = symbol_table
                     .lookup_by_id(*symbol_id)
