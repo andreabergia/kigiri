@@ -758,7 +758,7 @@ mod tests {
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
-        semantic_analyzer: &'s SemanticAnalyzer<PhaseTypeResolved<'s>>,
+        semantic_analyzer: &'s SemanticAnalyzer,
         source: &str,
     ) -> &'s parser::Module<'s, PhaseTypeResolved<'s>> {
         let ast_allocator = parser::ParsedAstAllocator::default();

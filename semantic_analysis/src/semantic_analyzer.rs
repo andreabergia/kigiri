@@ -5,7 +5,6 @@ use parser::{
     BinaryOperator, Block, CompilationPhase, Expression, FunctionDeclaration, FunctionSignature,
     LetInitializer, Module, PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
 };
-use std::marker::PhantomData;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -39,21 +38,12 @@ pub enum SemanticAnalysisError {
     TypeNotFound { type_name: String },
 }
 
-pub struct SemanticAnalyzer<Phase: CompilationPhase> {
+#[derive(Default)]
+pub struct SemanticAnalyzer {
     arena: bumpalo::Bump,
-    phantom: PhantomData<Phase>,
 }
 
-impl<Phase: CompilationPhase> Default for SemanticAnalyzer<Phase> {
-    fn default() -> Self {
-        SemanticAnalyzer {
-            arena: bumpalo::Bump::new(),
-            phantom: PhantomData,
-        }
-    }
-}
-
-impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
+impl<'a> SemanticAnalyzer {
     pub fn analyze_module(
         &'a self,
         module: &Module<PhaseParsed>,
@@ -578,7 +568,7 @@ mod tests {
 
     mod blocks {
         use super::*;
-        use crate::{PhaseTypeResolved, TypeResolvedBlock};
+        use crate::TypeResolvedBlock;
 
         macro_rules! test_ok {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -608,7 +598,7 @@ mod tests {
                     let ast_allocator = parser::ParsedAstAllocator::default();
                     let block = parser::parse_as_block(&ast_allocator, $source);
 
-                    let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
+                    let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
                     let symbol_table = analyzer.symbol_table(None);
                     let result = analyzer.analyze_block(block, symbol_table);
 
@@ -775,7 +765,7 @@ mod tests {
 
     mod modules {
         use super::*;
-        use crate::{PhaseTypeResolved, TypeResolvedModule};
+        use crate::TypeResolvedModule;
 
         macro_rules! test_ok {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -804,7 +794,7 @@ mod tests {
                     let ast_allocator = parser::ParsedAstAllocator::default();
                     let module = parser::parse(&ast_allocator, "test", $source);
 
-                    let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
+                    let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
                     let result = analyzer.analyze_module(module);
 
                     assert_eq!(
@@ -826,7 +816,7 @@ mod tests {
                 "fn inc(x: int) -> int { return 1 + x; }",
             );
 
-            let analyzer: SemanticAnalyzer<PhaseTypeResolved> = SemanticAnalyzer::default();
+            let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
             let result = analyzer
                 .analyze_module(module)
                 .expect("should have passed semantic analysis");

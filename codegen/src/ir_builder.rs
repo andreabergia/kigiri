@@ -253,7 +253,7 @@ mod tests {
         use super::*;
 
         fn analyze_expression<'s>(
-            semantic_analyzer: &'s SemanticAnalyzer<PhaseTypeResolved>,
+            semantic_analyzer: &'s SemanticAnalyzer,
             source: &str,
         ) -> &'s Expression<'s, PhaseTypeResolved<'s>> {
             let ast_allocator = parser::ParsedAstAllocator::default();
