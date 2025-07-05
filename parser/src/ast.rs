@@ -1,3 +1,4 @@
+use crate::FunctionSignaturesByName;
 use crate::parsed_ast::PhaseParsed;
 use crate::symbols::{StringId, get_or_create_string, resolve_string_id};
 use bumpalo::collections::Vec as BumpVec;
@@ -5,7 +6,6 @@ use std::cell::Cell;
 use std::fmt::{Debug, Display, Formatter};
 
 pub trait CompilationPhase {
-    type FunctionSignatureType: Debug + PartialEq;
     type SymbolTableType: Debug + PartialEq;
     type FunctionArgumentType: Debug + PartialEq;
     type ExpressionType: Debug + PartialEq;
@@ -19,7 +19,7 @@ pub trait CompilationPhase {
 pub struct Module<'a, Phase: CompilationPhase> {
     pub name: StringId,
     pub functions: BumpVec<'a, &'a FunctionDeclaration<'a, Phase>>,
-    pub function_signatures: <Phase as CompilationPhase>::FunctionSignatureType,
+    pub function_signatures: FunctionSignaturesByName<'a, Phase>,
 }
 
 #[derive(Debug, PartialEq)]

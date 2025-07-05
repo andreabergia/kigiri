@@ -16,8 +16,7 @@ pub struct PhaseParsed<'a> {
 
 pub type FunctionSignaturesByName<'a, Phase> = HashMap<StringId, &'a FunctionSignature<'a, Phase>>;
 
-impl<'a> CompilationPhase for PhaseParsed<'a> {
-    type FunctionSignatureType = FunctionSignaturesByName<'a, PhaseParsed<'a>>;
+impl CompilationPhase for PhaseParsed<'_> {
     type SymbolTableType = ();
     type FunctionArgumentType = FunctionArgument;
     type ExpressionType = ();
