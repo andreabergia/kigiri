@@ -9,11 +9,10 @@ use parser::{
     LetInitializer, Module, PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
 };
 
-pub struct TypeResolver {}
+pub(crate) struct TypeResolver {}
 
 impl<'a> TypeResolver {
     pub(crate) fn analyze_module(
-        &self,
         allocator: &'a AstAllocator,
         module: &Module<PhaseParsed>,
     ) -> Result<&'a Module<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
@@ -22,7 +21,7 @@ impl<'a> TypeResolver {
         let mut functions = allocator.new_bump_vec_with_capacity(module.functions.len());
 
         for function in module.functions.iter() {
-            let function = self.analyze_function(allocator, function)?;
+            let function = Self::analyze_function(allocator, function)?;
             functions.push(function);
             function_signatures.insert(function.signature.name, function.signature);
         }
@@ -37,7 +36,6 @@ impl<'a> TypeResolver {
     }
 
     fn analyze_function(
-        &self,
         allocator: &'a AstAllocator,
         function: &FunctionDeclaration<PhaseParsed>,
     ) -> Result<&'a FunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
@@ -46,7 +44,7 @@ impl<'a> TypeResolver {
         let return_type = function
             .signature
             .return_type
-            .map(|t| self.parse_type(t))
+            .map(Self::parse_type)
             .transpose()?;
 
         let arguments = function
@@ -55,7 +53,7 @@ impl<'a> TypeResolver {
             .iter()
             .enumerate()
             .map(|(index, argument)| {
-                let arg_type = self.parse_type(argument.arg_type);
+                let arg_type = Self::parse_type(argument.arg_type);
                 arg_type.map(|arg_type| {
                     symbol_table.add_symbol(
                         allocator,
@@ -76,7 +74,7 @@ impl<'a> TypeResolver {
             arguments,
         });
 
-        let body = self.analyze_block(allocator, function.body, symbol_table)?;
+        let body = Self::analyze_block(allocator, function.body, symbol_table)?;
 
         Ok(allocator.alloc(FunctionDeclaration {
             signature,
@@ -85,7 +83,7 @@ impl<'a> TypeResolver {
         }))
     }
 
-    fn parse_type(&self, type_name: StringId) -> Result<Type, SemanticAnalysisError> {
+    fn parse_type(type_name: StringId) -> Result<Type, SemanticAnalysisError> {
         let type_name = resolve_string_id(type_name).expect("should be able to resolve type name");
         match type_name {
             "int" => Ok(Type::Int),
@@ -98,14 +96,13 @@ impl<'a> TypeResolver {
     }
 
     pub(crate) fn analyze_block(
-        &self,
         allocator: &'a AstAllocator,
         block: &Block<PhaseParsed>,
         parent_symbol_table: &'a SymbolTable<'a>,
     ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut statements = allocator.new_bump_vec_with_capacity(block.statements.len());
         for statement in &block.statements {
-            self.analyze_statement(allocator, statement, &mut statements, parent_symbol_table)?;
+            Self::analyze_statement(allocator, statement, &mut statements, parent_symbol_table)?;
         }
         Ok(allocator.alloc(Block {
             id: block.id,
@@ -115,7 +112,6 @@ impl<'a> TypeResolver {
     }
 
     fn analyze_statement(
-        &self,
         allocator: &'a AstAllocator,
         statement: &Statement<PhaseParsed>,
         statements: &mut BumpVec<'a, &'a Statement<'a, PhaseTypeResolved<'a>>>,
@@ -127,7 +123,7 @@ impl<'a> TypeResolver {
 
                 for initializer in initializers {
                     let value =
-                        self.analyze_expression(allocator, initializer.value, symbol_table)?;
+                        Self::analyze_expression(allocator, initializer.value, symbol_table)?;
 
                     let resolved_type = if let Some(rt) = resolved_type(value) {
                         rt
@@ -169,7 +165,7 @@ impl<'a> TypeResolver {
                         return Err(SemanticAnalysisError::SymbolNotFound { name: symbol_name });
                     }
                     Some(symbol) => {
-                        let value = self.analyze_expression(allocator, expression, symbol_table)?;
+                        let value = Self::analyze_expression(allocator, expression, symbol_table)?;
 
                         let expression_type = resolved_type(value).ok_or(
                             SemanticAnalysisError::CannotAssignVoidValue {
@@ -226,20 +222,20 @@ impl<'a> TypeResolver {
             }
             Statement::Return { expression } => {
                 let expression = expression
-                    .map(|expr| self.analyze_expression(allocator, expr, symbol_table))
+                    .map(|expr| Self::analyze_expression(allocator, expr, symbol_table))
                     .transpose()?;
                 statements.push(allocator.alloc(Statement::Return { expression }));
             }
             Statement::Expression { expression } => {
                 let typed_expression =
-                    self.analyze_expression(allocator, expression, symbol_table)?;
+                    Self::analyze_expression(allocator, expression, symbol_table)?;
                 statements.push(allocator.alloc(Statement::Expression {
                     expression: typed_expression,
                 }))
             }
             Statement::NestedBlock { block } => {
                 let nested_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_block = self.analyze_block(allocator, block, nested_symbol_table)?;
+                let typed_block = Self::analyze_block(allocator, block, nested_symbol_table)?;
                 statements.push(allocator.alloc(Statement::NestedBlock { block: typed_block }));
             }
         };
@@ -247,7 +243,6 @@ impl<'a> TypeResolver {
     }
 
     pub(crate) fn analyze_expression(
-        &self,
         allocator: &'a AstAllocator,
         expr: &Expression<PhaseParsed>,
         symbol_table: &'a SymbolTable<'a>,
@@ -284,7 +279,7 @@ impl<'a> TypeResolver {
             Expression::Unary {
                 operator, operand, ..
             } => {
-                let typed_operand = self.analyze_expression(allocator, operand, symbol_table)?;
+                let typed_operand = Self::analyze_expression(allocator, operand, symbol_table)?;
                 let operand_type = resolved_type(typed_operand);
 
                 let operand_type =
@@ -314,8 +309,8 @@ impl<'a> TypeResolver {
                 right,
                 ..
             } => {
-                let typed_left = self.analyze_expression(allocator, left, symbol_table)?;
-                let typed_right = self.analyze_expression(allocator, right, symbol_table)?;
+                let typed_left = Self::analyze_expression(allocator, left, symbol_table)?;
+                let typed_right = Self::analyze_expression(allocator, right, symbol_table)?;
                 let left_type = resolved_type(typed_left);
                 let right_type = resolved_type(typed_right);
 

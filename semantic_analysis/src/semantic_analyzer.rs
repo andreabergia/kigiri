@@ -46,45 +46,30 @@ pub struct SemanticAnalyzer {
 }
 
 impl SemanticAnalyzer {
-    pub fn analyze_module<'s, 'a>(
-        &'s self,
+    pub fn analyze_module(
+        &self,
         module: &Module<PhaseParsed>,
-    ) -> Result<&'a Module<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
-    where
-        's: 'a,
-    {
-        TypeResolver {}.analyze_module(&self.allocator, module)
+    ) -> Result<&Module<PhaseTypeResolved>, SemanticAnalysisError> {
+        TypeResolver::analyze_module(&self.allocator, module)
     }
 
-    pub fn analyze_expression<'s, 'a>(
+    pub fn analyze_expression<'s>(
         &'s self,
         expr: &Expression<PhaseParsed>,
-        symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a Expression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
-    where
-        's: 'a,
-    {
-        TypeResolver {}.analyze_expression(&self.allocator, expr, symbol_table)
+        symbol_table: &'s SymbolTable<'s>,
+    ) -> Result<&'s Expression<'s, PhaseTypeResolved<'s>>, SemanticAnalysisError> {
+        TypeResolver::analyze_expression(&self.allocator, expr, symbol_table)
     }
 
-    pub fn analyze_block<'s, 'a>(
+    pub fn analyze_block<'s>(
         &'s self,
         block: &Block<PhaseParsed>,
-        parent_symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
-    where
-        's: 'a,
-    {
-        TypeResolver {}.analyze_block(&self.allocator, block, parent_symbol_table)
+        parent_symbol_table: &'s SymbolTable<'s>,
+    ) -> Result<&'s Block<'s, PhaseTypeResolved<'s>>, SemanticAnalysisError> {
+        TypeResolver::analyze_block(&self.allocator, block, parent_symbol_table)
     }
 
-    pub fn symbol_table<'s, 'a>(
-        &'s self,
-        parent: Option<&'a SymbolTable<'a>>,
-    ) -> &'a SymbolTable<'a>
-    where
-        's: 'a,
-    {
+    pub fn symbol_table<'s>(&'s self, parent: Option<&'s SymbolTable<'s>>) -> &'s SymbolTable<'s> {
         SymbolTable::new(&self.allocator, parent)
     }
 }
