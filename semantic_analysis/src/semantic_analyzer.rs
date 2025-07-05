@@ -1,11 +1,9 @@
-use crate::typed_ast::{
-    SymbolId, SymbolTable, TypedFunctionDeclaration, TypedFunctionSignaturesByName, TypedModule,
-};
+use crate::typed_ast::{SymbolId, SymbolTable, TypedFunctionSignaturesByName};
 use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, VariableIndex, resolved_type};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Block, CompilationPhase, Expression, FunctionSignature, LetInitializer, Module,
-    PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
+    BinaryOperator, Block, CompilationPhase, Expression, FunctionDeclaration, FunctionSignature,
+    LetInitializer, Module, PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
 };
 use std::marker::PhantomData;
 use thiserror::Error;
@@ -59,7 +57,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
     pub fn analyze_module(
         &'a self,
         module: &Module<PhaseParsed>,
-    ) -> Result<&'a TypedModule<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
+    ) -> Result<&'a Module<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut function_signatures =
             TypedFunctionSignaturesByName::with_capacity(module.function_signatures.len());
         let mut functions = BumpVec::with_capacity_in(module.functions.len(), &self.arena);
@@ -71,7 +69,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
         }
 
         Ok(self.alloc({
-            TypedModule {
+            Module {
                 name: module.name,
                 functions,
                 function_signatures,
@@ -81,9 +79,8 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
     fn analyze_function(
         &'a self,
-        function: &parser::FunctionDeclaration<PhaseParsed>,
-    ) -> Result<&'a TypedFunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
-    {
+        function: &FunctionDeclaration<PhaseParsed>,
+    ) -> Result<&'a FunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let symbol_table = self.symbol_table(None);
 
         let return_type = function
@@ -121,7 +118,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
         let body = self.analyze_block(function.body, symbol_table)?;
 
-        Ok(self.alloc(TypedFunctionDeclaration {
+        Ok(self.alloc(FunctionDeclaration {
             signature,
             body,
             symbol_table,
@@ -581,7 +578,7 @@ mod tests {
 
     mod blocks {
         use super::*;
-        use crate::{BlockDisplayHelper, PhaseTypeResolved};
+        use crate::{PhaseTypeResolved, TypeResolvedBlock};
 
         macro_rules! test_ok {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -595,7 +592,7 @@ mod tests {
                     let result = analyzer.analyze_block(block, symbol_table);
 
                     assert_eq!(
-                        BlockDisplayHelper::display(
+                        TypeResolvedBlock::display(
                             result.expect("should have succeeded semantic analysis")
                         ),
                         $expected_typed_ast
@@ -778,7 +775,7 @@ mod tests {
 
     mod modules {
         use super::*;
-        use crate::PhaseTypeResolved;
+        use crate::{PhaseTypeResolved, TypeResolvedModule};
 
         macro_rules! test_ok {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -791,9 +788,9 @@ mod tests {
                     let result = analyzer.analyze_module(module);
 
                     assert_eq!(
-                        result
-                            .expect("should have passed semantic analysis")
-                            .to_string(),
+                        TypeResolvedModule::display(
+                            result.expect("should have passed semantic analysis")
+                        ),
                         $expected_typed_ast
                     );
                 }

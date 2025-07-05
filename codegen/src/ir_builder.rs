@@ -1,11 +1,8 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use crate::{FunctionSignature, ir};
 use ir::Variable;
-use parser::{Expression, Statement};
-use semantic_analysis::{
-    PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, TypedFunctionDeclaration, TypedModule,
-    VariableIndex,
-};
+use parser::{Expression, FunctionDeclaration, Statement};
+use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, VariableIndex};
 
 struct FunctionIrBuilder<'i> {
     ir_allocator: &'i IrAllocator,
@@ -30,7 +27,7 @@ impl<'i> FunctionIrBuilder<'i> {
         }
     }
 
-    fn generate(&self, function: &TypedFunctionDeclaration<PhaseTypeResolved>) -> &'i Function<'i> {
+    fn generate(&self, function: &FunctionDeclaration<PhaseTypeResolved>) -> &'i Function<'i> {
         let signature = self.generate_function_signature(function);
 
         let first_bb = self.first_bb;
@@ -50,7 +47,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
     fn generate_function_signature(
         &self,
-        function: &TypedFunctionDeclaration<PhaseTypeResolved>,
+        function: &FunctionDeclaration<PhaseTypeResolved>,
     ) -> &'i FunctionSignature<'i> {
         self.ir_allocator.function_signature(
             function.signature.name,
@@ -237,7 +234,7 @@ fn build_ir_expression<'i>(
 
 pub fn build_ir_module<'i>(
     ir_allocator: &'i IrAllocator,
-    module: &TypedModule<PhaseTypeResolved>,
+    module: &parser::Module<PhaseTypeResolved>,
 ) -> &'i Module<'i> {
     let mut functions = ir_allocator.functions();
     for function in &module.functions {

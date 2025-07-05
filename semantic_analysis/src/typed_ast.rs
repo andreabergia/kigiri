@@ -2,8 +2,8 @@ use crate::types::Type;
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionSignature, LiteralValue,
-    Statement, StringId, resolve_string_id,
+    BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionDeclaration,
+    FunctionSignature, LiteralValue, Module, Statement, StringId, resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -29,20 +29,6 @@ impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
     type IdentifierType = SymbolId;
     type FunctionReturnType = Type;
     type FunctionSignatureData = &'a FunctionSignature<'a, PhaseTypeResolved<'a>>;
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TypedModule<'a, Phase: CompilationPhase> {
-    pub name: StringId,
-    pub functions: BumpVec<'a, &'a TypedFunctionDeclaration<'a, Phase>>,
-    pub function_signatures: TypedFunctionSignaturesByName<'a, Phase>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TypedFunctionDeclaration<'a, Phase: CompilationPhase> {
-    pub signature: &'a FunctionSignature<'a, Phase>,
-    pub body: &'a Block<'a, Phase>,
-    pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,60 +76,72 @@ pub(crate) struct SymbolIdSequencer {
 
 // Display
 
-impl Display for TypedModule<'_, PhaseTypeResolved<'_>> {
+pub struct TypeResolvedModule<'a, 'b, 'c> {
+    module: &'a Module<'b, PhaseTypeResolved<'c>>,
+}
+
+impl<'a, 'b, 'c> TypeResolvedModule<'a, 'b, 'c> {
+    pub fn display(module: &'a Module<'b, PhaseTypeResolved<'c>>) -> String {
+        Self { module }.to_string()
+    }
+}
+
+impl Display for TypeResolvedModule<'_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
             "module {}",
-            resolve_string_id(self.name).expect("should find module name")
+            resolve_string_id(self.module.name).expect("should find module name")
         )?;
         writeln!(f)?;
-        for function in &self.functions {
-            writeln!(f, "{}", function)?;
+        for function in &self.module.functions {
+            write_function_declaration(f, function)?;
+            writeln!(f)?;
         }
         Ok(())
     }
 }
 
-impl Display for TypedFunctionDeclaration<'_, PhaseTypeResolved<'_>> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "fn {}(",
-            resolve_string_id(self.signature.name).expect("function name")
-        )?;
-        for arg in self.signature.arguments.iter() {
-            let symbol = self.body.symbol_table.lookup_by_id(*arg);
-            if let Some(symbol) = symbol {
-                let symbol_name = resolve_string_id(symbol.name).expect("symbol name");
-                writeln!(f, "  {}: {},", symbol_name, symbol.symbol_type)?;
-            } else {
-                return Err(std::fmt::Error);
-            }
+fn write_function_declaration(
+    f: &mut Formatter<'_>,
+    function_declaration: &FunctionDeclaration<PhaseTypeResolved>,
+) -> std::fmt::Result {
+    writeln!(
+        f,
+        "fn {}(",
+        resolve_string_id(function_declaration.signature.name).expect("function name")
+    )?;
+    for arg in function_declaration.signature.arguments.iter() {
+        let symbol = function_declaration.body.symbol_table.lookup_by_id(*arg);
+        if let Some(symbol) = symbol {
+            let symbol_name = resolve_string_id(symbol.name).expect("symbol name");
+            writeln!(f, "  {}: {},", symbol_name, symbol.symbol_type)?;
+        } else {
+            return Err(std::fmt::Error);
         }
-        writeln!(
-            f,
-            ") -> {}",
-            match &self.signature.return_type {
-                Some(return_type) => return_type.to_string(),
-                None => "void".to_string(),
-            }
-        )?;
-        write_block(f, self.body)
     }
+    writeln!(
+        f,
+        ") -> {}",
+        match &function_declaration.signature.return_type {
+            Some(return_type) => return_type.to_string(),
+            None => "void".to_string(),
+        }
+    )?;
+    write_block(f, function_declaration.body)
 }
 
-pub struct BlockDisplayHelper<'a, 'b, 'c> {
+pub struct TypeResolvedBlock<'a, 'b, 'c> {
     block: &'a Block<'b, PhaseTypeResolved<'c>>,
 }
 
-impl<'a, 'b, 'c> BlockDisplayHelper<'a, 'b, 'c> {
+impl<'a, 'b, 'c> TypeResolvedBlock<'a, 'b, 'c> {
     pub fn display(block: &'a Block<'b, PhaseTypeResolved<'c>>) -> String {
         Self { block }.to_string()
     }
 }
 
-impl Display for BlockDisplayHelper<'_, '_, '_> {
+impl Display for TypeResolvedBlock<'_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write_block(f, self.block)
     }
@@ -499,7 +497,7 @@ mod tests {
         let arena = Bump::new();
         let block: &Block<PhaseTypeResolved> = make_block_with_return_1i(&arena);
         assert_eq!(
-            BlockDisplayHelper::display(block),
+            TypeResolvedBlock::display(block),
             r"{ #1
   return 1i;
 }
@@ -540,7 +538,7 @@ mod tests {
             .push(arena.alloc(Statement::NestedBlock { block: inner }));
 
         assert_eq!(
-            BlockDisplayHelper::display(&outer),
+            TypeResolvedBlock::display(&outer),
             r"{ #2
   { #1
     return 1i;

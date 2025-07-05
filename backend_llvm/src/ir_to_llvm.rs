@@ -753,14 +753,14 @@ mod tests {
     use codegen::IrAllocator;
     use codegen::build_ir_module;
     use inkwell::context::Context;
-    use semantic_analysis::{PhaseTypeResolved, SemanticAnalyzer, TypedModule};
+    use semantic_analysis::{PhaseTypeResolved, SemanticAnalyzer};
     use std::io::{Write, stderr};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
         semantic_analyzer: &'s SemanticAnalyzer<PhaseTypeResolved<'s>>,
         source: &str,
-    ) -> &'s TypedModule<'s, PhaseTypeResolved<'s>> {
+    ) -> &'s parser::Module<'s, PhaseTypeResolved<'s>> {
         let ast_allocator = parser::AstAllocator::default();
         let module = parser::parse(&ast_allocator, "test", source);
 
