@@ -16,5 +16,5 @@ Main
 
 ParseTree refactoring
 - [x] unify Let with initializers or multiple
-- [ ] one tree!
+- [x] one tree!
 - [ ] create function typing phase
