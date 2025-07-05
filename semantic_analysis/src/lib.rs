@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 mod semantic_analyzer;
+mod type_resolver;
 mod typed_ast;
 mod types;
 

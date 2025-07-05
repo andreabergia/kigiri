@@ -1,9 +1,9 @@
 use crate::types::Type;
-use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionDeclaration,
-    FunctionSignature, LiteralValue, Module, Statement, StringId, resolve_string_id,
+    AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
+    FunctionDeclaration, FunctionSignature, LiteralValue, Module, Statement, StringId,
+    resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -386,19 +386,19 @@ impl From<u32> for ArgumentIndex {
 }
 
 impl<'a> SymbolTable<'a> {
-    pub fn new(arena: &'a Bump, parent: Option<&'a SymbolTable<'a>>) -> Self {
-        Self {
-            allocated_symbols: RefCell::new(BumpVec::new_in(arena)),
+    pub fn new(allocator: &'a AstAllocator, parent: Option<&'a SymbolTable<'a>>) -> &'a Self {
+        allocator.alloc(Self {
+            allocated_symbols: RefCell::new(allocator.new_bump_vec()),
             symbols_by_id: RefCell::new(HashMap::new()),
             symbols_by_name: RefCell::new(HashMap::new()),
             parent,
             num_variables: RefCell::new(0),
-        }
+        })
     }
 
     pub fn add_symbol(
         &self,
-        allocator: &'a Bump,
+        allocator: &'a AstAllocator,
         name: StringId,
         symbol_type: Type,
         kind: SymbolKind,
@@ -465,7 +465,6 @@ pub fn resolved_type(expression: &Expression<'_, PhaseTypeResolved<'_>>) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bumpalo::Bump;
 
     #[test]
     fn display_contains_type_after_operator() {
@@ -483,19 +482,19 @@ mod tests {
             },
         };
 
-        let arena = Bump::new();
-        let symbol_table = SymbolTable::new(&arena, None);
+        let allocator = AstAllocator::default();
+        let symbol_table = SymbolTable::new(&allocator, None);
 
         assert_eq!(
-            to_string_with_symbol_table(&typed_expression, &symbol_table),
+            to_string_with_symbol_table(&typed_expression, symbol_table),
             "(+i 1i 2i)"
         );
     }
 
     #[test]
     fn display_block() {
-        let arena = Bump::new();
-        let block: &Block<PhaseTypeResolved> = make_block_with_return_1i(&arena);
+        let allocator = AstAllocator::default();
+        let block: &Block<PhaseTypeResolved> = make_block_with_return_1i(&allocator);
         assert_eq!(
             TypeResolvedBlock::display(block),
             r"{ #1
@@ -505,37 +504,38 @@ mod tests {
         );
     }
 
-    fn make_block_with_return_1i(arena: &Bump) -> &Block<PhaseTypeResolved> {
-        let symbol_table: &SymbolTable = arena.alloc(SymbolTable::new(arena, None));
-        let mut block = arena.alloc(Block {
+    fn make_block_with_return_1i(allocator: &AstAllocator) -> &Block<PhaseTypeResolved> {
+        let symbol_table: &SymbolTable = SymbolTable::new(allocator, None);
+        let mut block = allocator.alloc(Block {
             id: BlockId(1),
-            statements: BumpVec::new_in(arena),
+            statements: allocator.new_bump_vec_from_iter(vec![allocator.alloc(
+                Statement::Return {
+                    expression: Some(allocator.alloc(Expression::Literal {
+                        resolved_type: Some(Type::Int),
+                        value: LiteralValue::Integer(1),
+                    })),
+                },
+            )]),
             symbol_table,
         });
-        block.statements.push(arena.alloc(Statement::Return {
-            expression: Some(arena.alloc(Expression::Literal {
-                resolved_type: Some(Type::Int),
-                value: LiteralValue::Integer(1),
-            })),
-        }));
         block
     }
 
     #[test]
     fn display_block_nested() {
-        let arena = Bump::new();
+        let allocator = AstAllocator::default();
 
-        let outer_symbol_table = arena.alloc(SymbolTable::new(&arena, None));
+        let outer_symbol_table = allocator.alloc(SymbolTable::new(&allocator, None));
         let mut outer: Block<PhaseTypeResolved> = Block {
             id: BlockId(2),
-            statements: BumpVec::new_in(&arena),
+            statements: allocator.new_bump_vec(),
             symbol_table: outer_symbol_table,
         };
 
-        let mut inner = make_block_with_return_1i(&arena);
+        let mut inner = make_block_with_return_1i(&allocator);
         outer
             .statements
-            .push(arena.alloc(Statement::NestedBlock { block: inner }));
+            .push(allocator.alloc(Statement::NestedBlock { block: inner }));
 
         assert_eq!(
             TypeResolvedBlock::display(&outer),

@@ -404,6 +404,14 @@ impl AstAllocator {
     pub fn new_bump_vec<T>(&self) -> BumpVec<'_, T> {
         BumpVec::new_in(&self.arena)
     }
+
+    pub fn new_bump_vec_with_capacity<T>(&self, capacity: usize) -> BumpVec<'_, T> {
+        BumpVec::with_capacity_in(capacity, &self.arena)
+    }
+
+    pub fn new_bump_vec_from_iter<T>(&self, iter: impl IntoIterator<Item = T>) -> BumpVec<'_, T> {
+        BumpVec::from_iter_in(iter, &self.arena)
+    }
 }
 
 #[cfg(test)]

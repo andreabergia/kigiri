@@ -1,12 +1,14 @@
-use crate::typed_ast::{SymbolId, SymbolTable, TypedFunctionSignaturesByName};
-use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, VariableIndex, resolved_type};
-use bumpalo::collections::Vec as BumpVec;
+use crate::type_resolver::TypeResolver;
+use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type};
 use parser::{
-    BinaryOperator, Block, CompilationPhase, Expression, FunctionDeclaration, FunctionSignature,
-    LetInitializer, Module, PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
+    AstAllocator, BinaryOperator, Block, CompilationPhase, Expression, Module, PhaseParsed,
+    UnaryOperator,
 };
 use thiserror::Error;
 
+// For the moment I am using _one_ error type for all the passes
+// I am unsure if this is better than one error type per pass, but it is
+// simpler and I can always split it later.
 #[derive(Debug, Error, PartialEq)]
 pub enum SemanticAnalysisError {
     #[error("cannot apply operator {operator} to type {operand_type}")]
@@ -40,414 +42,51 @@ pub enum SemanticAnalysisError {
 
 #[derive(Default)]
 pub struct SemanticAnalyzer {
-    arena: bumpalo::Bump,
+    allocator: AstAllocator,
 }
 
-impl<'a> SemanticAnalyzer {
-    pub fn analyze_module(
-        &'a self,
+impl SemanticAnalyzer {
+    pub fn analyze_module<'s, 'a>(
+        &'s self,
         module: &Module<PhaseParsed>,
-    ) -> Result<&'a Module<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
-        let mut function_signatures =
-            TypedFunctionSignaturesByName::with_capacity(module.function_signatures.len());
-        let mut functions = BumpVec::with_capacity_in(module.functions.len(), &self.arena);
-
-        for function in module.functions.iter() {
-            let function = self.analyze_function(function)?;
-            functions.push(function);
-            function_signatures.insert(function.signature.name, function.signature);
-        }
-
-        Ok(self.alloc({
-            Module {
-                name: module.name,
-                functions,
-                function_signatures,
-            }
-        }))
+    ) -> Result<&'a Module<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
+    where
+        's: 'a,
+    {
+        TypeResolver {}.analyze_module(&self.allocator, module)
     }
 
-    fn analyze_function(
-        &'a self,
-        function: &FunctionDeclaration<PhaseParsed>,
-    ) -> Result<&'a FunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
-        let symbol_table = self.symbol_table(None);
-
-        let return_type = function
-            .signature
-            .return_type
-            .map(|t| self.parse_type(t))
-            .transpose()?;
-
-        let arguments = function
-            .signature
-            .arguments
-            .iter()
-            .enumerate()
-            .map(|(index, argument)| {
-                let arg_type = self.parse_type(argument.arg_type);
-                arg_type.map(|arg_type| {
-                    symbol_table.add_symbol(
-                        &self.arena,
-                        argument.name,
-                        arg_type,
-                        SymbolKind::Argument {
-                            index: ArgumentIndex::from(index as u32),
-                        },
-                    )
-                })
-            })
-            .collect::<Result<Vec<SymbolId>, SemanticAnalysisError>>()?;
-        let arguments = BumpVec::from_iter_in(arguments.iter().cloned(), &self.arena);
-
-        let signature = self.alloc(FunctionSignature {
-            name: function.signature.name,
-            return_type,
-            arguments,
-        });
-
-        let body = self.analyze_block(function.body, symbol_table)?;
-
-        Ok(self.alloc(FunctionDeclaration {
-            signature,
-            body,
-            symbol_table,
-        }))
-    }
-
-    fn parse_type(&self, type_name: StringId) -> Result<Type, SemanticAnalysisError> {
-        let type_name = resolve_string_id(type_name).expect("should be able to resolve type name");
-        match type_name {
-            "int" => Ok(Type::Int),
-            "double" => Ok(Type::Double),
-            "boolean" => Ok(Type::Boolean),
-            _ => Err(SemanticAnalysisError::TypeNotFound {
-                type_name: type_name.to_string(),
-            }),
-        }
-    }
-
-    fn analyze_block(
-        &'a self,
-        block: &Block<PhaseParsed>,
-        parent_symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
-        let mut statements = BumpVec::with_capacity_in(block.statements.len(), &self.arena);
-        for statement in &block.statements {
-            self.analyze_statement(statement, &mut statements, parent_symbol_table)?;
-        }
-        Ok(self.alloc(Block {
-            id: block.id,
-            statements,
-            symbol_table: parent_symbol_table,
-        }))
-    }
-
-    fn analyze_statement(
-        &'a self,
-        statement: &Statement<PhaseParsed>,
-        statements: &mut BumpVec<'a, &'a Statement<'a, PhaseTypeResolved<'a>>>,
-        symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<(), SemanticAnalysisError> {
-        match statement {
-            Statement::Let { initializers } => {
-                let mut typed_initializers = BumpVec::new_in(&self.arena);
-
-                for initializer in initializers {
-                    let value = self.analyze_expression(initializer.value, symbol_table)?;
-
-                    let resolved_type = if let Some(rt) = resolved_type(value) {
-                        rt
-                    } else {
-                        return Err(SemanticAnalysisError::CannotAssignVoidValue {
-                            name: resolve_string_id(initializer.variable)
-                                .expect("let variable name")
-                                .to_owned(),
-                        });
-                    };
-
-                    let variable = symbol_table.add_symbol(
-                        &self.arena,
-                        initializer.variable,
-                        resolved_type,
-                        SymbolKind::Variable {
-                            index: next_variable_index(symbol_table),
-                        },
-                    );
-                    typed_initializers.push(LetInitializer { variable, value });
-                }
-
-                statements.push(self.alloc(Statement::Let {
-                    initializers: typed_initializers,
-                }))
-            }
-            Statement::Assignment {
-                target: name,
-                expression,
-            } => {
-                let symbol_name = resolve_string_id(*name)
-                    .expect("should be able to find string")
-                    .to_owned();
-
-                let symbol = symbol_table.lookup_by_name(*name);
-
-                match symbol {
-                    None => {
-                        return Err(SemanticAnalysisError::SymbolNotFound { name: symbol_name });
-                    }
-                    Some(symbol) => {
-                        let value = self.analyze_expression(expression, symbol_table)?;
-
-                        let expression_type = resolved_type(value).ok_or(
-                            SemanticAnalysisError::CannotAssignVoidValue {
-                                name: resolve_string_id(symbol.name)
-                                    .expect("assignment target")
-                                    .to_owned(),
-                            },
-                        )?;
-
-                        if expression_type != symbol.symbol_type {
-                            return Err(SemanticAnalysisError::MismatchedAssignmentType {
-                                symbol_name,
-                                symbol_type: symbol.symbol_type,
-                                expression_type,
-                            });
-                        }
-
-                        match symbol.kind {
-                            SymbolKind::Function => {
-                                return Err(SemanticAnalysisError::CannotAssignToFunction {
-                                    name: symbol_name,
-                                });
-                            }
-                            SymbolKind::Variable { .. } => {
-                                statements.push(self.alloc(Statement::Assignment {
-                                    target: symbol.id,
-                                    expression: value,
-                                }))
-                            }
-                            SymbolKind::Argument { index } => {
-                                // We actually need to create a new variable and assign to that
-                                // one, because LLVM (and thus our IR) does not allow reassigning
-                                // a function argument.
-                                let new_variable = symbol_table.add_symbol(
-                                    &self.arena,
-                                    *name,
-                                    expression_type,
-                                    SymbolKind::Variable {
-                                        index: next_variable_index(symbol_table),
-                                    },
-                                );
-                                statements.push(self.alloc(Statement::Let {
-                                    initializers: BumpVec::from_iter_in(
-                                        [LetInitializer {
-                                            variable: new_variable,
-                                            value,
-                                        }],
-                                        &self.arena,
-                                    ),
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
-            Statement::Return { expression } => {
-                let expression = expression
-                    .map(|expr| self.analyze_expression(expr, symbol_table))
-                    .transpose()?;
-                statements.push(self.alloc(Statement::Return { expression }));
-            }
-            Statement::Expression { expression } => {
-                let typed_expression = self.analyze_expression(expression, symbol_table)?;
-                statements.push(self.alloc(Statement::Expression {
-                    expression: typed_expression,
-                }))
-            }
-            Statement::NestedBlock { block } => {
-                let nested_symbol_table = self.symbol_table(Some(symbol_table));
-                let typed_block = self.analyze_block(block, nested_symbol_table)?;
-                statements.push(self.alloc(Statement::NestedBlock { block: typed_block }));
-            }
-        };
-        Ok(())
-    }
-
-    pub fn analyze_expression(
-        &'a self,
+    pub fn analyze_expression<'s, 'a>(
+        &'s self,
         expr: &Expression<PhaseParsed>,
         symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a Expression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
-        match expr {
-            Expression::Identifier {
-                name: symbol_id, ..
-            } => {
-                let symbol = symbol_table.lookup_by_name(*symbol_id);
-                match symbol {
-                    Some(symbol) => Ok(self.alloc(Expression::Identifier {
-                        name: symbol.id,
-                        resolved_type: Some(symbol.symbol_type),
-                    })),
-                    None => Err(SemanticAnalysisError::SymbolNotFound {
-                        name: resolve_string_id(*symbol_id)
-                            .expect("should be able to find string")
-                            .to_owned(),
-                    }),
-                }
-            }
-
-            Expression::FunctionCall { .. } => {
-                todo!()
-            }
-
-            // Literals will never fail
-            Expression::Literal { value, .. } => Ok(self.alloc(Expression::Literal {
-                resolved_type: Some(Type::of_literal(value)),
-                value: value.clone(),
-            })),
-
-            // Unary operators - can fail!
-            Expression::Unary {
-                operator, operand, ..
-            } => {
-                let typed_operand = self.analyze_expression(operand, symbol_table)?;
-                let operand_type = resolved_type(typed_operand);
-
-                let operand_type =
-                    operand_type.ok_or(SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-                        operator: operator.clone(),
-                        operand_type: "void".to_string(),
-                    })?;
-
-                if (Self::unary_op_is_allowed(operator.clone(), operand_type)) {
-                    Ok(self.alloc(Expression::Unary {
-                        resolved_type: operand_type,
-                        operator: operator.clone(),
-                        operand: typed_operand,
-                    }))
-                } else {
-                    Err(SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-                        operator: operator.clone(),
-                        operand_type: operand_type.to_string(),
-                    })
-                }
-            }
-
-            // Binary operators - can fail!
-            Expression::Binary {
-                operator,
-                left,
-                right,
-                ..
-            } => {
-                let typed_left = self.analyze_expression(left, symbol_table)?;
-                let typed_right = self.analyze_expression(right, symbol_table)?;
-                let left_type = resolved_type(typed_left);
-                let right_type = resolved_type(typed_right);
-
-                let left_type = left_type.ok_or_else(|| {
-                    SemanticAnalysisError::CannotApplyBinaryOperatorToType {
-                        operator: operator.clone(),
-                        left_type: "void".to_owned(),
-                        right_type: Type::name(right_type),
-                    }
-                })?;
-                let right_type = right_type.ok_or_else(|| {
-                    SemanticAnalysisError::CannotApplyBinaryOperatorToType {
-                        operator: operator.clone(),
-                        left_type: left_type.to_string(),
-                        right_type: "void".to_owned(),
-                    }
-                })?;
-
-                if Self::bin_op_is_allowed(operator.clone(), left_type, right_type) {
-                    Ok(self.alloc(Expression::Binary {
-                        result_type: Self::type_of_operator(operator.clone(), left_type),
-                        operator: operator.clone(),
-                        operand_type: left_type,
-                        left: typed_left,
-                        right: typed_right,
-                    }))
-                } else {
-                    Err(SemanticAnalysisError::CannotApplyBinaryOperatorToType {
-                        operator: operator.clone(),
-                        left_type: left_type.to_string(),
-                        right_type: right_type.to_string(),
-                    })
-                }
-            }
-        }
+    ) -> Result<&'a Expression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
+    where
+        's: 'a,
+    {
+        TypeResolver {}.analyze_expression(&self.allocator, expr, symbol_table)
     }
 
-    fn unary_op_is_allowed(operator: UnaryOperator, operand_type: Type) -> bool {
-        match operator {
-            UnaryOperator::Neg => operand_type == Type::Int || operand_type == Type::Double,
-            UnaryOperator::Not => operand_type == Type::Boolean,
-            UnaryOperator::BitwiseNot => operand_type == Type::Int,
-        }
+    pub fn analyze_block<'s, 'a>(
+        &'s self,
+        block: &Block<PhaseParsed>,
+        parent_symbol_table: &'a SymbolTable<'a>,
+    ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError>
+    where
+        's: 'a,
+    {
+        TypeResolver {}.analyze_block(&self.allocator, block, parent_symbol_table)
     }
 
-    fn bin_op_is_allowed(operator: BinaryOperator, left_type: Type, right_type: Type) -> bool {
-        match operator {
-            BinaryOperator::Add
-            | BinaryOperator::Sub
-            | BinaryOperator::Mul
-            | BinaryOperator::Div
-            | BinaryOperator::Exp => {
-                left_type == right_type && (left_type == Type::Int || left_type == Type::Double)
-            }
-            BinaryOperator::Rem => left_type == right_type && left_type == Type::Int,
-            BinaryOperator::Eq | BinaryOperator::Neq => true,
-            BinaryOperator::Lt | BinaryOperator::Lte | BinaryOperator::Gt | BinaryOperator::Gte => {
-                left_type == right_type && (left_type == Type::Int || left_type == Type::Double)
-            }
-            BinaryOperator::And | BinaryOperator::Or => {
-                left_type == right_type && left_type == Type::Boolean
-            }
-            BinaryOperator::BitwiseAnd
-            | BinaryOperator::BitwiseOr
-            | BinaryOperator::BitwiseXor
-            | BinaryOperator::BitwiseShl
-            | BinaryOperator::BitwiseShr => left_type == right_type && left_type == Type::Int,
-        }
+    pub fn symbol_table<'s, 'a>(
+        &'s self,
+        parent: Option<&'a SymbolTable<'a>>,
+    ) -> &'a SymbolTable<'a>
+    where
+        's: 'a,
+    {
+        SymbolTable::new(&self.allocator, parent)
     }
-
-    fn type_of_operator(operator: BinaryOperator, left: Type) -> Type {
-        match operator {
-            BinaryOperator::Add
-            | BinaryOperator::Sub
-            | BinaryOperator::Mul
-            | BinaryOperator::Div
-            | BinaryOperator::Rem
-            | BinaryOperator::Exp
-            | BinaryOperator::BitwiseAnd
-            | BinaryOperator::BitwiseOr
-            | BinaryOperator::BitwiseXor
-            | BinaryOperator::BitwiseShl
-            | BinaryOperator::BitwiseShr => left,
-            BinaryOperator::Eq
-            | BinaryOperator::Neq
-            | BinaryOperator::Lt
-            | BinaryOperator::Lte
-            | BinaryOperator::Gt
-            | BinaryOperator::Gte
-            | BinaryOperator::And
-            | BinaryOperator::Or => Type::Boolean,
-        }
-    }
-
-    #[inline]
-    fn alloc<T>(&self, value: T) -> &T {
-        self.arena.alloc(value)
-    }
-
-    pub fn symbol_table(&'a self, parent: Option<&'a SymbolTable<'a>>) -> &'a SymbolTable<'a> {
-        self.alloc(SymbolTable::new(&self.arena, parent))
-    }
-}
-
-fn next_variable_index(symbol_table: &SymbolTable) -> VariableIndex {
-    symbol_table.num_variables().into()
 }
 
 #[cfg(test)]
