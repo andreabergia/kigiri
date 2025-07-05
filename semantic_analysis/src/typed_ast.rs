@@ -2,8 +2,8 @@ use crate::types::Type;
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Block, BlockId, CompilationPhase, Expression, LiteralValue, Statement,
-    StringId, resolve_string_id,
+    BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionSignature, LiteralValue,
+    Statement, StringId, resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -13,7 +13,7 @@ use std::marker::PhantomData;
 use std::sync::{LazyLock, Mutex};
 
 pub type TypedFunctionSignaturesByName<'a, Phase> =
-    HashMap<StringId, &'a TypedFunctionSignature<'a, Phase>>;
+    HashMap<StringId, &'a FunctionSignature<'a, Phase>>;
 
 #[derive(Debug, PartialEq)]
 pub struct PhaseTypeResolved<'a> {
@@ -28,7 +28,7 @@ impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
     type UnaryBinaryOperandType = Type;
     type IdentifierType = SymbolId;
     type FunctionReturnType = Type;
-    type FunctionSignatureData = &'a TypedFunctionSignature<'a, PhaseTypeResolved<'a>>;
+    type FunctionSignatureData = &'a FunctionSignature<'a, PhaseTypeResolved<'a>>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -40,16 +40,9 @@ pub struct TypedModule<'a, Phase: CompilationPhase> {
 
 #[derive(Debug, PartialEq)]
 pub struct TypedFunctionDeclaration<'a, Phase: CompilationPhase> {
-    pub signature: &'a TypedFunctionSignature<'a, Phase>,
+    pub signature: &'a FunctionSignature<'a, Phase>,
     pub body: &'a Block<'a, Phase>,
     pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TypedFunctionSignature<'a, Phase: CompilationPhase> {
-    pub name: StringId,
-    pub return_type: Option<Type>,
-    pub arguments: BumpVec<'a, <Phase as CompilationPhase>::FunctionArgumentType>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

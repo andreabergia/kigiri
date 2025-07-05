@@ -1,12 +1,11 @@
 use crate::typed_ast::{
-    SymbolId, SymbolTable, TypedFunctionDeclaration, TypedFunctionSignature,
-    TypedFunctionSignaturesByName, TypedModule,
+    SymbolId, SymbolTable, TypedFunctionDeclaration, TypedFunctionSignaturesByName, TypedModule,
 };
 use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, VariableIndex, resolved_type};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, Block, CompilationPhase, Expression, LetInitializer, Module, PhaseParsed,
-    Statement, StringId, UnaryOperator, resolve_string_id,
+    BinaryOperator, Block, CompilationPhase, Expression, FunctionSignature, LetInitializer, Module,
+    PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
 };
 use std::marker::PhantomData;
 use thiserror::Error;
@@ -114,7 +113,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
             .collect::<Result<Vec<SymbolId>, SemanticAnalysisError>>()?;
         let arguments = BumpVec::from_iter_in(arguments.iter().cloned(), &self.arena);
 
-        let signature = self.alloc(TypedFunctionSignature {
+        let signature = self.alloc(FunctionSignature {
             name: function.signature.name,
             return_type,
             arguments,
