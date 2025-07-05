@@ -58,7 +58,7 @@ pub enum Statement<'a, Phase: CompilationPhase> {
         initializers: BumpVec<'a, LetInitializer<'a, Phase>>,
     },
     Assignment {
-        name: <Phase as CompilationPhase>::IdentifierType,
+        target: <Phase as CompilationPhase>::IdentifierType,
         expression: &'a Expression<'a, Phase>,
     },
     Return {
@@ -233,11 +233,11 @@ impl Display for Statement<'_, PhaseParsed<'_>> {
                 }
                 write!(f, ";")
             }
-            Statement::Assignment { name, expression } => {
+            Statement::Assignment { target, expression } => {
                 write!(
                     f,
                     "{} = {};",
-                    resolve_string_id(*name).expect("invalid assignment name"),
+                    resolve_string_id(*target).expect("invalid assignment name"),
                     expression
                 )
             }
@@ -555,7 +555,7 @@ impl AstAllocator {
         'e: 's,
     {
         self.alloc(Statement::Assignment {
-            name: get_or_create_string(name),
+            target: get_or_create_string(name),
             expression,
         })
     }

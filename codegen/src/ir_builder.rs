@@ -1,10 +1,10 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use crate::{FunctionSignature, ir};
 use ir::Variable;
-use parser::Expression;
+use parser::{Expression, Statement};
 use semantic_analysis::{
     PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, TypedFunctionDeclaration, TypedModule,
-    TypedStatement, VariableIndex,
+    VariableIndex,
 };
 
 struct FunctionIrBuilder<'i> {
@@ -71,11 +71,11 @@ impl<'i> FunctionIrBuilder<'i> {
 
     fn handle_statement(
         &self,
-        statement: &TypedStatement<PhaseTypeResolved>,
+        statement: &Statement<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
     ) -> FoundReturn {
         match statement {
-            TypedStatement::Let { initializers } => {
+            Statement::Let { initializers } => {
                 for initializer in initializers {
                     let symbol = symbol_table
                         .lookup_by_id(initializer.variable)
@@ -98,14 +98,14 @@ impl<'i> FunctionIrBuilder<'i> {
                 }
                 FoundReturn::No
             }
-            TypedStatement::Assignment {
+            Statement::Assignment {
                 target: symbol,
-                value,
+                expression,
             } => {
                 let symbol = symbol_table
                     .lookup_by_id(*symbol)
                     .expect("should find symbol in symbol table");
-                let value = self.handle_expression(value, symbol_table);
+                let value = self.handle_expression(expression, symbol_table);
 
                 let variable_index = if let SymbolKind::Variable { index } = symbol.kind {
                     index
@@ -121,8 +121,8 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 FoundReturn::No
             }
-            TypedStatement::Return { value } => {
-                if let Some(value) = value {
+            Statement::Return { expression } => {
+                if let Some(value) = expression {
                     let instruction = self.handle_expression(value, symbol_table);
                     self.push_to_current_bb(self.ir_allocator.new_ret_expr(instruction));
                 } else {
@@ -130,11 +130,11 @@ impl<'i> FunctionIrBuilder<'i> {
                 }
                 FoundReturn::Yes
             }
-            TypedStatement::Expression { expression } => {
+            Statement::Expression { expression } => {
                 self.handle_expression(expression, symbol_table);
                 FoundReturn::No
             }
-            TypedStatement::NestedBlock { .. } => todo!(),
+            Statement::NestedBlock { .. } => todo!(),
         }
     }
 

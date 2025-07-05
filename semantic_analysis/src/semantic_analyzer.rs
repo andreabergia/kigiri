@@ -1,15 +1,12 @@
 use crate::typed_ast::{
-    SymbolId, SymbolTable, TypedBlock, TypedFunctionDeclaration, TypedFunctionSignature,
-    TypedFunctionSignaturesByName, TypedModule, TypedStatement,
+    SymbolId, SymbolTable, TypedFunctionDeclaration, TypedFunctionSignature,
+    TypedFunctionSignaturesByName, TypedModule,
 };
-use crate::{
-    ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, TypedLetInitializer, VariableIndex,
-    resolved_type,
-};
+use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, Type, VariableIndex, resolved_type};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, CompilationPhase, Expression, Module, PhaseParsed, Statement, StringId,
-    UnaryOperator, resolve_string_id,
+    BinaryOperator, Block, CompilationPhase, Expression, LetInitializer, Module, PhaseParsed,
+    Statement, StringId, UnaryOperator, resolve_string_id,
 };
 use std::marker::PhantomData;
 use thiserror::Error;
@@ -146,14 +143,14 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
 
     fn analyze_block(
         &'a self,
-        block: &parser::Block<PhaseParsed>,
+        block: &Block<PhaseParsed>,
         parent_symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<&'a TypedBlock<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
+    ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut statements = BumpVec::with_capacity_in(block.statements.len(), &self.arena);
         for statement in &block.statements {
             self.analyze_statement(statement, &mut statements, parent_symbol_table)?;
         }
-        Ok(self.alloc(TypedBlock {
+        Ok(self.alloc(Block {
             id: block.id,
             statements,
             symbol_table: parent_symbol_table,
@@ -163,7 +160,7 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
     fn analyze_statement(
         &'a self,
         statement: &Statement<PhaseParsed>,
-        statements: &mut BumpVec<'a, &'a TypedStatement<'a, PhaseTypeResolved<'a>>>,
+        statements: &mut BumpVec<'a, &'a Statement<'a, PhaseTypeResolved<'a>>>,
         symbol_table: &'a SymbolTable<'a>,
     ) -> Result<(), SemanticAnalysisError> {
         match statement {
@@ -191,14 +188,17 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                             index: next_variable_index(symbol_table),
                         },
                     );
-                    typed_initializers.push(TypedLetInitializer { variable, value });
+                    typed_initializers.push(LetInitializer { variable, value });
                 }
 
-                statements.push(self.alloc(TypedStatement::Let {
+                statements.push(self.alloc(Statement::Let {
                     initializers: typed_initializers,
                 }))
             }
-            Statement::Assignment { name, expression } => {
+            Statement::Assignment {
+                target: name,
+                expression,
+            } => {
                 let symbol_name = resolve_string_id(*name)
                     .expect("should be able to find string")
                     .to_owned();
@@ -235,9 +235,9 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                                 });
                             }
                             SymbolKind::Variable { .. } => {
-                                statements.push(self.alloc(TypedStatement::Assignment {
+                                statements.push(self.alloc(Statement::Assignment {
                                     target: symbol.id,
-                                    value,
+                                    expression: value,
                                 }))
                             }
                             SymbolKind::Argument { index } => {
@@ -252,9 +252,9 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                                         index: next_variable_index(symbol_table),
                                     },
                                 );
-                                statements.push(self.alloc(TypedStatement::Let {
+                                statements.push(self.alloc(Statement::Let {
                                     initializers: BumpVec::from_iter_in(
-                                        [TypedLetInitializer {
+                                        [LetInitializer {
                                             variable: new_variable,
                                             value,
                                         }],
@@ -267,21 +267,21 @@ impl<'a> SemanticAnalyzer<PhaseTypeResolved<'a>> {
                 }
             }
             Statement::Return { expression } => {
-                let value = expression
+                let expression = expression
                     .map(|expr| self.analyze_expression(expr, symbol_table))
                     .transpose()?;
-                statements.push(self.alloc(TypedStatement::Return { value }));
+                statements.push(self.alloc(Statement::Return { expression }));
             }
             Statement::Expression { expression } => {
                 let typed_expression = self.analyze_expression(expression, symbol_table)?;
-                statements.push(self.alloc(TypedStatement::Expression {
+                statements.push(self.alloc(Statement::Expression {
                     expression: typed_expression,
                 }))
             }
             Statement::NestedBlock { block } => {
                 let nested_symbol_table = self.symbol_table(Some(symbol_table));
                 let typed_block = self.analyze_block(block, nested_symbol_table)?;
-                statements.push(self.alloc(TypedStatement::NestedBlock { block: typed_block }));
+                statements.push(self.alloc(Statement::NestedBlock { block: typed_block }));
             }
         };
         Ok(())
@@ -582,7 +582,7 @@ mod tests {
 
     mod blocks {
         use super::*;
-        use crate::PhaseTypeResolved;
+        use crate::{BlockDisplayHelper, PhaseTypeResolved};
 
         macro_rules! test_ok {
             ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -596,9 +596,9 @@ mod tests {
                     let result = analyzer.analyze_block(block, symbol_table);
 
                     assert_eq!(
-                        result
-                            .expect("should have succeeded semantic analysis")
-                            .to_string(),
+                        BlockDisplayHelper::display(
+                            result.expect("should have succeeded semantic analysis")
+                        ),
                         $expected_typed_ast
                     );
                 }

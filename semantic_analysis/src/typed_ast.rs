@@ -2,8 +2,8 @@ use crate::types::Type;
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    BinaryOperator, BlockId, CompilationPhase, Expression, LiteralValue, StringId,
-    resolve_string_id,
+    BinaryOperator, Block, BlockId, CompilationPhase, Expression, LiteralValue, Statement,
+    StringId, resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -41,7 +41,7 @@ pub struct TypedModule<'a, Phase: CompilationPhase> {
 #[derive(Debug, PartialEq)]
 pub struct TypedFunctionDeclaration<'a, Phase: CompilationPhase> {
     pub signature: &'a TypedFunctionSignature<'a, Phase>,
-    pub body: &'a TypedBlock<'a, Phase>,
+    pub body: &'a Block<'a, Phase>,
     pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
 }
 
@@ -50,39 +50,6 @@ pub struct TypedFunctionSignature<'a, Phase: CompilationPhase> {
     pub name: StringId,
     pub return_type: Option<Type>,
     pub arguments: BumpVec<'a, <Phase as CompilationPhase>::FunctionArgumentType>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TypedStatement<'a, Phase: CompilationPhase> {
-    Let {
-        initializers: BumpVec<'a, TypedLetInitializer<'a, Phase>>,
-    },
-    Assignment {
-        target: <Phase as CompilationPhase>::IdentifierType,
-        value: &'a Expression<'a, Phase>,
-    },
-    Return {
-        value: Option<&'a Expression<'a, Phase>>,
-    },
-    Expression {
-        expression: &'a Expression<'a, Phase>,
-    },
-    NestedBlock {
-        block: &'a TypedBlock<'a, Phase>,
-    },
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TypedLetInitializer<'a, Phase: CompilationPhase> {
-    pub variable: <Phase as CompilationPhase>::IdentifierType,
-    pub value: &'a Expression<'a, Phase>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TypedBlock<'a, Phase: CompilationPhase> {
-    pub id: BlockId,
-    pub statements: BumpVec<'a, &'a TypedStatement<'a, Phase>>,
-    pub symbol_table: <Phase as CompilationPhase>::SymbolTableType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,20 +136,38 @@ impl Display for TypedFunctionDeclaration<'_, PhaseTypeResolved<'_>> {
                 None => "void".to_string(),
             }
         )?;
-        write!(f, "{}", self.body)
+        write_block(f, self.body)
     }
 }
 
-impl Display for TypedBlock<'_, PhaseTypeResolved<'_>> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.fmt_with_context(
-            f,
-            DisplayTypedAstContext {
-                indent: "".to_owned(),
-                symbol_table: self.symbol_table,
-            },
-        )
+pub struct BlockDisplayHelper<'a, 'b, 'c> {
+    block: &'a Block<'b, PhaseTypeResolved<'c>>,
+}
+
+impl<'a, 'b, 'c> BlockDisplayHelper<'a, 'b, 'c> {
+    pub fn display(block: &'a Block<'b, PhaseTypeResolved<'c>>) -> String {
+        Self { block }.to_string()
     }
+}
+
+impl Display for BlockDisplayHelper<'_, '_, '_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write_block(f, self.block)
+    }
+}
+
+fn write_block(
+    f: &mut Formatter<'_>,
+    block: &Block<'_, PhaseTypeResolved<'_>>,
+) -> std::fmt::Result {
+    fmt_with_context(
+        f,
+        block,
+        DisplayTypedAstContext {
+            indent: "".to_owned(),
+            symbol_table: block.symbol_table,
+        },
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -200,18 +185,16 @@ impl DisplayTypedAstContext<'_> {
     }
 }
 
-impl TypedBlock<'_, PhaseTypeResolved<'_>> {
-    fn fmt_with_context(
-        &self,
-        f: &mut Formatter<'_>,
-        mut context: DisplayTypedAstContext,
-    ) -> std::fmt::Result {
-        writeln!(f, "{}{{ #{}", context.indent, self.id.0)?;
-        for statement in &self.statements {
-            statement.fmt_with_context(f, &context)?;
-        }
-        writeln!(f, "{}}}", context.indent)
+fn fmt_with_context(
+    f: &mut Formatter<'_>,
+    block: &Block<PhaseTypeResolved>,
+    mut context: DisplayTypedAstContext,
+) -> std::fmt::Result {
+    writeln!(f, "{}{{ #{}", context.indent, block.id.0)?;
+    for statement in &block.statements {
+        fmt_statement_with_context(f, statement, &context)?;
     }
+    writeln!(f, "{}}}", context.indent)
 }
 
 impl Symbol {
@@ -238,59 +221,54 @@ impl Display for VariableIndex {
     }
 }
 
-impl TypedStatement<'_, PhaseTypeResolved<'_>> {
-    fn fmt_with_context(
-        &self,
-        f: &mut Formatter<'_>,
-        context: &DisplayTypedAstContext,
-    ) -> std::fmt::Result {
-        match self {
-            TypedStatement::Let { initializers } => {
-                write!(f, "{}  let ", context.indent)?;
-                let mut first = true;
-                for initializer in initializers.iter() {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    let symbol = context
-                        .symbol_table
-                        .lookup_by_id(initializer.variable)
-                        .ok_or(std::fmt::Error)?;
-                    write!(f, "{} = ", symbol)?;
-                    fmt_with_symbol_table(f, initializer.value, context.symbol_table)?;
-                    first = false;
+fn fmt_statement_with_context(
+    f: &mut Formatter<'_>,
+    statement: &Statement<PhaseTypeResolved>,
+    context: &DisplayTypedAstContext,
+) -> std::fmt::Result {
+    match statement {
+        Statement::Let { initializers } => {
+            write!(f, "{}  let ", context.indent)?;
+            let mut first = true;
+            for initializer in initializers.iter() {
+                if !first {
+                    write!(f, ", ")?;
                 }
-                writeln!(f, ";")
+                let symbol = context
+                    .symbol_table
+                    .lookup_by_id(initializer.variable)
+                    .ok_or(std::fmt::Error)?;
+                write!(f, "{} = ", symbol)?;
+                fmt_with_symbol_table(f, initializer.value, context.symbol_table)?;
+                first = false;
             }
-            TypedStatement::Assignment {
-                target: symbol,
-                value,
-            } => {
-                let symbol = context.symbol_table.lookup_by_id(*symbol);
-                if let Some(symbol) = symbol {
-                    write!(f, "{}  {} = ", context.indent, symbol.name())?;
-                    fmt_with_symbol_table(f, value, context.symbol_table)?;
-                    writeln!(f, ";")
-                } else {
-                    Err(std::fmt::Error)
-                }
-            }
-            TypedStatement::Return { value } => {
-                if let Some(value) = value {
-                    write!(f, "{}  return ", context.indent)?;
-                    fmt_with_symbol_table(f, value, context.symbol_table)?;
-                } else {
-                    write!(f, "{}  return", context.indent,)?;
-                }
-                writeln!(f, ";")
-            }
-            TypedStatement::Expression { expression } => {
-                write!(f, "{}  ", context.indent)?;
+            writeln!(f, ";")
+        }
+        Statement::Assignment { target, expression } => {
+            let symbol = context.symbol_table.lookup_by_id(*target);
+            if let Some(symbol) = symbol {
+                write!(f, "{}  {} = ", context.indent, symbol.name())?;
                 fmt_with_symbol_table(f, expression, context.symbol_table)?;
                 writeln!(f, ";")
+            } else {
+                Err(std::fmt::Error)
             }
-            TypedStatement::NestedBlock { block } => block.fmt_with_context(f, context.indented()),
         }
+        Statement::Return { expression } => {
+            if let Some(value) = expression {
+                write!(f, "{}  return ", context.indent)?;
+                fmt_with_symbol_table(f, value, context.symbol_table)?;
+            } else {
+                write!(f, "{}  return", context.indent,)?;
+            }
+            writeln!(f, ";")
+        }
+        Statement::Expression { expression } => {
+            write!(f, "{}  ", context.indent)?;
+            fmt_with_symbol_table(f, expression, context.symbol_table)?;
+            writeln!(f, ";")
+        }
+        Statement::NestedBlock { block } => fmt_with_context(f, block, context.indented()),
     }
 }
 
@@ -526,9 +504,9 @@ mod tests {
     #[test]
     fn display_block() {
         let arena = Bump::new();
-        let block: &TypedBlock<PhaseTypeResolved> = make_block_with_return_1i(&arena);
+        let block: &Block<PhaseTypeResolved> = make_block_with_return_1i(&arena);
         assert_eq!(
-            block.to_string(),
+            BlockDisplayHelper::display(block),
             r"{ #1
   return 1i;
 }
@@ -536,15 +514,15 @@ mod tests {
         );
     }
 
-    fn make_block_with_return_1i(arena: &Bump) -> &TypedBlock<PhaseTypeResolved> {
+    fn make_block_with_return_1i(arena: &Bump) -> &Block<PhaseTypeResolved> {
         let symbol_table: &SymbolTable = arena.alloc(SymbolTable::new(arena, None));
-        let mut block = arena.alloc(TypedBlock {
+        let mut block = arena.alloc(Block {
             id: BlockId(1),
             statements: BumpVec::new_in(arena),
             symbol_table,
         });
-        block.statements.push(arena.alloc(TypedStatement::Return {
-            value: Some(arena.alloc(Expression::Literal {
+        block.statements.push(arena.alloc(Statement::Return {
+            expression: Some(arena.alloc(Expression::Literal {
                 resolved_type: Some(Type::Int),
                 value: LiteralValue::Integer(1),
             })),
@@ -557,7 +535,7 @@ mod tests {
         let arena = Bump::new();
 
         let outer_symbol_table = arena.alloc(SymbolTable::new(&arena, None));
-        let mut outer: TypedBlock<PhaseTypeResolved> = TypedBlock {
+        let mut outer: Block<PhaseTypeResolved> = Block {
             id: BlockId(2),
             statements: BumpVec::new_in(&arena),
             symbol_table: outer_symbol_table,
@@ -566,10 +544,10 @@ mod tests {
         let mut inner = make_block_with_return_1i(&arena);
         outer
             .statements
-            .push(arena.alloc(TypedStatement::NestedBlock { block: inner }));
+            .push(arena.alloc(Statement::NestedBlock { block: inner }));
 
         assert_eq!(
-            outer.to_string(),
+            BlockDisplayHelper::display(&outer),
             r"{ #2
   { #1
     return 1i;
