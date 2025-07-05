@@ -258,7 +258,7 @@ mod tests {
         ) -> &'s Expression<'s, PhaseTypeResolved<'s>> {
             let ast_allocator = parser::ParsedAstAllocator::default();
             let expression = parser::parse_as_expression(&ast_allocator, source);
-            let symbol_table = semantic_analyzer.symbol_table(None);
+            let symbol_table = semantic_analyzer.root_symbol_table();
 
             let result = semantic_analyzer.analyze_expression(expression, symbol_table);
             result.expect("should have passed semantic analysis")
@@ -273,7 +273,7 @@ mod tests {
             build_ir_expression(
                 ir_allocator,
                 expression,
-                semantic_analyzer.symbol_table(None),
+                semantic_analyzer.root_symbol_table(),
             )
         }
 

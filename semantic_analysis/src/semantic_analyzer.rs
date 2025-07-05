@@ -69,8 +69,8 @@ impl SemanticAnalyzer {
         TypeResolver::analyze_block(&self.allocator, block, parent_symbol_table)
     }
 
-    pub fn symbol_table<'s>(&'s self, parent: Option<&'s SymbolTable<'s>>) -> &'s SymbolTable<'s> {
-        SymbolTable::new(&self.allocator, parent)
+    pub fn root_symbol_table(&self) -> &SymbolTable {
+        SymbolTable::new(&self.allocator, None)
     }
 }
 
@@ -91,7 +91,7 @@ mod tests {
                     let ast_allocator = parser::ParsedAstAllocator::default();
                     let expression = parser::parse_as_expression(&ast_allocator, $source);
                     let analyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.symbol_table(None);
+                    let symbol_table = analyzer.root_symbol_table();
                     let result = analyzer.analyze_expression(expression, symbol_table);
                     assert_eq!(
                         to_string_with_symbol_table(
@@ -111,7 +111,7 @@ mod tests {
                     let ast_allocator = parser::ParsedAstAllocator::default();
                     let expression = parser::parse_as_expression(&ast_allocator, $source);
                     let analyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.symbol_table(None);
+                    let symbol_table = analyzer.root_symbol_table();
                     let result = analyzer.analyze_expression(expression, symbol_table);
                     assert_eq!(
                         result.expect_err("should have failed to match types"),
@@ -202,7 +202,7 @@ mod tests {
                     let block = parser::parse_as_block(&ast_allocator, $source);
 
                     let analyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.symbol_table(None);
+                    let symbol_table = analyzer.root_symbol_table();
                     let result = analyzer.analyze_block(block, symbol_table);
 
                     assert_eq!(
@@ -223,7 +223,7 @@ mod tests {
                     let block = parser::parse_as_block(&ast_allocator, $source);
 
                     let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.symbol_table(None);
+                    let symbol_table = analyzer.root_symbol_table();
                     let result = analyzer.analyze_block(block, symbol_table);
 
                     assert_eq!(
