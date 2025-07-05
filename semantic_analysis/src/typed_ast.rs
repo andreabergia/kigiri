@@ -447,8 +447,8 @@ impl<'a> SymbolTable<'a> {
         self.allocated_symbols.borrow().is_empty()
     }
 
-    pub fn num_variables(&self) -> usize {
-        *self.num_variables.borrow()
+    pub fn next_variable_index(&self) -> VariableIndex {
+        VariableIndex::from(*self.num_variables.borrow())
     }
 }
 

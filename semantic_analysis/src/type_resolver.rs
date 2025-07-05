@@ -1,7 +1,7 @@
 use crate::semantic_analyzer::SemanticAnalysisError;
 use crate::{
     ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type,
-    TypedFunctionSignaturesByName, VariableIndex, resolved_type,
+    TypedFunctionSignaturesByName, resolved_type,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
@@ -9,6 +9,7 @@ use parser::{
     LetInitializer, Module, PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
 };
 
+/// Infers and checks types
 pub(crate) struct TypeResolver {}
 
 impl<'a> TypeResolver {
@@ -140,7 +141,7 @@ impl<'a> TypeResolver {
                         initializer.variable,
                         resolved_type,
                         SymbolKind::Variable {
-                            index: next_variable_index(symbol_table),
+                            index: symbol_table.next_variable_index(),
                         },
                     );
                     typed_initializers.push(LetInitializer { variable, value });
@@ -204,7 +205,7 @@ impl<'a> TypeResolver {
                                     *name,
                                     expression_type,
                                     SymbolKind::Variable {
-                                        index: next_variable_index(symbol_table),
+                                        index: symbol_table.next_variable_index(),
                                     },
                                 );
                                 statements.push(allocator.alloc(Statement::Let {
@@ -404,8 +405,4 @@ impl<'a> TypeResolver {
             | BinaryOperator::Or => Type::Boolean,
         }
     }
-}
-
-fn next_variable_index(symbol_table: &SymbolTable) -> VariableIndex {
-    symbol_table.num_variables().into()
 }
