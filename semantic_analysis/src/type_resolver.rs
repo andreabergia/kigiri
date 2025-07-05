@@ -1,12 +1,12 @@
 use crate::semantic_analyzer::SemanticAnalysisError;
 use crate::{
-    ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type,
-    TypedFunctionSignaturesByName, resolved_type,
+    ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type, resolved_type,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    LetInitializer, Module, PhaseParsed, Statement, StringId, UnaryOperator, resolve_string_id,
+    FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement, StringId,
+    UnaryOperator, resolve_string_id,
 };
 
 /// Infers and checks types
@@ -18,7 +18,7 @@ impl<'a> TypeResolver {
         module: &Module<PhaseParsed>,
     ) -> Result<&'a Module<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut function_signatures =
-            TypedFunctionSignaturesByName::with_capacity(module.function_signatures.len());
+            FunctionSignaturesByName::with_capacity(module.function_signatures.len());
         let mut functions = allocator.new_bump_vec_with_capacity(module.functions.len());
 
         for function in module.functions.iter() {

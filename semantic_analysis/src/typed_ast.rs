@@ -2,8 +2,8 @@ use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
-    FunctionDeclaration, FunctionSignature, LiteralValue, Module, Statement, StringId,
-    resolve_string_id,
+    FunctionDeclaration, FunctionSignature, FunctionSignaturesByName, LiteralValue, Module,
+    Statement, StringId, resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -12,16 +12,13 @@ use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::{LazyLock, Mutex};
 
-pub type TypedFunctionSignaturesByName<'a, Phase> =
-    HashMap<StringId, &'a FunctionSignature<'a, Phase>>;
-
 #[derive(Debug, PartialEq)]
 pub struct PhaseTypeResolved<'a> {
     phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
-    type FunctionSignatureType = TypedFunctionSignaturesByName<'a, PhaseTypeResolved<'a>>;
+    type FunctionSignatureType = FunctionSignaturesByName<'a, PhaseTypeResolved<'a>>;
     type SymbolTableType = &'a SymbolTable<'a>;
     type FunctionArgumentType = SymbolId;
     type ExpressionType = Option<Type>;

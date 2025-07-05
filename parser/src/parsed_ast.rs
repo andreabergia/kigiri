@@ -14,11 +14,10 @@ pub struct PhaseParsed<'a> {
     phantom: PhantomData<&'a ()>,
 }
 
-pub type FunctionSignaturesByName<'a> =
-    HashMap<StringId, &'a FunctionSignature<'a, PhaseParsed<'a>>>;
+pub type FunctionSignaturesByName<'a, Phase> = HashMap<StringId, &'a FunctionSignature<'a, Phase>>;
 
 impl<'a> CompilationPhase for PhaseParsed<'a> {
-    type FunctionSignatureType = FunctionSignaturesByName<'a>;
+    type FunctionSignatureType = FunctionSignaturesByName<'a, PhaseParsed<'a>>;
     type SymbolTableType = ();
     type FunctionArgumentType = FunctionArgument;
     type ExpressionType = ();
@@ -204,7 +203,7 @@ impl ParsedAstAllocator {
         &'s self,
         module_name: &str,
         functions: BumpVec<'f, &'f2 FunctionDeclaration<'f, PhaseParsed<'s>>>,
-        function_signatures: FunctionSignaturesByName<'f2>,
+        function_signatures: FunctionSignaturesByName<'f2, PhaseParsed<'f2>>,
     ) -> &'s Module<'s, PhaseParsed<'s>>
     where
         'f: 's,
