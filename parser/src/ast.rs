@@ -12,7 +12,7 @@ pub trait CompilationPhase {
     type UnaryBinaryOperandType: Debug + PartialEq;
     type IdentifierType: Debug + PartialEq;
     type FunctionReturnType: Debug + PartialEq;
-    type FunctionSignatureData: Debug + PartialEq;
+    type FunctionCallSignatureType: Debug + PartialEq;
 }
 
 #[derive(Debug, PartialEq)]
@@ -36,7 +36,7 @@ pub struct FunctionSignature<'a, Phase: CompilationPhase> {
     pub arguments: BumpVec<'a, <Phase as CompilationPhase>::FunctionArgumentType>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct FunctionArgument {
     pub name: StringId,
     pub arg_type: StringId,
@@ -146,7 +146,7 @@ pub enum Expression<'a, Phase: CompilationPhase> {
     FunctionCall {
         name: Phase::IdentifierType,
         args: BumpVec<'a, &'a Expression<'a, Phase>>,
-        signature: Phase::FunctionSignatureData,
+        signature: Phase::FunctionCallSignatureType,
     },
 }
 
@@ -405,12 +405,21 @@ impl AstAllocator {
         BumpVec::new_in(&self.arena)
     }
 
-    pub fn new_bump_vec_with_capacity<T>(&self, capacity: usize) -> BumpVec<'_, T> {
+    pub fn new_bump_vec_with_capacity<T>(&self, capacity: usize) -> BumpVec<T> {
         BumpVec::with_capacity_in(capacity, &self.arena)
     }
 
-    pub fn new_bump_vec_from_iter<T>(&self, iter: impl IntoIterator<Item = T>) -> BumpVec<'_, T> {
+    pub fn new_bump_vec_from_iter<T>(&self, iter: impl IntoIterator<Item = T>) -> BumpVec<T> {
         BumpVec::from_iter_in(iter, &self.arena)
+    }
+
+    pub fn new_bump_vec_from_iter_result<T, E>(
+        &self,
+        iter: impl IntoIterator<Item = Result<T, E>>,
+    ) -> Result<BumpVec<T>, E> {
+        let temp_vec = iter.into_iter().collect::<Result<Vec<T>, E>>()?;
+        let bump_vec = BumpVec::from_iter_in(temp_vec, &self.arena);
+        Ok(bump_vec)
     }
 }
 

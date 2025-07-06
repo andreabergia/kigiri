@@ -1,10 +1,12 @@
 #![allow(unused)]
 
+mod ast_top_level_declaration;
+mod ast_typed;
+mod phase_top_level_declaration_collector;
+mod phase_type_resolver;
 mod semantic_analyzer;
-mod type_resolver;
-mod typed_ast;
 mod types;
 
+pub use ast_typed::*;
 pub use semantic_analyzer::SemanticAnalyzer;
-pub use typed_ast::*;
 pub use types::Type;

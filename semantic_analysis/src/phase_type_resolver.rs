@@ -5,8 +5,8 @@ use crate::{
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement, StringId,
-    UnaryOperator, resolve_string_id,
+    FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement, UnaryOperator,
+    resolve_string_id,
 };
 
 /// Infers and checks types
@@ -45,7 +45,7 @@ impl<'a> TypeResolver {
         let return_type = function
             .signature
             .return_type
-            .map(Self::parse_type)
+            .map(Type::parse)
             .transpose()?;
 
         let arguments = function
@@ -54,7 +54,7 @@ impl<'a> TypeResolver {
             .iter()
             .enumerate()
             .map(|(index, argument)| {
-                let arg_type = Self::parse_type(argument.arg_type);
+                let arg_type = Type::parse(argument.arg_type);
                 arg_type.map(|arg_type| {
                     symbol_table.add_symbol(
                         allocator,
@@ -82,18 +82,6 @@ impl<'a> TypeResolver {
             body,
             symbol_table,
         }))
-    }
-
-    fn parse_type(type_name: StringId) -> Result<Type, SemanticAnalysisError> {
-        let type_name = resolve_string_id(type_name).expect("should be able to resolve type name");
-        match type_name {
-            "int" => Ok(Type::Int),
-            "double" => Ok(Type::Double),
-            "boolean" => Ok(Type::Boolean),
-            _ => Err(SemanticAnalysisError::TypeNotFound {
-                type_name: type_name.to_string(),
-            }),
-        }
     }
 
     pub(crate) fn analyze_block(

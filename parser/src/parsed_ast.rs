@@ -23,7 +23,7 @@ impl CompilationPhase for PhaseParsed<'_> {
     type UnaryBinaryOperandType = ();
     type IdentifierType = StringId;
     type FunctionReturnType = StringId;
-    type FunctionSignatureData = ();
+    type FunctionCallSignatureType = ();
 }
 
 #[derive(Default)]

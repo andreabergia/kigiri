@@ -1,4 +1,5 @@
-use crate::type_resolver::TypeResolver;
+use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
+use crate::phase_type_resolver::TypeResolver;
 use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type};
 use parser::{
     AstAllocator, BinaryOperator, Block, CompilationPhase, Expression, Module, PhaseParsed,
@@ -38,6 +39,9 @@ pub enum SemanticAnalysisError {
     CannotAssignVoidValue { name: String },
     #[error("type not found: \"{type_name}\"")]
     TypeNotFound { type_name: String },
+    // TODO: duplicated function name
+    #[error("function \"{function_name}\" not found")]
+    FunctionNotFound { function_name: String },
 }
 
 #[derive(Default)]
@@ -50,6 +54,8 @@ impl SemanticAnalyzer {
         &self,
         module: &Module<PhaseParsed>,
     ) -> Result<&Module<PhaseTypeResolved>, SemanticAnalysisError> {
+        // TODO: use the module from phase 1
+        TopLevelDeclarationCollector::analyze_module(&self.allocator, module)?;
         TypeResolver::analyze_module(&self.allocator, module)
     }
 

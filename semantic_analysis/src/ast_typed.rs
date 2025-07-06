@@ -24,7 +24,7 @@ impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
     type UnaryBinaryOperandType = Type;
     type IdentifierType = SymbolId;
     type FunctionReturnType = Type;
-    type FunctionSignatureData = &'a FunctionSignature<'a, PhaseTypeResolved<'a>>;
+    type FunctionCallSignatureType = &'a FunctionSignature<'a, PhaseTypeResolved<'a>>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
