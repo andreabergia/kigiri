@@ -13,7 +13,7 @@ impl<'a> CompilationPhase for PhaseTopLevelDeclarationCollected<'a> {
     type ExpressionType = ();
     type UnaryBinaryOperandType = ();
     type IdentifierType = StringId;
-    type FunctionReturnType = Type;
+    type FunctionReturnType = Type; // TODO: StringId, since we aren't resolving other types in this phase (like arguments)
     type FunctionCallSignatureType =
         &'a FunctionSignature<'a, PhaseTopLevelDeclarationCollected<'a>>;
 }

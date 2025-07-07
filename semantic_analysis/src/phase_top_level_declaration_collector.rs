@@ -1,10 +1,10 @@
-use crate::Type;
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
+use crate::Type;
 use parser::{
-    AstAllocator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement, StringId,
-    resolve_string_id,
+    resolve_string_id, AstAllocator, Block, Expression, FunctionDeclaration,
+    FunctionSignature, FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement,
+    StringId,
 };
 
 pub(crate) struct TopLevelDeclarationCollector {}
@@ -210,5 +210,131 @@ impl<'a> TopLevelDeclarationCollector {
             .ok_or(SemanticAnalysisError::FunctionNotFound {
                 function_name: resolve_string_id(*name).expect("function name").to_owned(),
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
+    use crate::semantic_analyzer::SemanticAnalysisError;
+    use crate::Type;
+    use parser::{
+        get_or_create_string, AstAllocator, Expression, FunctionArgument, FunctionSignature,
+        Statement,
+    };
+
+    #[test]
+    fn function_call_resolved() {
+        const SOURCE: &str = r"
+fn main() {
+    add(1, 2);
+}
+
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+";
+
+        let ast_allocator = parser::ParsedAstAllocator::default();
+        let module = parser::parse(&ast_allocator, "test", SOURCE);
+
+        let allocator = AstAllocator::default();
+        let analyzed = TopLevelDeclarationCollector::analyze_module(&allocator, module)
+            .expect("should have passed semantic analysis");
+
+        assert_eq!(2, analyzed.function_signatures.len());
+        assert_eq!(
+            **analyzed
+                .function_signatures
+                .get(&get_or_create_string("main"))
+                .expect("should find main"),
+            FunctionSignature {
+                name: get_or_create_string("main"),
+                return_type: None,
+                arguments: allocator.new_bump_vec(),
+            }
+        );
+        let add_signature = analyzed
+            .function_signatures
+            .get(&get_or_create_string("add"))
+            .expect("should find add");
+        assert_eq!(
+            **add_signature,
+            FunctionSignature {
+                name: get_or_create_string("add"),
+                return_type: Some(Type::Int),
+                arguments: allocator.new_bump_vec_from_iter(vec![
+                    FunctionArgument {
+                        name: get_or_create_string("a"),
+                        arg_type: get_or_create_string("int"),
+                    },
+                    FunctionArgument {
+                        name: get_or_create_string("b"),
+                        arg_type: get_or_create_string("int"),
+                    }
+                ]),
+            }
+        );
+
+        let main = analyzed
+            .functions
+            .first()
+            .expect("should have main function");
+        let expression_statement = main
+            .body
+            .statements
+            .first()
+            .expect("should find the return statement");
+        let expression = *match expression_statement {
+            Statement::Expression { expression } => expression,
+            _ => panic!("Expected a return statement"),
+        };
+        let (name, args, signature) = match expression {
+            Expression::FunctionCall {
+                name,
+                args,
+                signature,
+            } => (name, args, signature),
+            _ => panic!("Expected a function call expression"),
+        };
+        assert_eq!(*name, get_or_create_string("add"));
+        assert_eq!(signature, add_signature);
+        assert_eq!(args.len(), 2);
+        assert_eq!(
+            *args[0],
+            Expression::Literal {
+                value: parser::LiteralValue::Integer(1),
+                resolved_type: (),
+            }
+        );
+        assert_eq!(
+            *args[1],
+            Expression::Literal {
+                value: parser::LiteralValue::Integer(2),
+                resolved_type: (),
+            }
+        );
+    }
+
+    #[test]
+    fn function_call_not_found_resolved() {
+        const SOURCE: &str = r"
+fn main() {
+    add(1, 2);
+}
+";
+
+        let ast_allocator = parser::ParsedAstAllocator::default();
+        let module = parser::parse(&ast_allocator, "test", SOURCE);
+
+        let allocator = AstAllocator::default();
+        let analyzed = TopLevelDeclarationCollector::analyze_module(&allocator, module)
+            .expect_err("should not be valid");
+        assert_eq!(
+            analyzed,
+            SemanticAnalysisError::FunctionNotFound {
+                function_name: "add".to_string()
+            }
+        );
     }
 }
