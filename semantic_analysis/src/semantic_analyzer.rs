@@ -2,8 +2,7 @@ use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
 use crate::phase_type_resolver::TypeResolver;
 use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type};
 use parser::{
-    AstAllocator, BinaryOperator, Block, CompilationPhase, Expression, Module, PhaseParsed,
-    UnaryOperator,
+    AstAllocator, BinaryOperator, CompilationPhase, Expression, Module, PhaseParsed, UnaryOperator,
 };
 use thiserror::Error;
 
@@ -65,14 +64,6 @@ impl SemanticAnalyzer {
         symbol_table: &'s SymbolTable<'s>,
     ) -> Result<&'s Expression<'s, PhaseTypeResolved<'s>>, SemanticAnalysisError> {
         TypeResolver::analyze_expression(&self.allocator, expr, symbol_table)
-    }
-
-    pub fn analyze_block<'s>(
-        &'s self,
-        block: &Block<PhaseParsed>,
-        parent_symbol_table: &'s SymbolTable<'s>,
-    ) -> Result<&'s Block<'s, PhaseTypeResolved<'s>>, SemanticAnalysisError> {
-        TypeResolver::analyze_block(&self.allocator, block, parent_symbol_table)
     }
 
     pub fn root_symbol_table(&self) -> &SymbolTable {
@@ -196,203 +187,6 @@ mod tests {
         test_ok!(binary_compare, "1 > 2", "(>b 1i 2i)");
     }
 
-    mod blocks {
-        use super::*;
-        use crate::TypeResolvedBlock;
-
-        macro_rules! test_ok {
-            ($name: ident, $source: expr, $expected_typed_ast: expr) => {
-                #[test]
-                fn $name() {
-                    let ast_allocator = parser::ParsedAstAllocator::default();
-                    let block = parser::parse_as_block(&ast_allocator, $source);
-
-                    let analyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.root_symbol_table();
-                    let result = analyzer.analyze_block(block, symbol_table);
-
-                    assert_eq!(
-                        TypeResolvedBlock::display(
-                            result.expect("should have succeeded semantic analysis")
-                        ),
-                        $expected_typed_ast
-                    );
-                }
-            };
-        }
-
-        macro_rules! test_ko {
-            ($name: ident, $source: expr, $expected_error: expr) => {
-                #[test]
-                fn $name() {
-                    let ast_allocator = parser::ParsedAstAllocator::default();
-                    let block = parser::parse_as_block(&ast_allocator, $source);
-
-                    let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.root_symbol_table();
-                    let result = analyzer.analyze_block(block, symbol_table);
-
-                    assert_eq!(
-                        result
-                            .expect_err("should have failed semantic analysis")
-                            .to_string(),
-                        $expected_error
-                    );
-                }
-            };
-        }
-
-        test_ok!(
-            return_void,
-            r"{
-    return;
-}",
-            r"{ #0
-  return;
-}
-"
-        );
-        test_ok!(
-            return_expr,
-            r"{
-    return 42;
-}",
-            r"{ #0
-  return 42i;
-}
-"
-        );
-        test_ok!(
-            single_expression,
-            r"{
-    1 + 2;
-}",
-            r"{ #0
-  (+i 1i 2i);
-}
-"
-        );
-        test_ok!(
-            let_single,
-            r"{
-    let a = 42;
-}",
-            r"{ #0
-  let a: int = 42i;
-}
-"
-        );
-        test_ok!(
-            let_multiple,
-            r"{
-    let a = 42, b = true, c = 3.14;
-}",
-            r"{ #0
-  let a: int = 42i, b: boolean = true, c: double = 3.14d;
-}
-"
-        );
-        test_ok!(
-            let_can_redeclare_symbols,
-            r"{
-    let a = 42;
-    let a = true;
-}",
-            r"{ #0
-  let a: int = 42i;
-  let a: boolean = true;
-}
-"
-        );
-        test_ok!(
-            assignment_valid,
-            r"{
-    let a = 42;
-    a = 43;
-}",
-            r"{ #0
-  let a: int = 42i;
-  a = 43i;
-}
-"
-        );
-        test_ok!(
-            nested_block_basic,
-            r"{
-  {
-    1 + 2;
-  }
-}",
-            r"{ #0
-  { #1
-    (+i 1i 2i);
-  }
-}
-"
-        );
-        test_ok!(
-            nested_block_can_resolve_variables_declared_in_outer,
-            r"{
-  let a = 1;
-  {
-    a = 2;
-  }
-}",
-            r"{ #0
-  let a: int = 1i;
-  { #1
-    a = 2i;
-  }
-}
-"
-        );
-        test_ok!(
-            can_use_declared_variables_in_expressions,
-            r"{
-  let a = 1;
-  a + 1;
-}",
-            r"{ #0
-  let a: int = 1i;
-  (+i a 1i);
-}
-"
-        );
-
-        test_ko!(
-            assignment_symbol_not_found,
-            r"{
-    a = 1;
-}",
-            "symbol not found: \"a\""
-        );
-        test_ko!(
-            assignment_type_mismatch,
-            r"{
-    let a = 42;
-    a = false;
-}",
-            "invalid assignment to \"a\": symbol has type int, but expression has type boolean"
-        );
-        test_ko!(
-            variables_declared_in_nested_block_cannot_be_accessed_in_outer,
-            r"{
-  {
-    let a = 1;
-  }
-  a = 2;
-}",
-            "symbol not found: \"a\""
-        );
-        test_ko!(
-            expression_symbol_not_found,
-            r"{
-    x;
-}",
-            "symbol not found: \"x\""
-        );
-    }
-
     mod modules {
         use super::*;
         use crate::TypeResolvedModule;
@@ -468,6 +262,102 @@ mod tests {
         }
 
         test_ok!(
+            empty,
+            r"fn empty() {
+  return;
+}",
+            r"module test
+
+fn empty(
+) -> void
+{ #0
+  return;
+}
+
+"
+        );
+
+        test_ok!(
+            can_declare_and_use_variables,
+            r"fn sum(x: int, y: int, z: int) -> int {
+  let sum = x + y;
+  sum = sum + z;
+  return sum;
+}",
+            r"module test
+
+fn sum(
+  x: int,
+  y: int,
+  z: int,
+) -> int
+{ #0
+  let sum: int = (+i x y);
+  sum = (+i sum z);
+  return sum;
+}
+
+"
+        );
+        test_ok!(
+            let_multiple_etherogeneous,
+            r"fn test() -> boolean {
+  let a = 42, b = true, c = 3.14;
+  return !b && a > 0 && c < 1.0;
+}",
+            r"module test
+
+fn test(
+) -> boolean
+{ #0
+  let a: int = 42i, b: boolean = true, c: double = 3.14d;
+  return (&&b (&&b (!b b) (>b a 0i)) (<b c 1d));
+}
+
+"
+        );
+        test_ok!(
+            can_shadow_variables,
+            r"fn test() -> boolean {
+  let a = 1;
+  let a = true;
+  return a;
+}",
+            r"module test
+
+fn test(
+) -> boolean
+{ #0
+  let a: int = 1i;
+  let a: boolean = true;
+  return a;
+}
+
+"
+        );
+        test_ok!(
+            nested_blocks,
+            r"fn test() -> boolean {
+  let a = 1;
+  {
+    return a;
+  }
+}",
+            r"module test
+
+fn test(
+) -> boolean
+{ #0
+  let a: int = 1i;
+  { #1
+    return a;
+  }
+}
+
+"
+        );
+
+        test_ok!(
             can_use_function_argument_in_expression,
             r"fn inc(x: int) -> int {
   return 1 + x;
@@ -501,13 +391,38 @@ fn inc(
 
 "
         );
+        // TODO: function call
 
         test_ko!(
             variable_not_found,
             r"fn a() {
-    x;
+  x;
 }",
             "symbol not found: \"x\""
+        );
+        test_ko!(
+            assignment_to_variable_not_found,
+            r"fn a() {
+  x = 1;
+}",
+            "symbol not found: \"x\""
+        );
+
+        test_ko!(
+            assignment_type_mismatch,
+            r"fn a() {
+  let a = 42;
+  a = false;
+}",
+            "invalid assignment to \"a\": symbol has type int, but expression has type boolean"
+        );
+        test_ko!(
+            variables_declared_in_nested_block_cannot_be_accessed_in_outer,
+            r"fn a() {
+  { let a = 42; }
+  return a;
+}",
+            "symbol not found: \"a\""
         );
 
         // TODO

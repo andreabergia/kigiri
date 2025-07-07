@@ -1,5 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{ir, FunctionSignature};
+use crate::{FunctionSignature, ir};
 use ir::Variable;
 use parser::{Expression, FunctionDeclaration, Statement};
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, VariableIndex};
