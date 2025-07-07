@@ -18,7 +18,7 @@ pub fn resolve_string_id(string_id: StringId) -> Option<&'static str> {
         })
 }
 
-pub fn get_or_create_string(string: &str) -> StringId {
+pub fn intern_string(string: &str) -> StringId {
     let mut interner = STRING_INTERNER
         .lock()
         .expect("should be able to lock the interner");

@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::grammar::{Grammar, Rule};
 use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
-use crate::symbols::get_or_create_string;
+use crate::symbols::intern_string;
 use bumpalo::collections::Vec as BumpVec;
 use pest::Parser;
 use pest::iterators::Pair;
@@ -121,7 +121,7 @@ fn parse_let_statement<'a>(
         let mut initializer_rule = initializer_rule.into_inner();
 
         let id = initializer_rule.next().unwrap();
-        let id = get_or_create_string(id.as_str());
+        let id = intern_string(id.as_str());
 
         let value = initializer_rule.next().unwrap();
         let value = parse_expression(ast_allocator, value);
@@ -200,8 +200,8 @@ fn parse_function_declaration_arguments<'a>(
         let name = arg.next().expect("argument name").as_str();
         let arg_type = arg.next().expect("argument type").as_str();
         arguments.push(FunctionArgument {
-            name: get_or_create_string(name),
-            arg_type: get_or_create_string(arg_type),
+            name: intern_string(name),
+            arg_type: intern_string(arg_type),
         })
     }
 
@@ -222,7 +222,7 @@ fn parse_function_declaration<'a>(
     let (return_type, body_rule) = if let Rule::functionReturnType = next.as_rule() {
         let return_type = next.into_inner().next().expect("return type").as_str();
         (
-            Some(get_or_create_string(return_type)),
+            Some(intern_string(return_type)),
             rule_iter.next().expect("function body"),
         )
     } else {

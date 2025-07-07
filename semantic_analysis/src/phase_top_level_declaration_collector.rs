@@ -216,8 +216,7 @@ mod tests {
     use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
     use crate::semantic_analyzer::SemanticAnalysisError;
     use parser::{
-        AstAllocator, Expression, FunctionArgument, FunctionSignature, Statement,
-        get_or_create_string,
+        AstAllocator, Expression, FunctionArgument, FunctionSignature, Statement, intern_string,
     };
 
     #[test]
@@ -243,31 +242,31 @@ fn add(a: int, b: int) -> int {
         assert_eq!(
             **analyzed
                 .function_signatures
-                .get(&get_or_create_string("main"))
+                .get(&intern_string("main"))
                 .expect("should find main"),
             FunctionSignature {
-                name: get_or_create_string("main"),
+                name: intern_string("main"),
                 return_type: None,
                 arguments: allocator.new_bump_vec(),
             }
         );
         let add_signature = analyzed
             .function_signatures
-            .get(&get_or_create_string("add"))
+            .get(&intern_string("add"))
             .expect("should find add");
         assert_eq!(
             **add_signature,
             FunctionSignature {
-                name: get_or_create_string("add"),
-                return_type: Some(get_or_create_string("int")),
+                name: intern_string("add"),
+                return_type: Some(intern_string("int")),
                 arguments: allocator.new_bump_vec_from_iter(vec![
                     FunctionArgument {
-                        name: get_or_create_string("a"),
-                        arg_type: get_or_create_string("int"),
+                        name: intern_string("a"),
+                        arg_type: intern_string("int"),
                     },
                     FunctionArgument {
-                        name: get_or_create_string("b"),
-                        arg_type: get_or_create_string("int"),
+                        name: intern_string("b"),
+                        arg_type: intern_string("int"),
                     }
                 ]),
             }
@@ -294,7 +293,7 @@ fn add(a: int, b: int) -> int {
             } => (name, args, signature),
             _ => panic!("Expected a function call expression"),
         };
-        assert_eq!(*name, get_or_create_string("add"));
+        assert_eq!(*name, intern_string("add"));
         assert_eq!(signature, add_signature);
         assert_eq!(args.len(), 2);
         assert_eq!(

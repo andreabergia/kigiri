@@ -2,7 +2,7 @@ use crate::symbols::StringId;
 use crate::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionArgument,
     FunctionDeclaration, FunctionSignature, LetInitializer, LiteralValue, Module, Statement,
-    UnaryOperator, get_or_create_string,
+    UnaryOperator, intern_string,
 };
 use bumpalo::collections::Vec as BumpVec;
 use std::collections::HashMap;
@@ -35,7 +35,7 @@ impl ParsedAstAllocator {
     pub fn identifier(&self, symbol: &str) -> &Expression<PhaseParsed> {
         self.allocator.alloc(Expression::Identifier {
             resolved_type: (),
-            name: get_or_create_string(symbol),
+            name: intern_string(symbol),
         })
     }
 
@@ -107,7 +107,7 @@ impl ParsedAstAllocator {
         'e: 's,
     {
         self.allocator.alloc(Expression::FunctionCall {
-            name: get_or_create_string(name),
+            name: intern_string(name),
             args,
             signature: (),
         })
@@ -189,7 +189,7 @@ impl ParsedAstAllocator {
         'e: 's,
     {
         self.allocator.alloc(Statement::Assignment {
-            target: get_or_create_string(name),
+            target: intern_string(name),
             expression,
         })
     }
@@ -208,7 +208,7 @@ impl ParsedAstAllocator {
         'f: 's,
         'f2: 's,
     {
-        let name = get_or_create_string(module_name);
+        let name = intern_string(module_name);
         self.allocator.alloc(Module {
             name,
             functions,
@@ -233,7 +233,7 @@ impl ParsedAstAllocator {
     {
         self.allocator.alloc(FunctionDeclaration {
             signature: self.allocator.alloc(FunctionSignature {
-                name: get_or_create_string(name),
+                name: intern_string(name),
                 return_type,
                 arguments,
             }),

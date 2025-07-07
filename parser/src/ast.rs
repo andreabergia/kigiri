@@ -1,6 +1,6 @@
 use crate::FunctionSignaturesByName;
 use crate::parsed_ast::PhaseParsed;
-use crate::symbols::{StringId, get_or_create_string, resolve_string_id};
+use crate::symbols::{StringId, intern_string, resolve_string_id};
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::Cell;
 use std::fmt::{Debug, Display, Formatter};
@@ -487,8 +487,8 @@ x;
 
         let mut args = ast_allocator.function_arguments();
         args.push(FunctionArgument {
-            name: get_or_create_string("x"),
-            arg_type: get_or_create_string("int"),
+            name: intern_string("x"),
+            arg_type: intern_string("int"),
         });
         let fun = ast_allocator.function_declaration("foo", None, args, block);
 

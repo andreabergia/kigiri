@@ -456,7 +456,7 @@ mod tests {
             assert_eq!(1, fun.symbol_table.len());
             let symbol = fun
                 .symbol_table
-                .lookup_by_name(parser::get_or_create_string("x"))
+                .lookup_by_name(parser::intern_string("x"))
                 .expect("should have found argument x");
             assert_eq!(Type::Int, symbol.symbol_type);
             assert_eq!(
