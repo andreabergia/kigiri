@@ -1,3 +1,4 @@
+use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
 use crate::{
     ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type, resolved_type,
@@ -5,8 +6,7 @@ use crate::{
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement, UnaryOperator,
-    resolve_string_id,
+    FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator, resolve_string_id,
 };
 
 /// Infers and checks types
@@ -15,7 +15,7 @@ pub(crate) struct TypeResolver {}
 impl<'a> TypeResolver {
     pub(crate) fn analyze_module(
         allocator: &'a AstAllocator,
-        module: &Module<PhaseParsed>,
+        module: &Module<PhaseTopLevelDeclarationCollected>,
     ) -> Result<&'a Module<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut function_signatures =
             FunctionSignaturesByName::with_capacity(module.function_signatures.len());
@@ -38,7 +38,7 @@ impl<'a> TypeResolver {
 
     fn analyze_function(
         allocator: &'a AstAllocator,
-        function: &FunctionDeclaration<PhaseParsed>,
+        function: &FunctionDeclaration<PhaseTopLevelDeclarationCollected>,
     ) -> Result<&'a FunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let symbol_table = SymbolTable::new(allocator, None);
 
@@ -86,7 +86,7 @@ impl<'a> TypeResolver {
 
     pub(crate) fn analyze_block(
         allocator: &'a AstAllocator,
-        block: &Block<PhaseParsed>,
+        block: &Block<PhaseTopLevelDeclarationCollected>,
         parent_symbol_table: &'a SymbolTable<'a>,
     ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut statements = allocator.new_bump_vec_with_capacity(block.statements.len());
@@ -102,7 +102,7 @@ impl<'a> TypeResolver {
 
     fn analyze_statement(
         allocator: &'a AstAllocator,
-        statement: &Statement<PhaseParsed>,
+        statement: &Statement<PhaseTopLevelDeclarationCollected>,
         statements: &mut BumpVec<'a, &'a Statement<'a, PhaseTypeResolved<'a>>>,
         symbol_table: &'a SymbolTable<'a>,
     ) -> Result<(), SemanticAnalysisError> {
@@ -233,7 +233,7 @@ impl<'a> TypeResolver {
 
     pub(crate) fn analyze_expression(
         allocator: &'a AstAllocator,
-        expr: &Expression<PhaseParsed>,
+        expr: &Expression<PhaseTopLevelDeclarationCollected>,
         symbol_table: &'a SymbolTable<'a>,
     ) -> Result<&'a Expression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         match expr {
