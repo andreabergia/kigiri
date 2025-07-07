@@ -17,4 +17,10 @@ Main
 ParseTree refactoring
 - [x] unify Let with initializers or multiple
 - [x] one tree!
-- [ ] create function typing phase
+- [x] create function typing phase
+- [ ] refactor tests to use only e2e API
+- [ ] modify phase type resolution to start from function resolved, and not parsed
+
+Misc
+- [ ] rename `integer` to `int`
+- [ ] rename `boolean` to `bool`

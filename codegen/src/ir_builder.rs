@@ -1,5 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{FunctionSignature, ir};
+use crate::{ir, FunctionSignature};
 use ir::Variable;
 use parser::{Expression, FunctionDeclaration, Statement};
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, VariableIndex};
@@ -222,16 +222,6 @@ impl<'i> FunctionIrBuilder<'i> {
     }
 }
 
-fn build_ir_expression<'i>(
-    ir_allocator: &'i IrAllocator,
-    expression: &Expression<PhaseTypeResolved<'_>>,
-    symbol_table: &SymbolTable,
-) -> &'i BasicBlock<'i> {
-    let builder = FunctionIrBuilder::new(ir_allocator);
-    builder.handle_expression(expression, symbol_table);
-    builder.first_bb
-}
-
 pub fn build_ir_module<'i>(
     ir_allocator: &'i IrAllocator,
     module: &parser::Module<PhaseTypeResolved>,
@@ -249,133 +239,35 @@ mod tests {
     use super::*;
     use semantic_analysis::SemanticAnalyzer;
 
-    mod expressions {
-        use super::*;
+    fn analyze_module<'i>(ir_allocator: &'i IrAllocator, source: &str) -> &'i Module<'i> {
+        let ast_allocator = parser::ParsedAstAllocator::default();
+        let ast_module = parser::parse(&ast_allocator, "test", source);
 
-        fn analyze_expression<'s>(
-            semantic_analyzer: &'s SemanticAnalyzer,
-            source: &str,
-        ) -> &'s Expression<'s, PhaseTypeResolved<'s>> {
-            let ast_allocator = parser::ParsedAstAllocator::default();
-            let expression = parser::parse_as_expression(&ast_allocator, source);
-            let symbol_table = semantic_analyzer.root_symbol_table();
+        let semantic_analyzer = SemanticAnalyzer::default();
+        let typed_module = semantic_analyzer
+            .analyze_module(ast_module)
+            .expect("should have passed semantic analysis");
 
-            let result = semantic_analyzer.analyze_expression(expression, symbol_table);
-            result.expect("should have passed semantic analysis")
-        }
-
-        fn basic_block_from_expression<'i>(
-            ir_allocator: &'i IrAllocator,
-            source: &str,
-        ) -> &'i BasicBlock<'i> {
-            let semantic_analyzer = SemanticAnalyzer::default();
-            let expression = analyze_expression(&semantic_analyzer, source);
-            build_ir_expression(
-                ir_allocator,
-                expression,
-                semantic_analyzer.root_symbol_table(),
-            )
-        }
-
-        macro_rules! test_expression_ir {
-            ($name: ident, $source: expr, $expected: expr) => {
-                #[test]
-                fn $name() {
-                    let ir_allocator = IrAllocator::new();
-                    let bb = basic_block_from_expression(&ir_allocator, $source);
-                    assert_eq!(bb.to_string(), $expected);
-                }
-            };
-        }
-
-        test_expression_ir!(
-            const_int,
-            "1",
-            r"{ #0
-  00000 i const 1i
-}"
-        );
-        test_expression_ir!(
-            const_dbl,
-            "2.0",
-            r"{ #0
-  00000 d const 2d
-}"
-        );
-        test_expression_ir!(
-            const_bool,
-            "true",
-            r"{ #0
-  00000 b const true
-}"
-        );
-
-        test_expression_ir!(
-            neg_int,
-            "- 3",
-            r"{ #0
-  00000 i const 3i
-  00001 i neg @0
-}"
-        );
-
-        test_expression_ir!(
-            add_int,
-            "1 + 2",
-            r"{ #0
-  00000 i const 1i
-  00001 i const 2i
-  00002 i add @0, @1
-}"
-        );
-
-        test_expression_ir!(
-            mixed_expression,
-            "1 + 2 * 3 < 4",
-            r"{ #0
-  00000 i const 1i
-  00001 i const 2i
-  00002 i const 3i
-  00003 i mul @1, @2
-  00004 i add @0, @3
-  00005 i const 4i
-  00006 b lt @4, @5
-}"
-        );
+        build_ir_module(ir_allocator, typed_module)
     }
 
-    mod modules {
-        use super::*;
+    macro_rules! test_module_ir {
+        ($name: ident, $source: expr, $expected: expr) => {
+            #[test]
+            fn $name() {
+                let ir_allocator = IrAllocator::new();
+                let module = analyze_module(&ir_allocator, $source);
+                assert_eq!(module.to_string(), $expected);
+            }
+        };
+    }
 
-        fn analyze_module<'i>(ir_allocator: &'i IrAllocator, source: &str) -> &'i Module<'i> {
-            let ast_allocator = parser::ParsedAstAllocator::default();
-            let ast_module = parser::parse(&ast_allocator, "test", source);
-
-            let semantic_analyzer = SemanticAnalyzer::default();
-            let typed_module = semantic_analyzer
-                .analyze_module(ast_module)
-                .expect("should have passed semantic analysis");
-
-            build_ir_module(ir_allocator, typed_module)
-        }
-
-        macro_rules! test_module_ir {
-            ($name: ident, $source: expr, $expected: expr) => {
-                #[test]
-                fn $name() {
-                    let ir_allocator = IrAllocator::new();
-                    let module = analyze_module(&ir_allocator, $source);
-                    assert_eq!(module.to_string(), $expected);
-                }
-            };
-        }
-
-        test_module_ir!(
-            fn_constant,
-            r"fn one() -> int {
+    test_module_ir!(
+        fn_constant,
+        r"fn one() -> int {
     return 1;
 }",
-            r"module test
+        r"module test
 
 fn one(
 ) -> i
@@ -384,30 +276,48 @@ fn one(
   00001 i ret @0
 }
 "
-        );
-        test_module_ir!(
-            fn_plus_one,
-            r"fn add_one(x: int) -> int {
-    return 1 + x;
+    );
+    test_module_ir!(
+        fn_unary,
+        r"fn neg(x: int) -> int {
+    return - x;
 }",
-            r"module test
+        r"module test
 
-fn add_one(
+fn neg(
   x: int,
 ) -> i
 { #0
-  00000 i const 1i
-  00001 i loadarg x
-  00002 i add @0, @1
-  00003 i ret @2
+  00000 i loadarg x
+  00001 i neg @0
+  00002 i ret @1
 }
 "
-        );
-        test_module_ir!(
-            multiple_fn_reset_ir_counter,
-            r"fn one() -> int { return 1; }
+    );
+
+    test_module_ir!(
+        fn_binary,
+        r"fn add_one(x: double) -> double {
+    return 1.0 + x;
+}",
+        r"module test
+
+fn add_one(
+  x: double,
+) -> d
+{ #0
+  00000 d const 1d
+  00001 d loadarg x
+  00002 d add @0, @1
+  00003 d ret @2
+}
+"
+    );
+    test_module_ir!(
+        multiple_fn_reset_ir_counter,
+        r"fn one() -> int { return 1; }
 fn two() -> int { return 2; }",
-            r"module test
+        r"module test
 
 fn one(
 ) -> i
@@ -422,11 +332,11 @@ fn two(
   00001 i ret @0
 }
 "
-        );
-        test_module_ir!(
-            implicit_return_is_generated,
-            "fn empty() { }",
-            r"module test
+    );
+    test_module_ir!(
+        implicit_return_is_generated,
+        "fn empty() { }",
+        r"module test
 
 fn empty(
 ) -> void
@@ -434,32 +344,32 @@ fn empty(
   00000 v ret
 }
 "
-        );
-        test_module_ir!(
-            variable_declaration,
-            r"fn var() -> int { 
-    let y = 1;
+    );
+    test_module_ir!(
+        variable_declaration,
+        r"fn var() -> boolean {
+    let y = true;
     return y;
 }",
-            r"module test
+        r"module test
 
 fn var(
-) -> i
+) -> b
 { #0
-  var y: int
-  00000 i const 1i
-  00001 i let y = @0
-  00002 i loadvar y
-  00003 i ret @2
+  var y: boolean
+  00000 b const true
+  00001 b let y = @0
+  00002 b loadvar y
+  00003 b ret @2
 }
 "
-        );
-        test_module_ir!(
-            multiple_variable_declaration,
-            r"fn var() { 
+    );
+    test_module_ir!(
+        multiple_variable_declaration,
+        r"fn var() { 
     let y = 1, z = 2;
 }",
-            r"module test
+        r"module test
 
 fn var(
 ) -> void
@@ -473,15 +383,15 @@ fn var(
   00004 v ret
 }
 "
-        );
-        test_module_ir!(
-            variable_assignment,
-            r"fn var() -> int {
+    );
+    test_module_ir!(
+        variable_assignment,
+        r"fn var() -> int {
     let y = 1;
     y = 2;
     return y;
 }",
-            r"module test
+        r"module test
 
 fn var(
 ) -> i
@@ -495,14 +405,14 @@ fn var(
   00005 i ret @4
 }
 "
-        );
-        test_module_ir!(
-            argument_reassignment,
-            r"fn arg_assign(x: int) -> int {
+    );
+    test_module_ir!(
+        argument_reassignment,
+        r"fn arg_assign(x: int) -> int {
     x = x + 1;
     return x;
 }",
-            r"module test
+        r"module test
 
 fn arg_assign(
   x: int,
@@ -517,6 +427,5 @@ fn arg_assign(
   00005 i ret @4
 }
 "
-        );
-    }
+    );
 }
