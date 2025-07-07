@@ -1,9 +1,7 @@
 use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
 use crate::phase_type_resolver::TypeResolver;
 use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type};
-use parser::{
-    AstAllocator, BinaryOperator, CompilationPhase, Expression, Module, PhaseParsed, UnaryOperator,
-};
+use parser::{AstAllocator, BinaryOperator, CompilationPhase, Module, PhaseParsed, UnaryOperator};
 use thiserror::Error;
 
 // For the moment I am using _one_ error type for all the passes
@@ -11,12 +9,12 @@ use thiserror::Error;
 // simpler and I can always split it later.
 #[derive(Debug, Error, PartialEq)]
 pub enum SemanticAnalysisError {
-    #[error("cannot apply operator {operator} to type {operand_type}")]
+    #[error("cannot apply operator \"{operator}\" to type {operand_type}")]
     CannotApplyUnaryOperatorToType {
         operator: UnaryOperator,
         operand_type: String,
     },
-    #[error("cannot apply operator {operator} to types {left_type} and {right_type}")]
+    #[error("cannot apply operator \"{operator}\" to types {left_type} and {right_type}")]
     CannotApplyBinaryOperatorToType {
         operator: BinaryOperator,
         left_type: String,
@@ -58,14 +56,6 @@ impl SemanticAnalyzer {
         TypeResolver::analyze_module(&self.allocator, module)
     }
 
-    pub fn analyze_expression<'s>(
-        &'s self,
-        expr: &Expression<PhaseParsed>,
-        symbol_table: &'s SymbolTable<'s>,
-    ) -> Result<&'s Expression<'s, PhaseTypeResolved<'s>>, SemanticAnalysisError> {
-        TypeResolver::analyze_expression(&self.allocator, expr, symbol_table)
-    }
-
     pub fn root_symbol_table(&self) -> &SymbolTable {
         SymbolTable::new(&self.allocator, None)
     }
@@ -74,199 +64,84 @@ impl SemanticAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TypeResolvedModule;
 
-    mod expressions {
-        use super::*;
-        use crate::to_string_with_symbol_table;
+    macro_rules! test_ok {
+        ($name: ident, $source: expr, $expected_typed_ast: expr) => {
+            #[test]
+            fn $name() {
+                let ast_allocator = parser::ParsedAstAllocator::default();
+                let module = parser::parse(&ast_allocator, "test", $source);
 
-        /// Generates a test case to verify the typed AST produced by a given
-        /// source expression. The typed AST is passed as its string representation.
-        macro_rules! test_ok {
-            ($name: ident, $source: expr, $typed_ast: expr) => {
-                #[test]
-                fn $name() {
-                    let ast_allocator = parser::ParsedAstAllocator::default();
-                    let expression = parser::parse_as_expression(&ast_allocator, $source);
-                    let analyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.root_symbol_table();
-                    let result = analyzer.analyze_expression(expression, symbol_table);
-                    assert_eq!(
-                        to_string_with_symbol_table(
-                            result.expect("should have matched types correctly"),
-                            symbol_table
-                        ),
-                        $typed_ast
-                    );
-                }
-            };
-        }
+                let analyzer = SemanticAnalyzer::default();
+                let result = analyzer.analyze_module(module);
 
-        macro_rules! test_ko {
-            ($name: ident, $source: expr, $expected_error: expr) => {
-                #[test]
-                fn $name() {
-                    let ast_allocator = parser::ParsedAstAllocator::default();
-                    let expression = parser::parse_as_expression(&ast_allocator, $source);
-                    let analyzer = SemanticAnalyzer::default();
-                    let symbol_table = analyzer.root_symbol_table();
-                    let result = analyzer.analyze_expression(expression, symbol_table);
-                    assert_eq!(
-                        result.expect_err("should have failed to match types"),
-                        $expected_error
-                    );
-                }
-            };
-        }
-
-        // Literals
-
-        test_ok!(literal_int, "1", "1i");
-        test_ok!(literal_double, "3.14", "3.14d");
-        test_ok!(literal_boolean, "true", "true");
-
-        // Unary
-
-        test_ok!(unary_neg_int, "- 3", "(-i 3i)");
-        test_ok!(unary_neg_double, "- 3.14", "(-d 3.14d)");
-        test_ko!(
-            unary_neg_boolean,
-            "- false",
-            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-                operator: UnaryOperator::Neg,
-                operand_type: "boolean".to_string()
+                assert_eq!(
+                    TypeResolvedModule::display(
+                        result.expect("should have passed semantic analysis")
+                    ),
+                    $expected_typed_ast
+                );
             }
-        );
-
-        test_ko!(
-            unary_not_int,
-            "! 3",
-            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-                operator: UnaryOperator::Not,
-                operand_type: "int".to_string()
-            }
-        );
-        test_ko!(
-            unary_not_double,
-            "! 3.14",
-            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-                operator: UnaryOperator::Not,
-                operand_type: "double".to_string()
-            }
-        );
-        test_ok!(unary_not_boolean, "! false", "(!b false)");
-
-        test_ok!(unary_bitwise_not_int, "~ 3", "(~i 3i)");
-        test_ko!(
-            unary_bitwise_not_double,
-            "~ 3.14",
-            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-                operator: UnaryOperator::BitwiseNot,
-                operand_type: "double".to_string()
-            }
-        );
-        test_ko!(
-            unary_bitwise_not_boolean,
-            "~ false",
-            SemanticAnalysisError::CannotApplyUnaryOperatorToType {
-                operator: UnaryOperator::BitwiseNot,
-                operand_type: "boolean".to_string()
-            }
-        );
-
-        test_ok!(binary_add_int, "1 + 2", "(+i 1i 2i)");
-        test_ok!(binary_add_double, "1.0 + 2.0", "(+d 1d 2d)");
-        test_ko!(
-            binary_add_int_double,
-            "1 + 3.14",
-            SemanticAnalysisError::CannotApplyBinaryOperatorToType {
-                operator: BinaryOperator::Add,
-                left_type: "int".to_string(),
-                right_type: "double".to_string(),
-            }
-        );
-        test_ok!(binary_compare, "1 > 2", "(>b 1i 2i)");
+        };
     }
 
-    mod modules {
-        use super::*;
-        use crate::TypeResolvedModule;
+    macro_rules! test_ko {
+        ($name: ident, $source: expr, $expected_error: expr) => {
+            #[test]
+            fn $name() {
+                let ast_allocator = parser::ParsedAstAllocator::default();
+                let module = parser::parse(&ast_allocator, "test", $source);
 
-        macro_rules! test_ok {
-            ($name: ident, $source: expr, $expected_typed_ast: expr) => {
-                #[test]
-                fn $name() {
-                    let ast_allocator = parser::ParsedAstAllocator::default();
-                    let module = parser::parse(&ast_allocator, "test", $source);
+                let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
+                let result = analyzer.analyze_module(module);
 
-                    let analyzer = SemanticAnalyzer::default();
-                    let result = analyzer.analyze_module(module);
+                assert_eq!(
+                    result
+                        .expect_err("should have failed semantic analysis")
+                        .to_string(),
+                    $expected_error
+                );
+            }
+        };
+    }
 
-                    assert_eq!(
-                        TypeResolvedModule::display(
-                            result.expect("should have passed semantic analysis")
-                        ),
-                        $expected_typed_ast
-                    );
-                }
-            };
-        }
+    #[test]
+    fn function_symbol_map_contains_arguments() {
+        let ast_allocator = parser::ParsedAstAllocator::default();
+        let module = parser::parse(
+            &ast_allocator,
+            "test",
+            "fn inc(x: int) -> int { return 1 + x; }",
+        );
 
-        macro_rules! test_ko {
-            ($name: ident, $source: expr, $expected_error: expr) => {
-                #[test]
-                fn $name() {
-                    let ast_allocator = parser::ParsedAstAllocator::default();
-                    let module = parser::parse(&ast_allocator, "test", $source);
+        let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
+        let result = analyzer
+            .analyze_module(module)
+            .expect("should have passed semantic analysis");
 
-                    let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
-                    let result = analyzer.analyze_module(module);
+        assert_eq!(1, result.functions.len());
+        let fun = result.functions[0];
+        assert_eq!(1, fun.symbol_table.len());
+        let symbol = fun
+            .symbol_table
+            .lookup_by_name(parser::intern_string("x"))
+            .expect("should have found argument x");
+        assert_eq!(Type::Int, symbol.symbol_type);
+        assert_eq!(
+            SymbolKind::Argument {
+                index: ArgumentIndex::from(0)
+            },
+            symbol.kind
+        );
+    }
 
-                    assert_eq!(
-                        result
-                            .expect_err("should have failed semantic analysis")
-                            .to_string(),
-                        $expected_error
-                    );
-                }
-            };
-        }
-
-        #[test]
-        fn function_symbol_map_contains_arguments() {
-            let ast_allocator = parser::ParsedAstAllocator::default();
-            let module = parser::parse(
-                &ast_allocator,
-                "test",
-                "fn inc(x: int) -> int { return 1 + x; }",
-            );
-
-            let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
-            let result = analyzer
-                .analyze_module(module)
-                .expect("should have passed semantic analysis");
-
-            assert_eq!(1, result.functions.len());
-            let fun = result.functions[0];
-            assert_eq!(1, fun.symbol_table.len());
-            let symbol = fun
-                .symbol_table
-                .lookup_by_name(parser::intern_string("x"))
-                .expect("should have found argument x");
-            assert_eq!(Type::Int, symbol.symbol_type);
-            assert_eq!(
-                SymbolKind::Argument {
-                    index: ArgumentIndex::from(0)
-                },
-                symbol.kind
-            );
-        }
-
-        test_ok!(
-            empty,
-            r"fn empty() {
+    test_ok!(
+        empty,
+        r"fn empty() {
   return;
 }",
-            r"module test
+        r"module test
 
 fn empty(
 ) -> void
@@ -275,16 +150,54 @@ fn empty(
 }
 
 "
-        );
+    );
+    test_ok!(
+        basic_arithmetic_valid,
+        r"
+fn tests() {
+    1;
+    1.2;
+    true;
+    
+    -3;
+    -3.14;
+    !false;
+    
+    1 + 2;
+    3 << 2;
+    1.0 * 2.0;
+    1 > 2;
+    true && false;
+}
+",
+        r"module test
 
-        test_ok!(
-            can_declare_and_use_variables,
-            r"fn sum(x: int, y: int, z: int) -> int {
+fn tests(
+) -> void
+{ #0
+  1i;
+  1.2d;
+  true;
+  (-i 3i);
+  (-d 3.14d);
+  (!b false);
+  (+i 1i 2i);
+  (<<i 3i 2i);
+  (*d 1d 2d);
+  (>b 1i 2i);
+  (&&b true false);
+}
+
+"
+    );
+    test_ok!(
+        can_declare_and_use_variables,
+        r"fn sum(x: int, y: int, z: int) -> int {
   let sum = x + y;
   sum = sum + z;
   return sum;
 }",
-            r"module test
+        r"module test
 
 fn sum(
   x: int,
@@ -298,14 +211,14 @@ fn sum(
 }
 
 "
-        );
-        test_ok!(
-            let_multiple_etherogeneous,
-            r"fn test() -> boolean {
+    );
+    test_ok!(
+        let_multiple_etherogeneous,
+        r"fn test() -> boolean {
   let a = 42, b = true, c = 3.14;
   return !b && a > 0 && c < 1.0;
 }",
-            r"module test
+        r"module test
 
 fn test(
 ) -> boolean
@@ -315,15 +228,15 @@ fn test(
 }
 
 "
-        );
-        test_ok!(
-            can_shadow_variables,
-            r"fn test() -> boolean {
+    );
+    test_ok!(
+        can_shadow_variables,
+        r"fn test() -> boolean {
   let a = 1;
   let a = true;
   return a;
 }",
-            r"module test
+        r"module test
 
 fn test(
 ) -> boolean
@@ -334,16 +247,16 @@ fn test(
 }
 
 "
-        );
-        test_ok!(
-            nested_blocks,
-            r"fn test() -> boolean {
+    );
+    test_ok!(
+        nested_blocks,
+        r"fn test() -> boolean {
   let a = 1;
   {
     return a;
   }
 }",
-            r"module test
+        r"module test
 
 fn test(
 ) -> boolean
@@ -355,14 +268,14 @@ fn test(
 }
 
 "
-        );
+    );
 
-        test_ok!(
-            can_use_function_argument_in_expression,
-            r"fn inc(x: int) -> int {
+    test_ok!(
+        can_use_function_argument_in_expression,
+        r"fn inc(x: int) -> int {
   return 1 + x;
 }",
-            r"module test
+        r"module test
 
 fn inc(
   x: int,
@@ -372,14 +285,14 @@ fn inc(
 }
 
 "
-        );
-        test_ok!(
-            can_assign_to_function_argument,
-            r"fn inc(x: int) -> int {
+    );
+    test_ok!(
+        can_assign_to_function_argument,
+        r"fn inc(x: int) -> int {
   x = x + 1;
   return x;
 }",
-            r"module test
+        r"module test
 
 fn inc(
   x: int,
@@ -390,52 +303,82 @@ fn inc(
 }
 
 "
-        );
-        // TODO: function call
+    );
+    // TODO: function call
 
-        test_ko!(
-            variable_not_found,
-            r"fn a() {
+    test_ko!(
+        invalid_types_neg_boolean,
+        "fn test() { - false; }",
+        "cannot apply operator \"-\" to type boolean"
+    );
+    test_ko!(
+        invalid_types_not_int,
+        "fn test() { ! 1; }",
+        "cannot apply operator \"!\" to type int"
+    );
+    test_ko!(
+        invalid_types_not_double,
+        "fn test() { ! 3.14; }",
+        "cannot apply operator \"!\" to type double"
+    );
+    test_ko!(
+        invalid_types_bitwise_not_double,
+        "fn test() { ~ 3.14; }",
+        "cannot apply operator \"~\" to type double"
+    );
+    test_ko!(
+        invalid_types_bitwise_not_boolean,
+        "fn test() { ~ false; }",
+        "cannot apply operator \"~\" to type boolean"
+    );
+    test_ko!(
+        invalid_types_binary_mismatch,
+        "fn test() { 1 + 3.14; }",
+        "cannot apply operator \"+\" to types int and double"
+    );
+
+    test_ko!(
+        variable_not_found,
+        r"fn a() {
   x;
 }",
-            "symbol not found: \"x\""
-        );
-        test_ko!(
-            assignment_to_variable_not_found,
-            r"fn a() {
+        "symbol not found: \"x\""
+    );
+    test_ko!(
+        assignment_to_variable_not_found,
+        r"fn a() {
   x = 1;
 }",
-            "symbol not found: \"x\""
-        );
+        "symbol not found: \"x\""
+    );
 
-        test_ko!(
-            assignment_type_mismatch,
-            r"fn a() {
+    test_ko!(
+        assignment_type_mismatch,
+        r"fn a() {
   let a = 42;
   a = false;
 }",
-            "invalid assignment to \"a\": symbol has type int, but expression has type boolean"
-        );
-        test_ko!(
-            variables_declared_in_nested_block_cannot_be_accessed_in_outer,
-            r"fn a() {
+        "invalid assignment to \"a\": symbol has type int, but expression has type boolean"
+    );
+    test_ko!(
+        variables_declared_in_nested_block_cannot_be_accessed_in_outer,
+        r"fn a() {
   { let a = 42; }
   return a;
 }",
-            "symbol not found: \"a\""
-        );
+        "symbol not found: \"a\""
+    );
 
-        // TODO
-        //         test_ko!(
-        //             cannot_assign_to_function,
-        //             r"fn a() {}
-        //
-        // fn b() {
-        //   a = 1;
-        // }",
-        //             "symbol not found: \"x\""
-        //         );
+    // TODO
+    //         test_ko!(
+    //             cannot_assign_to_function,
+    //             r"fn a() {}
+    //
+    // fn b() {
+    //   a = 1;
+    // }",
+    //             "symbol not found: \"x\""
+    //         );
 
-        // TODO: all return match expected type? here or in separate pass?
-    }
+    // TODO: all return match expected type? here or in separate pass?
 }
