@@ -1,10 +1,9 @@
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
-use crate::Type;
 use parser::{
-    resolve_string_id, AstAllocator, Block, Expression, FunctionDeclaration,
-    FunctionSignature, FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement,
-    StringId,
+    AstAllocator, Block, Expression, FunctionDeclaration, FunctionSignature,
+    FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement, StringId,
+    resolve_string_id,
 };
 
 pub(crate) struct TopLevelDeclarationCollector {}
@@ -22,7 +21,6 @@ impl<'a> TopLevelDeclarationCollector {
         // First pass: map function signatures
         for function in module.functions.iter() {
             let return_type = function.signature.return_type;
-            let return_type = return_type.map(Type::parse).transpose()?;
             let mapped_function_signature = allocator.alloc(FunctionSignature {
                 name: function.signature.name,
                 return_type,
@@ -217,10 +215,9 @@ impl<'a> TopLevelDeclarationCollector {
 mod tests {
     use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
     use crate::semantic_analyzer::SemanticAnalysisError;
-    use crate::Type;
     use parser::{
-        get_or_create_string, AstAllocator, Expression, FunctionArgument, FunctionSignature,
-        Statement,
+        AstAllocator, Expression, FunctionArgument, FunctionSignature, Statement,
+        get_or_create_string,
     };
 
     #[test]
@@ -262,7 +259,7 @@ fn add(a: int, b: int) -> int {
             **add_signature,
             FunctionSignature {
                 name: get_or_create_string("add"),
-                return_type: Some(Type::Int),
+                return_type: Some(get_or_create_string("int")),
                 arguments: allocator.new_bump_vec_from_iter(vec![
                     FunctionArgument {
                         name: get_or_create_string("a"),
