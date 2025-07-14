@@ -12,7 +12,7 @@ pub trait CompilationPhase {
     type UnaryBinaryOperandType: Debug + PartialEq;
     type IdentifierType: Debug + PartialEq;
     type FunctionReturnType: Debug + PartialEq;
-    type FunctionCallSignatureType: Debug + PartialEq;
+    type FunctionCallReturnType: Debug + PartialEq;
 }
 
 #[derive(Debug, PartialEq)]
@@ -146,7 +146,7 @@ pub enum Expression<'a, Phase: CompilationPhase> {
     FunctionCall {
         name: Phase::IdentifierType,
         args: BumpVec<'a, &'a Expression<'a, Phase>>,
-        signature: Phase::FunctionCallSignatureType,
+        return_type: Phase::FunctionCallReturnType,
     },
 }
 

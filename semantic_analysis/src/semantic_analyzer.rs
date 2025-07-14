@@ -39,6 +39,8 @@ pub enum SemanticAnalysisError {
     // TODO: duplicated function name
     #[error("function \"{function_name}\" not found")]
     FunctionNotFound { function_name: String },
+    #[error("\"{name}\" is not a function")]
+    NotAFunction { name: String },
 }
 
 #[derive(Default)]
@@ -418,6 +420,26 @@ fn main(
 }"#,
         r#"function "f" not found"#
     );
+    test_ko!(
+        calling_a_non_function_symbol,
+        r#"fn main() -> int {
+  let f = 42;
+  return f();
+}"#,
+        r#""f" is not a function"#
+    );
+    test_ko!(
+        calling_a_shadowed_function,
+        r#"
+fn f() -> int { return 42; }
+fn main() -> int {
+  let f = 42;
+  return f();
+}"#,
+        r#""f" is not a function"#
+    );
+
+    // TODO: calling void functions
 
     // TODO
     //         test_ko!(

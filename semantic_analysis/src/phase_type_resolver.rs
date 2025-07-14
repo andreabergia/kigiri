@@ -1,12 +1,12 @@
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
 use crate::{
-    resolved_type, ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type,
+    ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type, resolved_type,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    resolve_string_id, AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration,
-    FunctionSignature, FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator,
+    AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
+    FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator, resolve_string_id,
 };
 
 /// Infers and checks types
@@ -291,15 +291,15 @@ impl<'a> TypeResolver {
             Expression::FunctionCall {
                 name,
                 args,
-                signature,
+                return_type,
             } => {
                 let function_symbol = symbol_table.lookup_by_name(*name);
                 let function_symbol = match function_symbol {
                     Some(symbol) => match symbol.kind {
                         SymbolKind::Function => symbol,
                         _ => {
-                            return Err(SemanticAnalysisError::FunctionNotFound {
-                                function_name: resolve_string_id(*name)
+                            return Err(SemanticAnalysisError::NotAFunction {
+                                name: resolve_string_id(*name)
                                     .expect("should be able to find string")
                                     .to_owned(),
                             });
@@ -314,25 +314,17 @@ impl<'a> TypeResolver {
                     }
                 };
 
-                // Type-check all arguments
+                // TODO: Type-check all arguments
                 let typed_args = args
                     .iter()
                     .map(|arg| Self::analyze_expression(allocator, arg, symbol_table))
                     .collect::<Result<Vec<_>, _>>()?;
-                let typed_args = allocator.new_bump_vec_from_iter(typed_args.into_iter());
-
-                // For now, create a minimal typed signature with empty arguments
-                // TODO: properly handle function signature conversion when argument validation is needed
-                let typed_signature = allocator.alloc(FunctionSignature {
-                    name: signature.name,
-                    return_type: signature.return_type.map(Type::parse).transpose()?,
-                    arguments: allocator.new_bump_vec(), // Empty for now
-                });
+                let typed_args = allocator.new_bump_vec_from_iter(typed_args);
 
                 Ok(allocator.alloc(Expression::FunctionCall {
                     name: function_symbol.id,
                     args: typed_args,
-                    signature: typed_signature,
+                    return_type: Some(function_symbol.symbol_type),
                 }))
             }
 

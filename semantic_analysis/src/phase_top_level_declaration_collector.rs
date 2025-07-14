@@ -61,7 +61,7 @@ impl<'a> TopLevelDeclarationCollector {
 
         Ok(allocator.alloc(FunctionDeclaration {
             signature,
-            body: Self::map_block(allocator, function_signatures, function.body)?,
+            body: Self::map_block(allocator, function.body)?,
             symbol_table: (),
         }))
     }
@@ -77,14 +77,13 @@ impl<'a> TopLevelDeclarationCollector {
 
     fn map_block(
         allocator: &'a AstAllocator,
-        function_signatures: &FunctionSignaturesByName<'a, PhaseTopLevelDeclarationCollected<'a>>,
         block: &Block<PhaseParsed>,
     ) -> Result<&'a Block<'a, PhaseTopLevelDeclarationCollected<'a>>, SemanticAnalysisError> {
         let mapped_statements = allocator.new_bump_vec_from_iter_result(
             block
                 .statements
                 .iter()
-                .map(|statement| Self::map_statement(allocator, function_signatures, statement)),
+                .map(|statement| Self::map_statement(allocator, statement)),
         )?;
         Ok(allocator.alloc(Block {
             id: block.id,
@@ -95,7 +94,6 @@ impl<'a> TopLevelDeclarationCollector {
 
     fn map_statement(
         allocator: &'a AstAllocator,
-        function_signatures: &FunctionSignaturesByName<'a, PhaseTopLevelDeclarationCollected<'a>>,
         statement: &Statement<PhaseParsed>,
     ) -> Result<&'a Statement<'a, PhaseTopLevelDeclarationCollected<'a>>, SemanticAnalysisError>
     {
@@ -103,8 +101,7 @@ impl<'a> TopLevelDeclarationCollector {
             Statement::Let { initializers } => {
                 let mapped_initializers = allocator.new_bump_vec_from_iter_result(
                     initializers.iter().map(|initializer| {
-                        let value =
-                            Self::map_expression(allocator, function_signatures, initializer.value);
+                        let value = Self::map_expression(allocator, initializer.value);
                         value.map(|value| LetInitializer {
                             variable: initializer.variable,
                             value,
@@ -117,25 +114,24 @@ impl<'a> TopLevelDeclarationCollector {
             }
             Statement::Assignment { target, expression } => Statement::Assignment {
                 target: *target,
-                expression: Self::map_expression(allocator, function_signatures, expression)?,
+                expression: Self::map_expression(allocator, expression)?,
             },
             Statement::Return { expression } => Statement::Return {
                 expression: expression
-                    .map(|e| Self::map_expression(allocator, function_signatures, e))
+                    .map(|e| Self::map_expression(allocator, e))
                     .transpose()?,
             },
             Statement::Expression { expression } => Statement::Expression {
-                expression: Self::map_expression(allocator, function_signatures, expression)?,
+                expression: Self::map_expression(allocator, expression)?,
             },
             Statement::NestedBlock { block } => Statement::NestedBlock {
-                block: Self::map_block(allocator, function_signatures, block)?,
+                block: Self::map_block(allocator, block)?,
             },
         }))
     }
 
     fn map_expression(
         allocator: &'a AstAllocator,
-        function_signatures: &FunctionSignaturesByName<'a, PhaseTopLevelDeclarationCollected<'a>>,
         expression: &Expression<PhaseParsed>,
     ) -> Result<&'a Expression<'a, PhaseTopLevelDeclarationCollected<'a>>, SemanticAnalysisError>
     {
@@ -160,7 +156,7 @@ impl<'a> TopLevelDeclarationCollector {
                 resolved_type,
             } => Expression::Unary {
                 operator: operator.clone(),
-                operand: Self::map_expression(allocator, function_signatures, operand)?,
+                operand: Self::map_expression(allocator, operand)?,
                 resolved_type: *resolved_type,
             },
             Expression::Binary {
@@ -172,24 +168,18 @@ impl<'a> TopLevelDeclarationCollector {
             } => Expression::Binary {
                 operator: operator.clone(),
                 operand_type: *operand_type,
-                left: Self::map_expression(allocator, function_signatures, left)?,
-                right: Self::map_expression(allocator, function_signatures, right)?,
+                left: Self::map_expression(allocator, left)?,
+                right: Self::map_expression(allocator, right)?,
                 result_type: *result_type,
             },
-            Expression::FunctionCall {
-                name,
-                args,
-                signature,
-            } => {
-                let mapped_args =
-                    allocator
-                        .new_bump_vec_from_iter_result(args.iter().map(|arg| {
-                            Self::map_expression(allocator, function_signatures, arg)
-                        }))?;
+            Expression::FunctionCall { name, args, .. } => {
+                let mapped_args = allocator.new_bump_vec_from_iter_result(
+                    args.iter().map(|arg| Self::map_expression(allocator, arg)),
+                )?;
                 Expression::FunctionCall {
                     name: *name,
-                    signature: Self::resolve_function_signature(function_signatures, name)?,
                     args: mapped_args,
+                    return_type: (),
                 }
             }
         }))
@@ -214,7 +204,6 @@ impl<'a> TopLevelDeclarationCollector {
 #[cfg(test)]
 mod tests {
     use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
-    use crate::semantic_analyzer::SemanticAnalysisError;
     use parser::{
         AstAllocator, Expression, FunctionArgument, FunctionSignature, Statement, intern_string,
     };
@@ -285,16 +274,15 @@ fn add(a: int, b: int) -> int {
             Statement::Expression { expression } => expression,
             _ => panic!("Expected a return statement"),
         };
-        let (name, args, signature) = match expression {
+        let (name, args, return_type) = match expression {
             Expression::FunctionCall {
                 name,
                 args,
-                signature,
-            } => (name, args, signature),
+                return_type,
+            } => (name, args, return_type),
             _ => panic!("Expected a function call expression"),
         };
         assert_eq!(*name, intern_string("add"));
-        assert_eq!(signature, add_signature);
         assert_eq!(args.len(), 2);
         assert_eq!(
             *args[0],
@@ -308,28 +296,6 @@ fn add(a: int, b: int) -> int {
             Expression::Literal {
                 value: parser::LiteralValue::Integer(2),
                 resolved_type: (),
-            }
-        );
-    }
-
-    #[test]
-    fn function_call_not_found_resolved() {
-        const SOURCE: &str = r"
-fn main() {
-    add(1, 2);
-}
-";
-
-        let ast_allocator = parser::ParsedAstAllocator::default();
-        let module = parser::parse(&ast_allocator, "test", SOURCE);
-
-        let allocator = AstAllocator::default();
-        let analyzed = TopLevelDeclarationCollector::analyze_module(&allocator, module)
-            .expect_err("should not be valid");
-        assert_eq!(
-            analyzed,
-            SemanticAnalysisError::FunctionNotFound {
-                function_name: "add".to_string()
             }
         );
     }

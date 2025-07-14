@@ -2,8 +2,7 @@ use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
-    FunctionDeclaration, FunctionSignature, LiteralValue, Module, Statement, StringId,
-    resolve_string_id,
+    FunctionDeclaration, LiteralValue, Module, Statement, StringId, resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -24,7 +23,7 @@ impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
     type UnaryBinaryOperandType = Type;
     type IdentifierType = SymbolId;
     type FunctionReturnType = Type;
-    type FunctionCallSignatureType = &'a FunctionSignature<'a, PhaseTypeResolved<'a>>;
+    type FunctionCallReturnType = Option<Type>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -454,7 +453,7 @@ pub fn resolved_type(expression: &Expression<'_, PhaseTypeResolved<'_>>) -> Opti
         Expression::Literal { resolved_type, .. } => *resolved_type,
         Expression::Unary { resolved_type, .. } => Some(*resolved_type),
         Expression::Binary { result_type, .. } => Some(*result_type),
-        Expression::FunctionCall { signature, .. } => signature.return_type,
+        Expression::FunctionCall { return_type, .. } => *return_type,
     }
 }
 

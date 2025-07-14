@@ -23,7 +23,7 @@ impl CompilationPhase for PhaseParsed<'_> {
     type UnaryBinaryOperandType = ();
     type IdentifierType = StringId;
     type FunctionReturnType = StringId;
-    type FunctionCallSignatureType = ();
+    type FunctionCallReturnType = ();
 }
 
 #[derive(Default)]
@@ -109,7 +109,7 @@ impl ParsedAstAllocator {
         self.allocator.alloc(Expression::FunctionCall {
             name: intern_string(name),
             args,
-            signature: (),
+            return_type: (),
         })
     }
 
