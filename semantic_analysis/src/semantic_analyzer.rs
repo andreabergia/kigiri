@@ -441,16 +441,15 @@ fn main() -> int {
 
     // TODO: calling void functions
 
-    // TODO
-    //         test_ko!(
-    //             cannot_assign_to_function,
-    //             r"fn a() {}
-    //
-    // fn b() {
-    //   a = 1;
-    // }",
-    //             "symbol not found: \"x\""
-    //         );
+    test_ko!(
+        cannot_assign_to_function,
+        r"fn a() {}
+
+    fn b() {
+      a = 1;
+    }",
+        "cannot assign value to function \"a\""
+    );
 
     // TODO: all return match expected type? here or in separate pass?
 }
