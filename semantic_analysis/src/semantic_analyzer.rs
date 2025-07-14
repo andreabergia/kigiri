@@ -304,7 +304,50 @@ fn inc(
 
 "
     );
-    // TODO: function call
+    test_ok!(
+        function_call_no_args,
+        r#"
+fn f() -> int { return 42; }
+fn main() -> int { return f(); }"#,
+        r#"module test
+
+fn f(
+) -> int
+{ #0
+  return 42i;
+}
+
+fn main(
+) -> int
+{ #1
+  return f();
+}
+
+"#
+    );
+
+    test_ok!(
+        function_call_with_args,
+        r#"
+fn inc(x: int) -> int { return x + 1; }
+fn main() -> int { return inc(41); }"#,
+        r#"module test
+
+fn inc(
+  x: int,
+) -> int
+{ #0
+  return (+i x 1i);
+}
+
+fn main(
+) -> int
+{ #1
+  return inc(41i);
+}
+
+"#
+    );
 
     test_ko!(
         invalid_types_neg_boolean,
@@ -367,6 +410,13 @@ fn inc(
   return a;
 }",
         "symbol not found: \"a\""
+    );
+    test_ko!(
+        function_not_found,
+        r#"fn main() -> int {
+  return f();
+}"#,
+        r#"function "f" not found"#
     );
 
     // TODO
