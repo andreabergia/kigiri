@@ -1,12 +1,12 @@
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
 use crate::{
-    ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type, resolved_type,
+    resolved_type, ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator, resolve_string_id,
+    resolve_string_id, AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration,
+    FunctionSignature, FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator,
 };
 
 /// Infers and checks types
@@ -286,7 +286,7 @@ impl<'a> TypeResolver {
                                 name: symbol.id,
                                 resolved_type: Some(resolved_type),
                             })),
-                            // TODO: make a different error
+                            // TODO: allow eventually assigning variables of function type
                             SymbolKind::Function { .. } => {
                                 Err(SemanticAnalysisError::SymbolNotFound {
                                     name: resolve_string_id(*symbol_id)

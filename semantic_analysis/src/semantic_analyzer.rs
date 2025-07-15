@@ -53,7 +53,6 @@ impl SemanticAnalyzer {
         &self,
         module: &Module<PhaseParsed>,
     ) -> Result<&Module<PhaseTypeResolved>, SemanticAnalysisError> {
-        // TODO: use the module from phase 1
         let module = TopLevelDeclarationCollector::analyze_module(&self.allocator, module)?;
         TypeResolver::analyze_module(&self.allocator, module)
     }
