@@ -41,6 +41,22 @@ pub enum SemanticAnalysisError {
     FunctionNotFound { function_name: String },
     #[error("\"{name}\" is not a function")]
     NotAFunction { name: String },
+    #[error(
+        "not enough arguments in call to \"{function_name}\": expected {expected}, found {found}"
+    )]
+    ArgumentCountMismatchTooFew {
+        function_name: String,
+        expected: usize,
+        found: usize,
+    },
+    #[error(
+        "too many arguments in call to \"{function_name}\": expected {expected}, found {found}"
+    )]
+    ArgumentCountMismatchTooMany {
+        function_name: String,
+        expected: usize,
+        found: usize,
+    },
 }
 
 #[derive(Default)]
@@ -474,6 +490,20 @@ fn main() {
       a = 1;
     }",
         "cannot assign value to function \"a\""
+    );
+    test_ko!(
+        argument_to_function_call_number_mismatch_too_few,
+        r"
+fn f(x: int) {}
+fn main() { f(); }",
+        "not enough arguments in call to \"f\": expected 1, found 0"
+    );
+    test_ko!(
+        argument_to_function_call_number_mismatch_too_many,
+        r"
+fn f() {}
+fn main() { f(1); }",
+        "too many arguments in call to \"f\": expected 0, found 1"
     );
 
     // TODO: all return match expected type? here or in separate pass?

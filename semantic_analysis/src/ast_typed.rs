@@ -2,7 +2,8 @@ use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
-    FunctionDeclaration, LiteralValue, Module, Statement, StringId, resolve_string_id,
+    FunctionDeclaration, FunctionSignature, LiteralValue, Module, Statement, StringId,
+    resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -37,9 +38,9 @@ pub struct ArgumentIndex {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum SymbolKind {
+pub enum SymbolKind<'a> {
     Function {
-        return_type: Option<Type>,
+        signature: &'a FunctionSignature<'a, PhaseTypeResolved<'a>>,
     },
     Variable {
         index: VariableIndex,
@@ -52,10 +53,10 @@ pub enum SymbolKind {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Symbol {
+pub struct Symbol<'a> {
     pub id: SymbolId,
     pub name: StringId,
-    pub kind: SymbolKind,
+    pub kind: SymbolKind<'a>,
     // TODO: declaration location (span)
 }
 
@@ -64,9 +65,9 @@ pub struct SymbolId(pub u32);
 
 #[derive(Debug, PartialEq)]
 pub struct SymbolTable<'a> {
-    allocated_symbols: RefCell<BumpVec<'a, &'a Symbol>>,
-    symbols_by_id: RefCell<HashMap<SymbolId, &'a Symbol>>,
-    symbols_by_name: RefCell<HashMap<StringId, &'a Symbol>>,
+    allocated_symbols: RefCell<BumpVec<'a, &'a Symbol<'a>>>,
+    symbols_by_id: RefCell<HashMap<SymbolId, &'a Symbol<'a>>>,
+    symbols_by_name: RefCell<HashMap<StringId, &'a Symbol<'a>>>,
     parent: Option<&'a SymbolTable<'a>>,
     num_variables: RefCell<usize>,
 }
@@ -195,7 +196,7 @@ fn fmt_with_context(
     writeln!(f, "{}}}", context.indent)
 }
 
-impl Symbol {
+impl Symbol<'_> {
     fn name(&self) -> &str {
         resolve_string_id(self.name).expect("symbol name")
     }
@@ -210,7 +211,7 @@ impl Symbol {
     }
 }
 
-impl Display for Symbol {
+impl Display for Symbol<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.name(), Type::name(self.symbol_type()))
     }
@@ -412,11 +413,21 @@ impl<'a> SymbolTable<'a> {
         })
     }
 
+    pub fn new_global(allocator: &'a AstAllocator, capacity: usize) -> &'a Self {
+        allocator.alloc(Self {
+            allocated_symbols: RefCell::new(allocator.new_bump_vec_with_capacity(capacity)),
+            symbols_by_id: RefCell::new(HashMap::with_capacity(capacity)),
+            symbols_by_name: RefCell::new(HashMap::with_capacity(capacity)),
+            parent: None,
+            num_variables: RefCell::new(0),
+        })
+    }
+
     pub fn add_symbol(
         &self,
         allocator: &'a AstAllocator,
         name: StringId,
-        kind: SymbolKind,
+        kind: SymbolKind<'a>,
     ) -> SymbolId {
         let id = next_symbol_id();
         let symbol = allocator.alloc(Symbol { id, name, kind });
@@ -433,7 +444,7 @@ impl<'a> SymbolTable<'a> {
         id
     }
 
-    pub fn lookup_by_name(&self, name: StringId) -> Option<&Symbol> {
+    pub fn lookup_by_name(&self, name: StringId) -> Option<&'a Symbol<'a>> {
         self.symbols_by_name
             .borrow()
             .get(&name)
@@ -441,7 +452,7 @@ impl<'a> SymbolTable<'a> {
             .or_else(|| self.parent.and_then(|parent| parent.lookup_by_name(name)))
     }
 
-    pub fn lookup_by_id(&self, id: SymbolId) -> Option<&Symbol> {
+    pub fn lookup_by_id(&self, id: SymbolId) -> Option<&'a Symbol<'a>> {
         self.symbols_by_id
             .borrow()
             .get(&id)
