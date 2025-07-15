@@ -39,7 +39,7 @@ pub struct FunctionSignature<'a, Phase: CompilationPhase> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FunctionArgument {
     pub name: StringId,
-    pub arg_type: StringId,
+    pub argument_type: StringId,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
@@ -196,7 +196,7 @@ impl Display for FunctionArgument {
             f,
             "{}: {}",
             resolve_string_id(self.name).expect("argument name"),
-            resolve_string_id(self.arg_type).expect("argument type")
+            resolve_string_id(self.argument_type).expect("argument type")
         )
     }
 }
@@ -488,7 +488,7 @@ x;
         let mut args = ast_allocator.function_arguments();
         args.push(FunctionArgument {
             name: intern_string("x"),
-            arg_type: intern_string("int"),
+            argument_type: intern_string("int"),
         });
         let fun = ast_allocator.function_declaration("foo", None, args, block);
 

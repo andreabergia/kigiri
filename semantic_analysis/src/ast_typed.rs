@@ -38,16 +38,23 @@ pub struct ArgumentIndex {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum SymbolKind {
-    Function,
-    Variable { index: VariableIndex },
-    Argument { index: ArgumentIndex },
+    Function {
+        return_type: Option<Type>,
+    },
+    Variable {
+        index: VariableIndex,
+        variable_type: Type,
+    },
+    Argument {
+        index: ArgumentIndex,
+        argument_type: Type,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Symbol {
     pub id: SymbolId,
     pub name: StringId,
-    pub symbol_type: Type,
     pub kind: SymbolKind,
     // TODO: declaration location (span)
 }
@@ -110,7 +117,12 @@ fn write_function_declaration(
         let symbol = function_declaration.body.symbol_table.lookup_by_id(*arg);
         if let Some(symbol) = symbol {
             let symbol_name = resolve_string_id(symbol.name).expect("symbol name");
-            writeln!(f, "  {}: {},", symbol_name, symbol.symbol_type)?;
+            writeln!(
+                f,
+                "  {}: {},",
+                symbol_name,
+                Type::name(symbol.symbol_type())
+            )?;
         } else {
             return Err(std::fmt::Error);
         }
@@ -187,11 +199,20 @@ impl Symbol {
     fn name(&self) -> &str {
         resolve_string_id(self.name).expect("symbol name")
     }
+
+    pub fn symbol_type(&self) -> Option<Type> {
+        match self.kind {
+            // TODO: this should be a more complex type that can be "int" or "(int) -> double"
+            SymbolKind::Function { .. } => None,
+            SymbolKind::Variable { variable_type, .. } => Some(variable_type),
+            SymbolKind::Argument { argument_type, .. } => Some(argument_type),
+        }
+    }
 }
 
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.name(), self.symbol_type)
+        write!(f, "{}: {}", self.name(), Type::name(self.symbol_type()))
     }
 }
 
@@ -395,16 +416,10 @@ impl<'a> SymbolTable<'a> {
         &self,
         allocator: &'a AstAllocator,
         name: StringId,
-        symbol_type: Type,
         kind: SymbolKind,
     ) -> SymbolId {
         let id = next_symbol_id();
-        let symbol = allocator.alloc(Symbol {
-            id,
-            name,
-            symbol_type,
-            kind,
-        });
+        let symbol = allocator.alloc(Symbol { id, name, kind });
 
         // This allows for name shadowing!
         self.allocated_symbols.borrow_mut().push(symbol);

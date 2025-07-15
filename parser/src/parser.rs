@@ -201,7 +201,7 @@ fn parse_function_declaration_arguments<'a>(
         let arg_type = arg.next().expect("argument type").as_str();
         arguments.push(FunctionArgument {
             name: intern_string(name),
-            arg_type: intern_string(arg_type),
+            argument_type: intern_string(arg_type),
         })
     }
 

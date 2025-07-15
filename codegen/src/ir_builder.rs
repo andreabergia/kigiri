@@ -2,7 +2,7 @@ use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator
 use crate::{FunctionSignature, ir};
 use ir::Variable;
 use parser::{Expression, FunctionDeclaration, Statement};
-use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, VariableIndex};
+use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
 
 struct FunctionIrBuilder<'i> {
     ir_allocator: &'i IrAllocator,
@@ -58,9 +58,16 @@ impl<'i> FunctionIrBuilder<'i> {
                         .symbol_table
                         .lookup_by_id(*arg)
                         .expect("should find function argument in symbol table");
+
+                    let argument_type =
+                        if let SymbolKind::Argument { argument_type, .. } = symbol.kind {
+                            argument_type
+                        } else {
+                            panic!("expected an argument symbol kind for function argument");
+                        };
                     FunctionArgument {
                         name: symbol.name,
-                        argument_type: symbol.symbol_type,
+                        argument_type,
                     }
                 })),
         )
@@ -79,19 +86,23 @@ impl<'i> FunctionIrBuilder<'i> {
                         .expect("should find symbol in symbol table");
                     let value = self.handle_expression(initializer.value, symbol_table);
 
-                    let variable_index = if let SymbolKind::Variable { index } = symbol.kind {
-                        index
+                    let (variable_index, variable_type) = if let SymbolKind::Variable {
+                        index,
+                        variable_type,
+                    } = symbol.kind
+                    {
+                        (index, variable_type)
                     } else {
                         panic!("expected a variable symbol kind for let statement");
                     };
                     let instruction = self.ir_allocator.new_let(
                         variable_index,
                         symbol.name,
-                        symbol.symbol_type,
+                        variable_type,
                         value.id,
                     );
                     self.push_to_current_bb(instruction);
-                    self.push_variable_to_current_bb(variable_index, symbol);
+                    self.push_variable_to_current_bb(variable_index, symbol, variable_type);
                 }
                 FoundReturn::No
             }
@@ -104,17 +115,18 @@ impl<'i> FunctionIrBuilder<'i> {
                     .expect("should find symbol in symbol table");
                 let value = self.handle_expression(expression, symbol_table);
 
-                let variable_index = if let SymbolKind::Variable { index } = symbol.kind {
-                    index
+                let (variable_index, variable_type) = if let SymbolKind::Variable {
+                    index,
+                    variable_type,
+                } = symbol.kind
+                {
+                    (index, variable_type)
                 } else {
                     panic!("expected a variable symbol kind for let statement");
                 };
-                let instruction = self.ir_allocator.new_store(
-                    symbol.name,
-                    symbol.symbol_type,
-                    variable_index,
-                    value,
-                );
+                let instruction =
+                    self.ir_allocator
+                        .new_store(symbol.name, variable_type, variable_index, value);
                 self.push_to_current_bb(instruction);
                 FoundReturn::No
             }
@@ -150,15 +162,19 @@ impl<'i> FunctionIrBuilder<'i> {
                     .expect("should find identifier in symbol table");
 
                 let instruction = match symbol.kind {
-                    SymbolKind::Function => todo!(),
-                    SymbolKind::Variable { index } => {
-                        self.ir_allocator
-                            .new_load_var(symbol.name, symbol.symbol_type, index)
-                    }
-                    SymbolKind::Argument { index } => {
-                        self.ir_allocator
-                            .new_load_arg(symbol.name, symbol.symbol_type, index)
-                    }
+                    SymbolKind::Function { .. } => todo!(),
+                    SymbolKind::Variable {
+                        index,
+                        variable_type,
+                    } => self
+                        .ir_allocator
+                        .new_load_var(symbol.name, variable_type, index),
+                    SymbolKind::Argument {
+                        index,
+                        argument_type,
+                    } => self
+                        .ir_allocator
+                        .new_load_arg(symbol.name, argument_type, index),
                 };
 
                 self.push_to_current_bb(instruction);
@@ -213,11 +229,16 @@ impl<'i> FunctionIrBuilder<'i> {
         self.current_bb.instructions.borrow_mut().push(instruction);
     }
 
-    fn push_variable_to_current_bb(&self, variable_index: VariableIndex, symbol: &Symbol) {
+    fn push_variable_to_current_bb(
+        &self,
+        variable_index: VariableIndex,
+        symbol: &Symbol,
+        variable_type: Type,
+    ) {
         self.current_bb.variables.borrow_mut().push(Variable {
             index: variable_index,
             name: symbol.name,
-            variable_type: symbol.symbol_type,
+            variable_type,
         });
     }
 }

@@ -25,14 +25,12 @@ impl<'a> TypeResolver {
                 .signature
                 .return_type
                 .map(Type::parse)
-                .transpose()?
-                .unwrap_or(Type::Int); // TODO: proper void type handling
+                .transpose()?;
 
             global_symbol_table.add_symbol(
                 allocator,
                 function.signature.name,
-                return_type,
-                SymbolKind::Function,
+                SymbolKind::Function { return_type },
             );
         }
 
@@ -75,14 +73,14 @@ impl<'a> TypeResolver {
             .iter()
             .enumerate()
             .map(|(index, argument)| {
-                let arg_type = Type::parse(argument.arg_type);
-                arg_type.map(|arg_type| {
+                let arg_type = Type::parse(argument.argument_type);
+                arg_type.map(|argument_type| {
                     symbol_table.add_symbol(
                         allocator,
                         argument.name,
-                        arg_type,
                         SymbolKind::Argument {
                             index: ArgumentIndex::from(index as u32),
+                            argument_type,
                         },
                     )
                 })
@@ -135,7 +133,7 @@ impl<'a> TypeResolver {
                     let value =
                         Self::analyze_expression(allocator, initializer.value, symbol_table)?;
 
-                    let resolved_type = if let Some(rt) = resolved_type(value) {
+                    let variable_type = if let Some(rt) = resolved_type(value) {
                         rt
                     } else {
                         return Err(SemanticAnalysisError::CannotAssignVoidValue {
@@ -148,9 +146,9 @@ impl<'a> TypeResolver {
                     let variable = symbol_table.add_symbol(
                         allocator,
                         initializer.variable,
-                        resolved_type,
                         SymbolKind::Variable {
                             index: symbol_table.next_variable_index(),
+                            variable_type,
                         },
                     );
                     typed_initializers.push(LetInitializer { variable, value });
@@ -185,36 +183,47 @@ impl<'a> TypeResolver {
                             },
                         )?;
 
-                        if expression_type != symbol.symbol_type {
-                            return Err(SemanticAnalysisError::MismatchedAssignmentType {
-                                symbol_name,
-                                symbol_type: symbol.symbol_type,
-                                expression_type,
-                            });
-                        }
-
                         match symbol.kind {
-                            SymbolKind::Function => {
+                            SymbolKind::Function { .. } => {
                                 return Err(SemanticAnalysisError::CannotAssignToFunction {
                                     name: symbol_name,
                                 });
                             }
-                            SymbolKind::Variable { .. } => {
+                            SymbolKind::Variable { variable_type, .. } => {
+                                if expression_type != variable_type {
+                                    return Err(SemanticAnalysisError::MismatchedAssignmentType {
+                                        symbol_name,
+                                        symbol_type: variable_type,
+                                        expression_type,
+                                    });
+                                }
+
                                 statements.push(allocator.alloc(Statement::Assignment {
                                     target: symbol.id,
                                     expression: value,
                                 }))
                             }
-                            SymbolKind::Argument { index } => {
+                            SymbolKind::Argument {
+                                argument_type,
+                                index,
+                            } => {
+                                if expression_type != argument_type {
+                                    return Err(SemanticAnalysisError::MismatchedAssignmentType {
+                                        symbol_name,
+                                        symbol_type: argument_type,
+                                        expression_type,
+                                    });
+                                }
+
                                 // We actually need to create a new variable and assign to that
                                 // one, because LLVM (and thus our IR) does not allow reassigning
                                 // a function argument.
                                 let new_variable = symbol_table.add_symbol(
                                     allocator,
                                     *name,
-                                    expression_type,
                                     SymbolKind::Variable {
                                         index: symbol_table.next_variable_index(),
+                                        variable_type: argument_type,
                                     },
                                 );
                                 statements.push(allocator.alloc(Statement::Let {
@@ -266,18 +275,25 @@ impl<'a> TypeResolver {
                     Some(symbol) => {
                         // Only allow variables and arguments in identifier expressions, not functions
                         match symbol.kind {
-                            SymbolKind::Variable { .. } | SymbolKind::Argument { .. } => {
-                                Ok(allocator.alloc(Expression::Identifier {
-                                    name: symbol.id,
-                                    resolved_type: Some(symbol.symbol_type),
-                                }))
+                            SymbolKind::Variable {
+                                variable_type: resolved_type,
+                                ..
                             }
+                            | SymbolKind::Argument {
+                                argument_type: resolved_type,
+                                ..
+                            } => Ok(allocator.alloc(Expression::Identifier {
+                                name: symbol.id,
+                                resolved_type: Some(resolved_type),
+                            })),
                             // TODO: make a different error
-                            SymbolKind::Function => Err(SemanticAnalysisError::SymbolNotFound {
-                                name: resolve_string_id(*symbol_id)
-                                    .expect("should be able to find string")
-                                    .to_owned(),
-                            }),
+                            SymbolKind::Function { .. } => {
+                                Err(SemanticAnalysisError::SymbolNotFound {
+                                    name: resolve_string_id(*symbol_id)
+                                        .expect("should be able to find string")
+                                        .to_owned(),
+                                })
+                            }
                         }
                     }
                     None => Err(SemanticAnalysisError::SymbolNotFound {
@@ -294,9 +310,9 @@ impl<'a> TypeResolver {
                 return_type,
             } => {
                 let function_symbol = symbol_table.lookup_by_name(*name);
-                let function_symbol = match function_symbol {
+                let (function_symbol, return_type) = match function_symbol {
                     Some(symbol) => match symbol.kind {
-                        SymbolKind::Function => symbol,
+                        SymbolKind::Function { return_type } => (symbol, return_type),
                         _ => {
                             return Err(SemanticAnalysisError::NotAFunction {
                                 name: resolve_string_id(*name)
@@ -324,7 +340,7 @@ impl<'a> TypeResolver {
                 Ok(allocator.alloc(Expression::FunctionCall {
                     name: function_symbol.id,
                     args: typed_args,
-                    return_type: Some(function_symbol.symbol_type),
+                    return_type,
                 }))
             }
 

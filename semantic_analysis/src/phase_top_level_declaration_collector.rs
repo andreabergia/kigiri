@@ -251,11 +251,11 @@ fn add(a: int, b: int) -> int {
                 arguments: allocator.new_bump_vec_from_iter(vec![
                     FunctionArgument {
                         name: intern_string("a"),
-                        arg_type: intern_string("int"),
+                        argument_type: intern_string("int"),
                     },
                     FunctionArgument {
                         name: intern_string("b"),
-                        arg_type: intern_string("int"),
+                        argument_type: intern_string("int"),
                     }
                 ]),
             }

@@ -129,13 +129,14 @@ mod tests {
             .symbol_table
             .lookup_by_name(parser::intern_string("x"))
             .expect("should have found argument x");
-        assert_eq!(Type::Int, symbol.symbol_type);
         assert_eq!(
             SymbolKind::Argument {
+                argument_type: Type::Int,
                 index: ArgumentIndex::from(0)
             },
             symbol.kind
         );
+        assert_eq!(Some(Type::Int), symbol.symbol_type());
     }
 
     test_ok!(
@@ -327,7 +328,6 @@ fn main(
 
 "#
     );
-
     test_ok!(
         function_call_with_args,
         r#"
@@ -346,6 +346,26 @@ fn main(
 ) -> int
 { #1
   return inc(41i);
+}
+
+"#
+    );
+    test_ok!(
+        function_call_void,
+        r#"
+fn empty() { }
+fn main() { empty(); }"#,
+        r#"module test
+
+fn empty(
+) -> void
+{ #0
+}
+
+fn main(
+) -> void
+{ #1
+  empty();
 }
 
 "#
@@ -438,9 +458,15 @@ fn main() -> int {
 }"#,
         r#""f" is not a function"#
     );
-
-    // TODO: calling void functions
-
+    test_ko!(
+        assigning_a_void_function_call,
+        r#"
+fn empty() { }
+fn main() {
+  let x = empty();
+}"#,
+        r#"cannot assign void value to variable "x""#
+    );
     test_ko!(
         cannot_assign_to_function,
         r"fn a() {}
