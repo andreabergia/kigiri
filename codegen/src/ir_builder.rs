@@ -86,23 +86,18 @@ impl<'i> FunctionIrBuilder<'i> {
                         .expect("should find symbol in symbol table");
                     let value = self.handle_expression(initializer.value, symbol_table);
 
-                    let (variable_index, variable_type) = if let SymbolKind::Variable {
+                    let SymbolKind::Variable {
                         index,
                         variable_type,
                     } = symbol.kind
-                    {
-                        (index, variable_type)
-                    } else {
+                    else {
                         panic!("expected a variable symbol kind for let statement");
                     };
-                    let instruction = self.ir_allocator.new_let(
-                        variable_index,
-                        symbol.name,
-                        variable_type,
-                        value.id,
-                    );
+                    let instruction =
+                        self.ir_allocator
+                            .new_let(index, symbol.name, variable_type, value.id);
                     self.push_to_current_bb(instruction);
-                    self.push_variable_to_current_bb(variable_index, symbol, variable_type);
+                    self.push_variable_to_current_bb(index, symbol, variable_type);
                 }
                 FoundReturn::No
             }

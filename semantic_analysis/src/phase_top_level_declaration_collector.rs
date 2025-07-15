@@ -274,13 +274,13 @@ fn add(a: int, b: int) -> int {
             Statement::Expression { expression } => expression,
             _ => panic!("Expected a return statement"),
         };
-        let (name, args, return_type) = match expression {
-            Expression::FunctionCall {
-                name,
-                args,
-                return_type,
-            } => (name, args, return_type),
-            _ => panic!("Expected a function call expression"),
+        let Expression::FunctionCall {
+            name,
+            args,
+            return_type,
+        } = expression
+        else {
+            panic!("Expected a function call expression")
         };
         assert_eq!(*name, intern_string("add"));
         assert_eq!(args.len(), 2);

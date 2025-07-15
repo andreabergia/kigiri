@@ -1,12 +1,12 @@
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
 use crate::{
-    resolved_type, ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type,
+    ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type, resolved_type,
 };
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    resolve_string_id, AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration,
-    FunctionSignature, FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator,
+    AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
+    FunctionSignaturesByName, LetInitializer, Module, Statement, UnaryOperator, resolve_string_id,
 };
 
 /// Infers and checks types
@@ -133,9 +133,7 @@ impl<'a> TypeResolver {
                     let value =
                         Self::analyze_expression(allocator, initializer.value, symbol_table)?;
 
-                    let variable_type = if let Some(rt) = resolved_type(value) {
-                        rt
-                    } else {
+                    let Some(variable_type) = resolved_type(value) else {
                         return Err(SemanticAnalysisError::CannotAssignVoidValue {
                             name: resolve_string_id(initializer.variable)
                                 .expect("let variable name")
@@ -310,24 +308,19 @@ impl<'a> TypeResolver {
                 return_type,
             } => {
                 let function_symbol = symbol_table.lookup_by_name(*name);
-                let (function_symbol, return_type) = match function_symbol {
-                    Some(symbol) => match symbol.kind {
-                        SymbolKind::Function { return_type } => (symbol, return_type),
-                        _ => {
-                            return Err(SemanticAnalysisError::NotAFunction {
-                                name: resolve_string_id(*name)
-                                    .expect("should be able to find string")
-                                    .to_owned(),
-                            });
-                        }
-                    },
-                    None => {
-                        return Err(SemanticAnalysisError::FunctionNotFound {
-                            function_name: resolve_string_id(*name)
-                                .expect("should be able to find string")
-                                .to_owned(),
-                        });
-                    }
+                let Some(function_symbol) = function_symbol else {
+                    return Err(SemanticAnalysisError::FunctionNotFound {
+                        function_name: resolve_string_id(*name)
+                            .expect("should be able to find string")
+                            .to_owned(),
+                    });
+                };
+                let SymbolKind::Function { return_type } = function_symbol.kind else {
+                    return Err(SemanticAnalysisError::NotAFunction {
+                        name: resolve_string_id(*name)
+                            .expect("should be able to find string")
+                            .to_owned(),
+                    });
                 };
 
                 // TODO: Type-check all arguments
