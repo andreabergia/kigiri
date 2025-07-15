@@ -19,7 +19,7 @@ pub struct PhaseTypeResolved<'a> {
 
 impl<'a> CompilationPhase for PhaseTypeResolved<'a> {
     type SymbolTableType = &'a SymbolTable<'a>;
-    type FunctionArgumentType = SymbolId;
+    type FunctionArgumentType = &'a Symbol<'a>;
     type ExpressionType = Option<Type>;
     type UnaryBinaryOperandType = Type;
     type IdentifierType = SymbolId;
@@ -37,7 +37,7 @@ pub struct ArgumentIndex {
     index: u32,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SymbolKind<'a> {
     Function {
         signature: &'a FunctionSignature<'a, PhaseTypeResolved<'a>>,
@@ -70,6 +70,12 @@ pub struct SymbolTable<'a> {
     symbols_by_name: RefCell<HashMap<StringId, &'a Symbol<'a>>>,
     parent: Option<&'a SymbolTable<'a>>,
     num_variables: RefCell<usize>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SymbolAndId<'a> {
+    pub id: SymbolId,
+    pub symbol: &'a Symbol<'a>,
 }
 
 #[derive(Debug, Default)]
@@ -115,18 +121,8 @@ fn write_function_declaration(
         resolve_string_id(function_declaration.signature.name).expect("function name")
     )?;
     for arg in function_declaration.signature.arguments.iter() {
-        let symbol = function_declaration.body.symbol_table.lookup_by_id(*arg);
-        if let Some(symbol) = symbol {
-            let symbol_name = resolve_string_id(symbol.name).expect("symbol name");
-            writeln!(
-                f,
-                "  {}: {},",
-                symbol_name,
-                Type::name(symbol.symbol_type())
-            )?;
-        } else {
-            return Err(std::fmt::Error);
-        }
+        let symbol_name = resolve_string_id(arg.name).expect("symbol name");
+        writeln!(f, "  {}: {},", symbol_name, Type::name(arg.symbol_type()))?;
     }
     writeln!(
         f,
@@ -428,7 +424,11 @@ impl<'a> SymbolTable<'a> {
         allocator: &'a AstAllocator,
         name: StringId,
         kind: SymbolKind<'a>,
-    ) -> SymbolId {
+    ) -> SymbolAndId<'a> {
+        if let SymbolKind::Variable { .. } = kind {
+            *self.num_variables.borrow_mut() += 1;
+        }
+
         let id = next_symbol_id();
         let symbol = allocator.alloc(Symbol { id, name, kind });
 
@@ -437,11 +437,7 @@ impl<'a> SymbolTable<'a> {
         self.symbols_by_name.borrow_mut().insert(name, symbol);
         self.symbols_by_id.borrow_mut().insert(id, symbol);
 
-        if let SymbolKind::Variable { .. } = kind {
-            *self.num_variables.borrow_mut() += 1;
-        }
-
-        id
+        SymbolAndId { id, symbol }
     }
 
     pub fn lookup_by_name(&self, name: StringId) -> Option<&'a Symbol<'a>> {

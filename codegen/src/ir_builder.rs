@@ -54,19 +54,14 @@ impl<'i> FunctionIrBuilder<'i> {
             function.signature.return_type,
             self.ir_allocator
                 .function_arguments(function.signature.arguments.iter().map(|arg| {
-                    let symbol = function
-                        .symbol_table
-                        .lookup_by_id(*arg)
-                        .expect("should find function argument in symbol table");
-
-                    let argument_type =
-                        if let SymbolKind::Argument { argument_type, .. } = symbol.kind {
-                            argument_type
-                        } else {
-                            panic!("expected an argument symbol kind for function argument");
-                        };
+                    let argument_type = if let SymbolKind::Argument { argument_type, .. } = arg.kind
+                    {
+                        argument_type
+                    } else {
+                        panic!("expected an argument symbol kind for function argument");
+                    };
                     FunctionArgument {
-                        name: symbol.name,
+                        name: arg.name,
                         argument_type,
                     }
                 })),

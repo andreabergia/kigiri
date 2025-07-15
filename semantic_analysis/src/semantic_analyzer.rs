@@ -57,6 +57,15 @@ pub enum SemanticAnalysisError {
         expected: usize,
         found: usize,
     },
+    #[error(
+        "argument type mismatch in call to \"{function_name}\": argument {argument_index} expected {expected_type}, found {actual_type}"
+    )]
+    ArgumentTypeMismatch {
+        function_name: String,
+        argument_index: usize,
+        expected_type: Type,
+        actual_type: String,
+    },
 }
 
 #[derive(Default)]
@@ -504,6 +513,21 @@ fn main() { f(); }",
 fn f() {}
 fn main() { f(1); }",
         "too many arguments in call to \"f\": expected 0, found 1"
+    );
+    test_ko!(
+        argument_type_mismatch_int_to_boolean,
+        r"
+fn f(x: boolean) {}
+fn main() { f(42); }",
+        "argument type mismatch in call to \"f\": argument 0 expected boolean, found int"
+    );
+    test_ko!(
+        argument_type_mismatch_void_to_int,
+        r"
+fn empty() {}
+fn f(x: int) {}
+fn main() { f(empty()); }",
+        "argument type mismatch in call to \"f\": argument 0 expected int, found void"
     );
 
     // TODO: all return match expected type? here or in separate pass?

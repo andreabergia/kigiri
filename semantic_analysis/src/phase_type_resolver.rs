@@ -1,13 +1,11 @@
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
-use crate::{
-    ArgumentIndex, PhaseTypeResolved, SymbolId, SymbolKind, SymbolTable, Type, resolved_type,
-};
+use crate::{resolved_type, ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, LetInitializer, Module, Statement, StringId, UnaryOperator,
-    resolve_string_id,
+    resolve_string_id, AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration,
+    FunctionSignature, FunctionSignaturesByName, LetInitializer, Module, Statement, StringId,
+    UnaryOperator,
 };
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -15,12 +13,12 @@ use std::collections::HashMap;
 /// Infers and checks types
 pub(crate) struct TypeResolver {}
 
-struct FunctionSignatureAndSymbolTable<'a> {
+struct MappedFunctionSignature<'a> {
     signature: &'a FunctionSignature<'a, PhaseTypeResolved<'a>>,
     symbol_table: &'a SymbolTable<'a>,
 }
 
-type MappedSignatures<'a> = HashMap<StringId, FunctionSignatureAndSymbolTable<'a>>;
+type MappedFunctionSignatures<'a> = HashMap<StringId, MappedFunctionSignature<'a>>;
 
 impl<'a> TypeResolver {
     pub(crate) fn analyze_module(
@@ -31,7 +29,8 @@ impl<'a> TypeResolver {
         // Note that we need to also map the signatures here
         let num_functions = module.function_signatures.len();
         let global_symbol_table = SymbolTable::new_global(allocator, num_functions);
-        let mut mapped_signatures: MappedSignatures<'a> = HashMap::with_capacity(num_functions);
+        let mut mapped_signatures: MappedFunctionSignatures<'a> =
+            HashMap::with_capacity(num_functions);
         let mut function_signatures =
             FunctionSignaturesByName::with_capacity(module.function_signatures.len());
 
@@ -76,7 +75,7 @@ impl<'a> TypeResolver {
         allocator: &'a AstAllocator,
         function_signature: &FunctionSignature<PhaseTopLevelDeclarationCollected>,
         global_symbol_table: &'a SymbolTable<'a>,
-    ) -> Result<FunctionSignatureAndSymbolTable<'a>, SemanticAnalysisError> {
+    ) -> Result<MappedFunctionSignature<'a>, SemanticAnalysisError> {
         let symbol_table = SymbolTable::new(allocator, Some(global_symbol_table));
 
         let return_type = function_signature
@@ -91,17 +90,19 @@ impl<'a> TypeResolver {
             .map(|(index, argument)| {
                 let arg_type = Type::parse(argument.argument_type);
                 arg_type.map(|argument_type| {
-                    symbol_table.add_symbol(
-                        allocator,
-                        argument.name,
-                        SymbolKind::Argument {
-                            index: ArgumentIndex::from(index as u32),
-                            argument_type,
-                        },
-                    )
+                    symbol_table
+                        .add_symbol(
+                            allocator,
+                            argument.name,
+                            SymbolKind::Argument {
+                                index: ArgumentIndex::from(index as u32),
+                                argument_type,
+                            },
+                        )
+                        .symbol
                 })
             })
-            .collect::<Result<Vec<SymbolId>, SemanticAnalysisError>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
         let arguments = allocator.new_bump_vec_from_iter(arguments.iter().cloned());
 
         let signature = allocator.alloc(FunctionSignature {
@@ -109,7 +110,7 @@ impl<'a> TypeResolver {
             return_type,
             arguments,
         });
-        Ok(FunctionSignatureAndSymbolTable {
+        Ok(MappedFunctionSignature {
             signature,
             symbol_table,
         })
@@ -119,9 +120,9 @@ impl<'a> TypeResolver {
         allocator: &'a AstAllocator,
         function: &FunctionDeclaration<PhaseTopLevelDeclarationCollected>,
         global_symbol_table: &'a SymbolTable<'a>,
-        mapped_signatures: &MappedSignatures<'a>,
+        mapped_signatures: &MappedFunctionSignatures<'a>,
     ) -> Result<&'a FunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
-        let FunctionSignatureAndSymbolTable {
+        let MappedFunctionSignature {
             signature,
             symbol_table,
         } = mapped_signatures
@@ -175,14 +176,16 @@ impl<'a> TypeResolver {
                         });
                     };
 
-                    let variable = symbol_table.add_symbol(
-                        allocator,
-                        initializer.variable,
-                        SymbolKind::Variable {
-                            index: symbol_table.next_variable_index(),
-                            variable_type,
-                        },
-                    );
+                    let variable = symbol_table
+                        .add_symbol(
+                            allocator,
+                            initializer.variable,
+                            SymbolKind::Variable {
+                                index: symbol_table.next_variable_index(),
+                                variable_type,
+                            },
+                        )
+                        .id;
                     typed_initializers.push(LetInitializer { variable, value });
                 }
 
@@ -250,14 +253,16 @@ impl<'a> TypeResolver {
                                 // We actually need to create a new variable and assign to that
                                 // one, because LLVM (and thus our IR) does not allow reassigning
                                 // a function argument.
-                                let new_variable = symbol_table.add_symbol(
-                                    allocator,
-                                    *name,
-                                    SymbolKind::Variable {
-                                        index: symbol_table.next_variable_index(),
-                                        variable_type: argument_type,
-                                    },
-                                );
+                                let new_variable = symbol_table
+                                    .add_symbol(
+                                        allocator,
+                                        *name,
+                                        SymbolKind::Variable {
+                                            index: symbol_table.next_variable_index(),
+                                            variable_type: argument_type,
+                                        },
+                                    )
+                                    .id;
                                 statements.push(allocator.alloc(Statement::Let {
                                     initializers: allocator.new_bump_vec_from_iter([
                                         LetInitializer {
@@ -293,7 +298,7 @@ impl<'a> TypeResolver {
         Ok(())
     }
 
-    pub(crate) fn analyze_expression(
+    fn analyze_expression(
         allocator: &'a AstAllocator,
         expr: &Expression<PhaseTopLevelDeclarationCollected>,
         symbol_table: &'a SymbolTable<'a>,
@@ -349,7 +354,7 @@ impl<'a> TypeResolver {
                             .to_owned(),
                     });
                 };
-                let SymbolKind::Function { signature } = function_symbol.kind else {
+                let SymbolKind::Function { signature, .. } = function_symbol.kind else {
                     return Err(SemanticAnalysisError::NotAFunction {
                         name: resolve_string_id(*name)
                             .expect("should be able to find string")
@@ -376,12 +381,49 @@ impl<'a> TypeResolver {
                         found: actual_arg_count,
                     }),
                     Ordering::Equal => {
-                        // TODO: Type-check all arguments
-                        let typed_args = args
+                        // Type-check all arguments
+                        let actual_arguments = args
                             .iter()
                             .map(|arg| Self::analyze_expression(allocator, arg, symbol_table))
                             .collect::<Result<Vec<_>, _>>()?;
-                        let typed_args = allocator.new_bump_vec_from_iter(typed_args);
+
+                        // Check each argument type against the expected type
+                        for (argument_index, (typed_arg, expected_symbol)) in actual_arguments
+                            .iter()
+                            .zip(signature.arguments.iter())
+                            .enumerate()
+                        {
+                            let actual_type = resolved_type(typed_arg);
+
+                            let expected_type = expected_symbol
+                                .symbol_type()
+                                .expect("Function argument should have a type");
+
+                            if let Some(actual_type) = actual_type {
+                                if actual_type != expected_type {
+                                    return Err(SemanticAnalysisError::ArgumentTypeMismatch {
+                                        function_name: resolve_string_id(*name)
+                                            .expect("should be able to find string")
+                                            .to_owned(),
+                                        argument_index,
+                                        expected_type,
+                                        actual_type: actual_type.to_string(),
+                                    });
+                                }
+                            } else {
+                                // void type cannot be passed as argument
+                                return Err(SemanticAnalysisError::ArgumentTypeMismatch {
+                                    function_name: resolve_string_id(*name)
+                                        .expect("should be able to find string")
+                                        .to_owned(),
+                                    argument_index,
+                                    expected_type,
+                                    actual_type: "void".to_string(),
+                                });
+                            }
+                        }
+
+                        let typed_args = allocator.new_bump_vec_from_iter(actual_arguments);
 
                         Ok(allocator.alloc(Expression::FunctionCall {
                             name: function_symbol.id,
