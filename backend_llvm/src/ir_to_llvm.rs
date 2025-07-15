@@ -176,6 +176,14 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     initializer,
                     ..
                 } => self.handle_let(*variable_index, operand_type, *initializer)?,
+                InstructionPayload::Call {
+                    function_name,
+                    return_type,
+                    arguments,
+                } => {
+                    // TODO: Implement function call generation
+                    todo!("Function call generation not yet implemented")
+                }
             }
         }
         Ok(())

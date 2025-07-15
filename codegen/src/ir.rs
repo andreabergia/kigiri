@@ -1,5 +1,5 @@
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
+use parser::{resolve_string_id, BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::any::Any;
 use std::cell::RefCell;
@@ -98,6 +98,11 @@ pub enum InstructionPayload {
         variable_index: VariableIndex,
         initializer: InstructionId,
     },
+    Call {
+        function_name: StringId,
+        return_type: Option<Type>,
+        arguments: Vec<InstructionId>,
+    },
 }
 
 // Impls
@@ -120,6 +125,7 @@ impl InstructionPayload {
             InstructionPayload::LoadArg { operand_type, .. } => Some(*operand_type),
             InstructionPayload::StoreVar { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Let { operand_type, .. } => Some(*operand_type),
+            InstructionPayload::Call { return_type, .. } => *return_type,
         }
     }
 }
@@ -271,6 +277,24 @@ impl Display for InstructionPayload {
                     resolve_string_id(*name).expect("should find symbol name"),
                     initializer
                 )
+            }
+            InstructionPayload::Call {
+                function_name,
+                arguments,
+                ..
+            } => {
+                write!(
+                    f,
+                    "call {}(",
+                    resolve_string_id(*function_name).expect("should find function name")
+                )?;
+                for (i, arg) in arguments.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "@{}", arg)?;
+                }
+                write!(f, ")")
             }
         }
     }
@@ -434,6 +458,20 @@ impl IrAllocator {
         })
     }
 
+    pub fn new_call(
+        &self,
+        function_name: StringId,
+        return_type: Option<Type>,
+        arguments: Vec<&Instruction>,
+    ) -> &Instruction {
+        let argument_ids = arguments.iter().map(|arg| arg.id).collect();
+        self.new_instruction(InstructionPayload::Call {
+            function_name,
+            return_type,
+            arguments: argument_ids,
+        })
+    }
+
     pub fn basic_block(&self) -> &BasicBlock {
         self.arena.alloc(BasicBlock {
             id: self.next_basic_block_id(),
@@ -486,7 +524,7 @@ impl IrAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::UnaryOperator;
+    use parser::{intern_string, UnaryOperator};
 
     #[test]
     fn test_display_instruction_ret() {
@@ -540,6 +578,33 @@ mod tests {
                     const_0,
                     const_1
                 )
+                .to_string()
+        )
+    }
+
+    #[test]
+    fn test_display_instruction_call() {
+        let ir_allocator = IrAllocator::new();
+        let const_0 = ir_allocator.new_const(LiteralValue::Integer(42));
+        let const_1 = ir_allocator.new_const(LiteralValue::Integer(10));
+        let function_name = intern_string("test_func");
+        assert_eq!(
+            "00002 i call test_func(@0, @1)",
+            ir_allocator
+                .new_call(function_name, Some(Type::Int), vec![const_0, const_1])
+                .to_string()
+        )
+    }
+
+    #[test]
+    fn test_display_instruction_call_void() {
+        let ir_allocator = IrAllocator::new();
+        let const_0 = ir_allocator.new_const(LiteralValue::Integer(42));
+        let function_name = intern_string("print");
+        assert_eq!(
+            "00001 v call print(@0)",
+            ir_allocator
+                .new_call(function_name, None, vec![const_0])
                 .to_string()
         )
     }
