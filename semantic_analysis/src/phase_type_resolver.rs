@@ -1,11 +1,11 @@
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
-use crate::{resolved_type, ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type};
+use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type, resolved_type};
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    resolve_string_id, AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration,
-    FunctionSignature, FunctionSignaturesByName, LetInitializer, Module, Statement, StringId,
-    UnaryOperator,
+    AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
+    FunctionSignaturesByName, LetInitializer, Module, Statement, StringId, UnaryOperator,
+    resolve_string_id,
 };
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -406,6 +406,9 @@ impl<'a> TypeResolver {
                                             .expect("should be able to find string")
                                             .to_owned(),
                                         argument_index,
+                                        parameter_name: resolve_string_id(expected_symbol.name)
+                                            .expect("should be able to find string")
+                                            .to_owned(),
                                         expected_type,
                                         actual_type: actual_type.to_string(),
                                     });
@@ -417,6 +420,9 @@ impl<'a> TypeResolver {
                                         .expect("should be able to find string")
                                         .to_owned(),
                                     argument_index,
+                                    parameter_name: resolve_string_id(expected_symbol.name)
+                                        .expect("should be able to find string")
+                                        .to_owned(),
                                     expected_type,
                                     actual_type: "void".to_string(),
                                 });
