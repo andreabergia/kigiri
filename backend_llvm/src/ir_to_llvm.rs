@@ -95,7 +95,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             .expect("value should be present")
     }
 
-    fn generate(&self, llvm_module: &Module<'c>) -> Result<FunctionValue<'c>, CodeGenError> {
+    fn declare(&self, llvm_module: &Module<'c>) -> Result<FunctionValue<'c>, CodeGenError> {
         let fn_type = self.make_fun_type();
         let fun = llvm_module.add_function(
             resolve_string_id(self.function.signature.name).expect("function name"),
@@ -104,11 +104,6 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         );
 
         self.setup_fun_arg(fun)?;
-        self.generate_body(fun, llvm_module)?;
-
-        if !fun.verify(true) {
-            panic!("LLVM says we have built an invalid function; this is a bug :-(");
-        }
         Ok(fun)
     }
 
@@ -194,6 +189,10 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     )?;
                 }
             }
+        }
+
+        if !fun.verify(true) {
+            panic!("LLVM says we have built an invalid function; this is a bug :-(");
         }
         Ok(())
     }
@@ -797,10 +796,19 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
             .context
             .create_module(resolve_string_id(self.ir_module.name).expect("module name"));
 
+        // Pass 1: Declare all functions
+        let mut declared_functions = Vec::new();
         for function in self.ir_module.functions.iter() {
             let fun_generator = LlvmFunctionGenerator::new(self.context, &self.builder, function);
-            fun_generator.generate(&llvm_module)?;
+            let llvm_function = fun_generator.declare(&llvm_module)?;
+            declared_functions.push((fun_generator, llvm_function));
         }
+
+        // Pass 2: Generate function bodies
+        for (fun_generator, llvm_function) in declared_functions {
+            fun_generator.generate_body(llvm_function, &llvm_module)?;
+        }
+
         Ok(llvm_module)
     }
 }
@@ -1116,6 +1124,31 @@ mod tests {
         define void @main() {
         entry:
           call void @print_hello()
+          ret void
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_function_call_before_definition() {
+        let llvm_ir = compile_function_to_llvm(
+            r"
+        fn main() { callee(); }
+        fn callee() { }
+        ",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define void @main() {
+        entry:
+          call void @callee()
+          ret void
+        }
+
+        define void @callee() {
+        entry:
           ret void
         }
         "#);
