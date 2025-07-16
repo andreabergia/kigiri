@@ -211,7 +211,33 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 instruction
             }
-            Expression::FunctionCall { .. } => todo!(),
+            Expression::FunctionCall {
+                name,
+                args,
+                return_type,
+            } => {
+                // Look up the function symbol to get the function name
+                let function_symbol = symbol_table
+                    .lookup_by_id(*name)
+                    .expect("should find function in symbol table");
+
+                // Generate IR for each argument
+                let mut argument_instructions = Vec::new();
+                for arg in args.iter() {
+                    let arg_instruction = self.handle_expression(arg, symbol_table);
+                    argument_instructions.push(arg_instruction);
+                }
+
+                // Create the function call instruction
+                let instruction = self.ir_allocator.new_call(
+                    function_symbol.name,
+                    *return_type,
+                    argument_instructions,
+                );
+
+                self.push_to_current_bb(instruction);
+                instruction
+            }
         }
     }
 
@@ -436,6 +462,80 @@ fn arg_assign(
   00003 i let x = @2
   00004 i loadvar x
   00005 i ret @4
+}
+"
+    );
+
+    test_module_ir!(
+        function_call_no_args,
+        r"fn get_five() -> int { return 5; }
+fn main() -> int {
+    return get_five();
+}",
+        r"module test
+
+fn get_five(
+) -> i
+{ #0
+  00000 i const 5i
+  00001 i ret @0
+}
+fn main(
+) -> i
+{ #1
+  00000 i call get_five()
+  00001 i ret @0
+}
+"
+    );
+
+    test_module_ir!(
+        function_call_with_args,
+        r"fn add(x: int, y: int) -> int { return x + y; }
+fn main() -> int {
+    return add(3, 7);
+}",
+        r"module test
+
+fn add(
+  x: int,
+  y: int,
+) -> i
+{ #0
+  00000 i loadarg x
+  00001 i loadarg y
+  00002 i add @0, @1
+  00003 i ret @2
+}
+fn main(
+) -> i
+{ #1
+  00000 i const 3i
+  00001 i const 7i
+  00002 i call add(@0, @1)
+  00003 i ret @2
+}
+"
+    );
+
+    test_module_ir!(
+        function_call_void,
+        r"fn print_hello() { }
+fn main() {
+    print_hello();
+}",
+        r"module test
+
+fn print_hello(
+) -> void
+{ #0
+  00000 v ret
+}
+fn main(
+) -> void
+{ #1
+  00000 v call print_hello()
+  00001 v ret
 }
 "
     );

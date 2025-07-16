@@ -1,5 +1,5 @@
 use bumpalo::collections::Vec as BumpVec;
-use parser::{resolve_string_id, BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator};
+use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::any::Any;
 use std::cell::RefCell;
@@ -524,7 +524,7 @@ impl IrAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::{intern_string, UnaryOperator};
+    use parser::{UnaryOperator, intern_string};
 
     #[test]
     fn test_display_instruction_ret() {
