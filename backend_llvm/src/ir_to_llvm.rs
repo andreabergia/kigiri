@@ -104,7 +104,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         );
 
         self.setup_fun_arg(fun)?;
-        self.generate_body(fun)?;
+        self.generate_body(fun, llvm_module)?;
 
         if !fun.verify(true) {
             panic!("LLVM says we have built an invalid function; this is a bug :-(");
@@ -112,7 +112,11 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(fun)
     }
 
-    fn generate_body(&self, fun: FunctionValue<'c>) -> Result<(), CodeGenError> {
+    fn generate_body(
+        &self,
+        fun: FunctionValue<'c>,
+        llvm_module: &Module<'c>,
+    ) -> Result<(), CodeGenError> {
         let bb = self.context.append_basic_block(fun, "entry");
         self.builder.position_at_end(bb);
 
@@ -181,8 +185,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     return_type,
                     arguments,
                 } => {
-                    // TODO: Implement function call generation
-                    todo!("Function call generation not yet implemented")
+                    self.handle_function_call(
+                        instruction.id,
+                        llvm_module,
+                        function_name,
+                        return_type,
+                        arguments,
+                    )?;
                 }
             }
         }
@@ -709,6 +718,56 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(())
     }
 
+    fn handle_function_call(
+        &self,
+        id: InstructionId,
+        llvm_module: &Module<'c>,
+        function_name: &parser::StringId,
+        return_type: &Option<Type>,
+        arguments: &[InstructionId],
+    ) -> Result<(), CodeGenError> {
+        // Get the function name
+        let function_name_str = resolve_string_id(*function_name).expect("function name");
+
+        // Look up the function in the LLVM module
+        let function = llvm_module
+            .get_function(function_name_str)
+            .ok_or_else(|| CodeGenError {
+                message: format!("Function '{}' not found in module", function_name_str),
+            })?;
+
+        // Prepare argument values
+        let mut argument_values = Vec::new();
+        for &arg_id in arguments {
+            argument_values.push(self.get_value(arg_id).into());
+        }
+
+        // Call the function
+        let call_site =
+            self.builder
+                .build_call(function, &argument_values, &Self::name("call", id))?;
+
+        // Handle return value
+        match return_type {
+            Some(_) => {
+                // Function returns a value, store it
+                let return_value =
+                    call_site
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| CodeGenError {
+                            message: "Expected function to return a value".to_string(),
+                        })?;
+                self.store_value(id, return_value);
+            }
+            None => {
+                // Void function, no return value to store
+            }
+        }
+
+        Ok(())
+    }
+
     fn name(prefix: &str, id: InstructionId) -> String {
         format!("{}_{}", prefix, id)
     }
@@ -988,6 +1047,76 @@ mod tests {
           store i64 %add_2, ptr %x1, align 4
           %load_4 = load i64, ptr %x1, align 4
           ret i64 %load_4
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_function_call_no_args() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn get_five() -> int { return 5; }
+            fn main() -> int { return get_five(); }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @get_five() {
+        entry:
+          ret i64 5
+        }
+
+        define i64 @main() {
+        entry:
+          %call_0 = call i64 @get_five()
+          ret i64 %call_0
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_function_call_with_args() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn add(x: int, y: int) -> int { return x + y; }
+            fn main() -> int { return add(3, 7); }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @add(i64 %x, i64 %y) {
+        entry:
+          %add_2 = add i64 %x, %y
+          ret i64 %add_2
+        }
+
+        define i64 @main() {
+        entry:
+          %call_2 = call i64 @add(i64 3, i64 7)
+          ret i64 %call_2
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_function_call_void() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn print_hello() { }
+        fn main() { print_hello(); }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define void @print_hello() {
+        entry:
+          ret void
+        }
+
+        define void @main() {
+        entry:
+          call void @print_hello()
+          ret void
         }
         "#);
     }
