@@ -52,8 +52,8 @@ factor   =  _{ number | "(" ~ expression ~ ")" | boolean | functionCall | identi
 functionCall =   { identifier ~ "(" ~ functionCallArguments ~ ")" }
 functionCallArguments = { (expression ~ ("," ~ expression)*)? }
 
-number = {doubleNumber | hexNumber | integerNumber}
-integerNumber = @{
+number = {doubleNumber | hexNumber | intNumber}
+intNumber = @{
     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
 }
 hexNumber = @{

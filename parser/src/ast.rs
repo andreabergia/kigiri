@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn can_allocate_via_ast() {
         let ast_allocator = ParsedAstAllocator::default();
-        let id = ast_allocator.literal_integer(1);
+        let id = ast_allocator.literal_int(1);
         assert_eq!(
             id,
             &Expression::Literal {
@@ -446,7 +446,7 @@ mod tests {
         let ast_allocator = ParsedAstAllocator::default();
 
         let x = ast_allocator.identifier("x");
-        let one = ast_allocator.literal_integer(1);
+        let one = ast_allocator.literal_int(1);
         let sum = ast_allocator.binary(BinaryOperator::Add, x, one);
         let two = ast_allocator.literal_double(2.1);
         let neg = ast_allocator.unary(UnaryOperator::Neg, two);

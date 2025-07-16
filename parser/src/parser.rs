@@ -43,10 +43,8 @@ fn parse_expression<'a>(
                 let pair = primary.into_inner().next().unwrap();
                 let text = pair.as_str();
                 match pair.as_rule() {
-                    Rule::integerNumber => {
-                        ast_allocator.literal_integer(i64::from_str(text).unwrap())
-                    }
-                    Rule::hexNumber => ast_allocator.literal_integer(
+                    Rule::intNumber => ast_allocator.literal_int(i64::from_str(text).unwrap()),
+                    Rule::hexNumber => ast_allocator.literal_int(
                         i64::from_str_radix(text.to_ascii_lowercase().trim_start_matches("0x"), 16)
                             .unwrap(),
                     ),

@@ -39,7 +39,7 @@ impl ParsedAstAllocator {
         })
     }
 
-    pub fn literal_integer(&self, value: i64) -> &Expression<PhaseParsed> {
+    pub fn literal_int(&self, value: i64) -> &Expression<PhaseParsed> {
         self.allocator.alloc(Expression::Literal {
             resolved_type: (),
             value: LiteralValue::Integer(value),
