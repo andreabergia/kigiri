@@ -7,7 +7,7 @@ use std::fmt::Formatter;
 pub enum Type {
     Int,
     Double,
-    Boolean,
+    Bool,
 }
 
 impl Display for Type {
@@ -15,7 +15,7 @@ impl Display for Type {
         match self {
             Type::Int => write!(f, "int"),
             Type::Double => write!(f, "double"),
-            Type::Boolean => write!(f, "boolean"),
+            Type::Bool => write!(f, "bool"),
         }
     }
 }
@@ -25,7 +25,7 @@ impl Type {
         match self {
             Type::Int => "i",
             Type::Double => "d",
-            Type::Boolean => "b",
+            Type::Bool => "b",
         }
     }
 
@@ -33,7 +33,7 @@ impl Type {
         match literal {
             LiteralValue::Integer(_) => Type::Int,
             LiteralValue::Double(_) => Type::Double,
-            LiteralValue::Boolean(_) => Type::Boolean,
+            LiteralValue::Boolean(_) => Type::Bool,
         }
     }
 
@@ -46,7 +46,7 @@ impl Type {
         match type_name {
             "int" => Ok(Type::Int),
             "double" => Ok(Type::Double),
-            "boolean" => Ok(Type::Boolean),
+            "bool" => Ok(Type::Bool),
             _ => Err(SemanticAnalysisError::TypeNotFound {
                 type_name: type_name.to_string(),
             }),

@@ -22,4 +22,4 @@ ParseTree refactoring
 
 Misc
 - [x] rename `integer` to `int`
-- [ ] rename `boolean` to `bool`
+- [x] rename `boolean` to `bool`

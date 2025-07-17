@@ -63,7 +63,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             let name = resolve_string_id(var.name).expect("variable name");
             let value = match var.variable_type {
                 Type::Int => self.builder.build_alloca(self.context.i64_type(), name)?,
-                Type::Boolean => self.builder.build_alloca(self.context.bool_type(), name)?,
+                Type::Bool => self.builder.build_alloca(self.context.bool_type(), name)?,
                 Type::Double => self.builder.build_alloca(self.context.f64_type(), name)?,
             };
             self.variables.borrow_mut().push(value);
@@ -221,7 +221,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     )?,
                 );
             }
-            Type::Boolean => {
+            Type::Bool => {
                 self.store_value(
                     instruction.id,
                     self.builder.build_load(
@@ -259,7 +259,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             Type::Int => {
                 self.store_value(instruction.id, value);
             }
-            Type::Boolean => {
+            Type::Bool => {
                 self.store_value(instruction.id, value);
             }
             Type::Double => {
@@ -287,7 +287,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 self.builder
                     .build_store(var_pointer, self.get_int_value(value))?;
             }
-            Type::Boolean => {
+            Type::Bool => {
                 self.builder
                     .build_store(var_pointer, self.get_bool_value(value))?;
             }
@@ -314,7 +314,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
         let initializer_value: BasicValueEnum = match operand_type {
             Type::Int => self.get_int_value(initializer).into(),
-            Type::Boolean => self.get_bool_value(initializer).into(),
+            Type::Bool => self.get_bool_value(initializer).into(),
             Type::Double => self.get_float_value(initializer).into(),
         };
 
@@ -330,7 +330,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             .iter()
             .map(|arg| match arg.argument_type {
                 Type::Int => self.context.i64_type().into(),
-                Type::Boolean => self.context.bool_type().into(),
+                Type::Bool => self.context.bool_type().into(),
                 Type::Double => self.context.f64_type().into(),
             })
             .collect::<Vec<_>>();
@@ -339,7 +339,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             None => self.context.void_type().fn_type(&arguments, false),
             Some(t) => match t {
                 Type::Int => self.context.i64_type().fn_type(&arguments, false),
-                Type::Boolean => self.context.bool_type().fn_type(&arguments, false),
+                Type::Bool => self.context.bool_type().fn_type(&arguments, false),
                 Type::Double => self.context.f64_type().fn_type(&arguments, false),
             },
         }
@@ -365,8 +365,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             Type::Int => {
                 self.handle_binary_int_operands(id, operator, left, right)?;
             }
-            Type::Boolean => {
-                self.handle_binary_boolean_operands(id, operator, left, right)?;
+            Type::Bool => {
+                self.handle_binary_bool_operands(id, operator, left, right)?;
             }
             Type::Double => {
                 self.handle_binary_float_operands(id, operator, left, right)?;
@@ -375,7 +375,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(())
     }
 
-    fn handle_binary_boolean_operands(
+    fn handle_binary_bool_operands(
         &self,
         id: InstructionId,
         operator: &BinaryOperator,
@@ -597,8 +597,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             Type::Int => {
                 self.handle_unary_int_operand(id, operator, operand)?;
             }
-            Type::Boolean => {
-                self.handle_unary_boolean_operand(id, operator, operand)?;
+            Type::Bool => {
+                self.handle_unary_bool_operand(id, operator, operand)?;
             }
             Type::Double => {
                 self.handle_unary_float_operand(id, operator, operand)?;
@@ -607,7 +607,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(())
     }
 
-    fn handle_unary_boolean_operand(
+    fn handle_unary_bool_operand(
         &self,
         id: InstructionId,
         operator: &UnaryOperator,
@@ -705,7 +705,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 let operand = self.get_int_value(expression);
                 self.builder.build_return(Some(&operand))?;
             }
-            Type::Boolean => {
+            Type::Bool => {
                 let operand = self.get_bool_value(expression);
                 self.builder.build_return(Some(&operand))?;
             }
@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn test_comparison_int() {
         let llvm_ir =
-            compile_function_to_llvm("fn greater(x: int, y: int) -> boolean { return x > y; }");
+            compile_function_to_llvm("fn greater(x: int, y: int) -> bool { return x > y; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
@@ -939,9 +939,8 @@ mod tests {
 
     #[test]
     fn test_comparison_float() {
-        let llvm_ir = compile_function_to_llvm(
-            "fn greater(x: double, y: double) -> boolean { return x > y; }",
-        );
+        let llvm_ir =
+            compile_function_to_llvm("fn greater(x: double, y: double) -> bool { return x > y; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
@@ -975,7 +974,7 @@ mod tests {
     #[test]
     fn test_use_var_function() {
         let llvm_ir = compile_function_to_llvm(
-            "fn use_var() -> boolean { let x = false; let y = true; return y && !x; }",
+            "fn use_var() -> bool { let x = false; let y = true; return y && !x; }",
         );
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'

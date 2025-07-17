@@ -452,7 +452,7 @@ mod tests {
         let neg = ast_allocator.unary(UnaryOperator::Neg, two);
         let mul = ast_allocator.binary(BinaryOperator::Mul, sum, neg);
         let lt = ast_allocator.binary(BinaryOperator::Lt, mul, ast_allocator.literal_double(4.2));
-        let true_lit = ast_allocator.literal_boolean(true);
+        let true_lit = ast_allocator.literal_bool(true);
         let or = ast_allocator.binary(BinaryOperator::Or, lt, true_lit);
         assert_eq!(or.to_string(), "(|| (< (* (+ x 1i) (- 2.1d)) 4.2d) true)");
     }

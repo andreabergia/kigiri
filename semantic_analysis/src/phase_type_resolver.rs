@@ -522,7 +522,7 @@ impl<'a> TypeResolver {
     fn unary_op_is_allowed(operator: UnaryOperator, operand_type: Type) -> bool {
         match operator {
             UnaryOperator::Neg => operand_type == Type::Int || operand_type == Type::Double,
-            UnaryOperator::Not => operand_type == Type::Boolean,
+            UnaryOperator::Not => operand_type == Type::Bool,
             UnaryOperator::BitwiseNot => operand_type == Type::Int,
         }
     }
@@ -542,7 +542,7 @@ impl<'a> TypeResolver {
                 left_type == right_type && (left_type == Type::Int || left_type == Type::Double)
             }
             BinaryOperator::And | BinaryOperator::Or => {
-                left_type == right_type && left_type == Type::Boolean
+                left_type == right_type && left_type == Type::Bool
             }
             BinaryOperator::BitwiseAnd
             | BinaryOperator::BitwiseOr
@@ -572,7 +572,7 @@ impl<'a> TypeResolver {
             | BinaryOperator::Gt
             | BinaryOperator::Gte
             | BinaryOperator::And
-            | BinaryOperator::Or => Type::Boolean,
+            | BinaryOperator::Or => Type::Bool,
         }
     }
 }

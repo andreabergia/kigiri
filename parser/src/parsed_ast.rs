@@ -53,7 +53,7 @@ impl ParsedAstAllocator {
         })
     }
 
-    pub fn literal_boolean(&self, value: bool) -> &Expression<PhaseParsed> {
+    pub fn literal_bool(&self, value: bool) -> &Expression<PhaseParsed> {
         self.allocator.alloc(Expression::Literal {
             resolved_type: (),
             value: LiteralValue::Boolean(value),

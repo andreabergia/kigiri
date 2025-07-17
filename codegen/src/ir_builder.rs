@@ -384,7 +384,7 @@ fn empty(
     );
     test_module_ir!(
         variable_declaration,
-        r"fn var() -> boolean {
+        r"fn var() -> bool {
     let y = true;
     return y;
 }",
@@ -393,7 +393,7 @@ fn empty(
 fn var(
 ) -> b
 { #0
-  var y: boolean
+  var y: bool
   00000 b const true
   00001 b let y = @0
   00002 b loadvar y

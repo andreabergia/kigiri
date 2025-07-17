@@ -45,7 +45,7 @@ fn test_basic_arithmetic() {
 
 #[test]
 fn test_int_comparison() {
-    let source = "fn f(x: int, y: int, z: int) -> boolean { return x < y || x < z; }";
+    let source = "fn f(x: int, y: int, z: int) -> bool { return x < y || x < z; }";
     jit_test(source, |jit_engine| unsafe {
         type F = unsafe extern "C" fn(i64, i64, i64) -> bool;
         let fun: JitFunction<F> = jit_engine.get_function("f").unwrap();
@@ -59,7 +59,7 @@ fn test_int_comparison() {
 #[test]
 fn test_variables() {
     let source = r"
-fn f(x: int) -> boolean {
+fn f(x: int) -> bool {
     let y = x * x;
     let z = x + 1;
     return y < z;

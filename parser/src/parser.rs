@@ -56,7 +56,7 @@ fn parse_expression<'a>(
             }
             Rule::identifier => ast_allocator.identifier(primary.as_str()),
             Rule::expression => parse_expression(ast_allocator, primary),
-            Rule::boolean => ast_allocator.literal_boolean(primary.as_str().parse().unwrap()),
+            Rule::bool => ast_allocator.literal_bool(primary.as_str().parse().unwrap()),
             Rule::functionCall => parse_function_call(ast_allocator, primary),
             _ => unreachable!(""),
         })
@@ -333,8 +333,8 @@ mod tests {
     test_expression!(identifier_4, "_a", "_a");
     test_expression!(identifier_5, "_", "_");
 
-    test_expression!(boolean_1, "true", "true");
-    test_expression!(boolean_2, "false", "false");
+    test_expression!(bool_1, "true", "true");
+    test_expression!(bool_2, "false", "false");
 
     test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i (* 2i 3i))");
     test_expression!(precedence_02, "1 - 2 / 3", "(- 1i (/ 2i 3i))");

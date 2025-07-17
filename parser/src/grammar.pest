@@ -48,7 +48,7 @@ prefix = _{ neg | not | bitwise_not }
     neg         =  { "-" }
     not         =  { "!" }
     bitwise_not =  { "~" }
-factor   =  _{ number | "(" ~ expression ~ ")" | boolean | functionCall | identifier }
+factor   =  _{ number | "(" ~ expression ~ ")" | bool | functionCall | identifier }
 functionCall =   { identifier ~ "(" ~ functionCallArguments ~ ")" }
 functionCallArguments = { (expression ~ ("," ~ expression)*)? }
 
@@ -64,7 +64,7 @@ doubleNumber = @{
     ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)? |
     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)
 }
-boolean = {"true" | "false"}
+bool = {"true" | "false"}
 
 identifier = @{ (XID_START | "_") ~ XID_CONTINUE* }
 

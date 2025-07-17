@@ -242,16 +242,16 @@ fn sum(
     );
     test_ok!(
         let_multiple_etherogeneous,
-        r"fn test() -> boolean {
+        r"fn test() -> bool {
   let a = 42, b = true, c = 3.14;
   return !b && a > 0 && c < 1.0;
 }",
         r"module test
 
 fn test(
-) -> boolean
+) -> bool
 { #0
-  let a: int = 42i, b: boolean = true, c: double = 3.14d;
+  let a: int = 42i, b: bool = true, c: double = 3.14d;
   return (&&b (&&b (!b b) (>b a 0i)) (<b c 1d));
 }
 
@@ -259,7 +259,7 @@ fn test(
     );
     test_ok!(
         can_shadow_variables,
-        r"fn test() -> boolean {
+        r"fn test() -> bool {
   let a = 1;
   let a = true;
   return a;
@@ -267,10 +267,10 @@ fn test(
         r"module test
 
 fn test(
-) -> boolean
+) -> bool
 { #0
   let a: int = 1i;
-  let a: boolean = true;
+  let a: bool = true;
   return a;
 }
 
@@ -278,7 +278,7 @@ fn test(
     );
     test_ok!(
         nested_blocks,
-        r"fn test() -> boolean {
+        r"fn test() -> bool {
   let a = 1;
   {
     return a;
@@ -287,7 +287,7 @@ fn test(
         r"module test
 
 fn test(
-) -> boolean
+) -> bool
 { #0
   let a: int = 1i;
   { #1
@@ -397,9 +397,9 @@ fn main(
     );
 
     test_ko!(
-        invalid_types_neg_boolean,
+        invalid_types_neg_bool,
         "fn test() { - false; }",
-        "cannot apply operator \"-\" to type boolean"
+        "cannot apply operator \"-\" to type bool"
     );
     test_ko!(
         invalid_types_not_int,
@@ -417,9 +417,9 @@ fn main(
         "cannot apply operator \"~\" to type double"
     );
     test_ko!(
-        invalid_types_bitwise_not_boolean,
+        invalid_types_bitwise_not_bool,
         "fn test() { ~ false; }",
-        "cannot apply operator \"~\" to type boolean"
+        "cannot apply operator \"~\" to type bool"
     );
     test_ko!(
         invalid_types_binary_mismatch,
@@ -448,7 +448,7 @@ fn main(
   let a = 42;
   a = false;
 }",
-        "invalid assignment to \"a\": symbol has type int, but expression has type boolean"
+        "invalid assignment to \"a\": symbol has type int, but expression has type bool"
     );
     test_ko!(
         variables_declared_in_nested_block_cannot_be_accessed_in_outer,
@@ -516,11 +516,11 @@ fn main() { f(1); }",
         "too many arguments in call to \"f\": expected 0, found 1"
     );
     test_ko!(
-        argument_type_mismatch_int_to_boolean,
+        argument_type_mismatch_int_to_bool,
         r"
-fn f(x: boolean) {}
+fn f(x: bool) {}
 fn main() { f(42); }",
-        "argument type mismatch in call to \"f\": argument 0 (x) expected boolean, found int"
+        "argument type mismatch in call to \"f\": argument 0 (x) expected bool, found int"
     );
     test_ko!(
         argument_type_mismatch_void_to_int,
