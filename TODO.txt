@@ -1,25 +1,16 @@
-Semantic analysis
-
-LLVM backend
-
 Language as a whole
 - [ ] cast
-- [x] function calls
+- [ ] if
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
 - [ ] verify functions have a return on all paths, with a coherent type
 - [ ] keep track of mutable/immutable variables
+
+Semantic analysis
+
+LLVM backend
 
 Main
 - [ ] create a main crate with clap and able to generate binary, or bytecode
 - [ ] optimizations
 
-ParseTree refactoring
-- [x] unify Let with initializers or multiple
-- [x] one tree!
-- [x] create function typing phase
-- [ ] refactor tests to use only e2e API
-- [ ] modify phase type resolution to start from function resolved, and not parsed
-
 Misc
-- [x] rename `integer` to `int`
-- [x] rename `boolean` to `bool`
