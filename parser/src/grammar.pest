@@ -15,11 +15,12 @@ typeName = _{ identifier }
 
 block = { "{" ~ (statement | block)* ~ "}" }
 
-statement = { (letStatement | assignmentStatement | returnStatement | expression) ~ ";" }
+statement = { ifStatement | (letStatement | assignmentStatement | returnStatement | expression) ~ ";" }
 letStatement = { "let" ~ letStatementInitializer ~ ("," ~ letStatementInitializer )* }
 letStatementInitializer = { identifier ~ "=" ~ expression? }
 assignmentStatement = { identifier ~ "=" ~ expression }
 returnStatement = { "return" ~ expression? }
+ifStatement = { "if" ~ expression ~ block ~ ("else" ~ (ifStatement | block))? }
 
 expression = { prefix? ~ factor ~ (infix ~ prefix? ~ factor )* }
 // Note: the order here is important, since some rules are a prefix of others. In particular, exp needs to come

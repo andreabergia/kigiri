@@ -273,6 +273,7 @@ fn fmt_statement_with_context(
             writeln!(f, ";")
         }
         Statement::NestedBlock { block } => fmt_with_context(f, block, context.indented()),
+        Statement::If { .. } => todo!("if statement formatting not implemented yet"),
     }
 }
 

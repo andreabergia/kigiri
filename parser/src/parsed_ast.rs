@@ -1,8 +1,8 @@
 use crate::symbols::StringId;
 use crate::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionArgument,
-    FunctionDeclaration, FunctionSignature, LetInitializer, LiteralValue, Module, Statement,
-    UnaryOperator, intern_string,
+    FunctionDeclaration, FunctionSignature, IfElseBlock, LetInitializer, LiteralValue, Module,
+    Statement, UnaryOperator, intern_string,
 };
 use bumpalo::collections::Vec as BumpVec;
 use std::collections::HashMap;
@@ -240,5 +240,43 @@ impl ParsedAstAllocator {
             body,
             symbol_table: (),
         })
+    }
+
+    pub fn statement_if<'s, 'c, 'b, 'e>(
+        &'s self,
+        condition: &'c Expression<'c, PhaseParsed<'s>>,
+        then_block: &'b Block<'b, PhaseParsed<'s>>,
+        else_block: Option<&'e IfElseBlock<'e, PhaseParsed<'s>>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
+    where
+        'c: 's,
+        'b: 's,
+        'e: 's,
+    {
+        self.allocator.alloc(Statement::If {
+            condition,
+            then_block,
+            else_block,
+        })
+    }
+
+    pub fn if_else_block<'s, 'b>(
+        &'s self,
+        block: &'b Block<'b, PhaseParsed<'s>>,
+    ) -> &'s IfElseBlock<'s, PhaseParsed<'s>>
+    where
+        'b: 's,
+    {
+        self.allocator.alloc(IfElseBlock::Block(block))
+    }
+
+    pub fn if_else_if<'s, 'i>(
+        &'s self,
+        if_stmt: &'i Statement<'i, PhaseParsed<'s>>,
+    ) -> &'s IfElseBlock<'s, PhaseParsed<'s>>
+    where
+        'i: 's,
+    {
+        self.allocator.alloc(IfElseBlock::If(if_stmt))
     }
 }

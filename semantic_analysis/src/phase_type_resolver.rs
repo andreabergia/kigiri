@@ -294,6 +294,7 @@ impl<'a> TypeResolver {
                 let typed_block = Self::analyze_block(allocator, block, nested_symbol_table)?;
                 statements.push(allocator.alloc(Statement::NestedBlock { block: typed_block }));
             }
+            Statement::If { .. } => todo!("if statement type resolution not implemented yet"),
         };
         Ok(())
     }

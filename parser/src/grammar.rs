@@ -115,6 +115,15 @@ mod tests {
     }
 
     #[test]
+    fn grammar_can_parse_if_statement() {
+        assert_can_be_parsed_as("if true { }", Rule::ifStatement);
+        assert_can_be_parsed_as("if x > 0 { }", Rule::ifStatement);
+        assert_can_be_parsed_as("if x > 0 { } else { }", Rule::ifStatement);
+        assert_can_be_parsed_as("if x > 0 { } else if y < 0 { }", Rule::ifStatement);
+        assert_can_be_parsed_as("if x > 0 { } else if y < 0 { } else { }", Rule::ifStatement);
+    }
+
+    #[test]
     fn grammar_can_parse_function() {
         assert_can_be_parsed_as("fn main() { }", Rule::functionDeclaration);
         assert_can_be_parsed_as("fn f(a: int) -> int {}", Rule::functionDeclaration);

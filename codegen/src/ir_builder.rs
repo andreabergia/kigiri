@@ -134,6 +134,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 FoundReturn::No
             }
             Statement::NestedBlock { .. } => todo!(),
+            Statement::If { .. } => todo!("if statement codegen not implemented yet"),
         }
     }
 

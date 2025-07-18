@@ -127,6 +127,7 @@ impl<'a> TopLevelDeclarationCollector {
             Statement::NestedBlock { block } => Statement::NestedBlock {
                 block: Self::map_block(allocator, block)?,
             },
+            Statement::If { .. } => todo!("if statement collection not implemented yet"),
         }))
     }
 

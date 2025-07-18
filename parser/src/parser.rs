@@ -132,6 +132,30 @@ fn parse_let_statement<'a>(
     ast_allocator.statement_let(initializers)
 }
 
+fn parse_if_statement<'a>(
+    ast_allocator: &'a ParsedAstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Statement<'a, PhaseParsed<'a>> {
+    let mut inner = rule.into_inner();
+
+    let condition = parse_expression(ast_allocator, inner.next().expect("if condition"));
+    let then_block = parse_block(ast_allocator, inner.next().expect("then block"));
+
+    let else_block = if let Some(else_part) = inner.next() {
+        match else_part.as_rule() {
+            Rule::block => Some(ast_allocator.if_else_block(parse_block(ast_allocator, else_part))),
+            Rule::ifStatement => {
+                Some(ast_allocator.if_else_if(parse_if_statement(ast_allocator, else_part)))
+            }
+            _ => unreachable!("unexpected else part"),
+        }
+    } else {
+        None
+    };
+
+    ast_allocator.statement_if(condition, then_block, else_block)
+}
+
 fn parse_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
@@ -162,6 +186,7 @@ fn parse_statement<'a>(
             let expression = parse_expression(ast_allocator, pair);
             ast_allocator.statement_expression(expression)
         }
+        Rule::ifStatement => parse_if_statement(ast_allocator, pair),
         _ => unreachable!(),
     }
 }
@@ -434,6 +459,60 @@ a = 1i;
         r"{ #0
 { #1
 a = 1i;
+}
+}"
+    );
+
+    test_block!(
+        statement_if_simple,
+        r"{
+    if true {
+        x = 1;
+    }
+}",
+        r"{ #0
+if true { #1
+x = 1i;
+}
+}"
+    );
+
+    test_block!(
+        statement_if_with_else,
+        r"{
+    if x > 0 {
+        y = 1;
+    } else {
+        y = 0;
+    }
+}",
+        r"{ #0
+if (> x 0i) { #1
+y = 1i;
+} else { #2
+y = 0i;
+}
+}"
+    );
+
+    test_block!(
+        statement_if_with_else_if,
+        r"{
+    if x > 0 {
+        y = 1;
+    } else if x < 0 {
+        y = -1;
+    } else {
+        y = 0;
+    }
+}",
+        r"{ #0
+if (> x 0i) { #1
+y = 1i;
+} else if (< x 0i) { #2
+y = (- 1i);
+} else { #3
+y = 0i;
 }
 }"
     );
