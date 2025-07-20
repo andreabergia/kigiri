@@ -4,8 +4,8 @@ use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type, res
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, IfElseBlock, LetInitializer, Module, Statement, StringId,
-    UnaryOperator, resolve_string_id,
+    FunctionSignaturesByName, IfElseBlock, IfStatement, LetInitializer, Module, Statement,
+    StringId, UnaryOperator, resolve_string_id,
 };
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -357,16 +357,45 @@ impl<'a> TypeResolver {
                 Ok(allocator.alloc(IfElseBlock::Block(typed_block)))
             }
             IfElseBlock::If(if_statement) => {
-                let mut statements = allocator.new_bump_vec_with_capacity(1);
-                Self::analyze_statement(allocator, if_statement, &mut statements, symbol_table)?;
+                // Type check the condition - it must be a boolean expression
+                let analyzed_condition =
+                    Self::analyze_expression(allocator, if_statement.condition, symbol_table)?;
+                let condition_type = resolved_type(analyzed_condition);
 
-                // The statement should be an If statement
-                if let Some(Statement::If { .. }) = statements.first() {
-                    Ok(allocator.alloc(IfElseBlock::If(statements[0])))
-                } else {
-                    // This shouldn't happen if the parser is correct
-                    panic!("Expected If statement in IfElseBlock::If");
+                match condition_type {
+                    Some(Type::Bool) => {
+                        // Condition is valid, continue with blocks
+                    }
+                    Some(other_type) => {
+                        return Err(SemanticAnalysisError::IfConditionMustBeBool {
+                            actual_type: other_type.to_string(),
+                        });
+                    }
+                    None => {
+                        return Err(SemanticAnalysisError::IfConditionMustBeBool {
+                            actual_type: "void".to_string(),
+                        });
+                    }
                 }
+
+                let analyzed_then_block =
+                    Self::analyze_block(allocator, if_statement.then_block, symbol_table)?;
+                let analyzed_else_block = if let Some(else_block) = if_statement.else_block {
+                    Some(Self::analyze_if_else_block(
+                        allocator,
+                        else_block,
+                        symbol_table,
+                    )?)
+                } else {
+                    None
+                };
+
+                let analyzed_if_statement = allocator.alloc(IfStatement {
+                    condition: analyzed_condition,
+                    then_block: analyzed_then_block,
+                    else_block: analyzed_else_block,
+                });
+                Ok(allocator.alloc(IfElseBlock::If(analyzed_if_statement)))
             }
         }
     }

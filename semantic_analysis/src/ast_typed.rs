@@ -1,9 +1,9 @@
 use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    resolve_string_id, AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase,
-    Expression, FunctionDeclaration, FunctionSignature, IfElseBlock, LiteralValue, Module, Statement,
-    StringId,
+    AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
+    FunctionDeclaration, FunctionSignature, IfElseBlock, IfStatement, LiteralValue, Module,
+    Statement, StringId, resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -307,24 +307,15 @@ fn fmt_if_else_block_with_context(
         IfElseBlock::Block(block) => fmt_with_context(f, block, context.indented()),
         IfElseBlock::If(if_statement) => {
             // For else if, we don't want extra indentation since it's part of the same if chain
-            if let Statement::If {
-                condition,
-                then_block,
-                else_block,
-            } = if_statement
-            {
-                write!(f, "  if ")?;
-                fmt_with_symbol_table(f, condition, context.symbol_table)?;
-                write!(f, " ")?;
-                fmt_with_context(f, then_block, context.indented())?;
-                if let Some(nested_else_block) = else_block {
-                    write!(f, "{}  else ", context.indent)?;
-                    fmt_if_else_block_with_context(f, nested_else_block, context)?;
-                }
-                Ok(())
-            } else {
-                panic!("Expected If statement in IfElseBlock::If");
+            write!(f, "  if ")?;
+            fmt_with_symbol_table(f, if_statement.condition, context.symbol_table)?;
+            write!(f, " ")?;
+            fmt_with_context(f, if_statement.then_block, context.indented())?;
+            if let Some(nested_else_block) = if_statement.else_block {
+                write!(f, "{}  else ", context.indent)?;
+                fmt_if_else_block_with_context(f, nested_else_block, context)?;
             }
+            Ok(())
         }
     }
 }

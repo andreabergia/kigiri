@@ -1,8 +1,8 @@
 use crate::symbols::StringId;
 use crate::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionArgument,
-    FunctionDeclaration, FunctionSignature, IfElseBlock, LetInitializer, LiteralValue, Module,
-    Statement, UnaryOperator, intern_string,
+    FunctionDeclaration, FunctionSignature, IfElseBlock, IfStatement, LetInitializer, LiteralValue,
+    Module, Statement, UnaryOperator, intern_string,
 };
 use bumpalo::collections::Vec as BumpVec;
 use std::collections::HashMap;
@@ -270,13 +270,22 @@ impl ParsedAstAllocator {
         self.allocator.alloc(IfElseBlock::Block(block))
     }
 
-    pub fn if_else_if<'s, 'i>(
+    pub fn if_else_if<'s, 'c, 't, 'e>(
         &'s self,
-        if_stmt: &'i Statement<'i, PhaseParsed<'s>>,
+        condition: &'c Expression<'c, PhaseParsed<'s>>,
+        then_block: &'t Block<'t, PhaseParsed<'s>>,
+        else_block: Option<&'e IfElseBlock<'e, PhaseParsed<'s>>>,
     ) -> &'s IfElseBlock<'s, PhaseParsed<'s>>
     where
-        'i: 's,
+        'c: 's,
+        't: 's,
+        'e: 's,
     {
-        self.allocator.alloc(IfElseBlock::If(if_stmt))
+        let if_statement = self.allocator.alloc(IfStatement {
+            condition,
+            then_block,
+            else_block,
+        });
+        self.allocator.alloc(IfElseBlock::If(if_statement))
     }
 }
