@@ -294,13 +294,10 @@ impl<'a> TypeResolver {
                 let typed_block = Self::analyze_block(allocator, block, nested_symbol_table)?;
                 statements.push(allocator.alloc(Statement::NestedBlock { block: typed_block }));
             }
-            Statement::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
+            Statement::If(if_statement) => {
                 // Type check the condition - it must be a boolean expression
-                let typed_condition = Self::analyze_expression(allocator, condition, symbol_table)?;
+                let typed_condition =
+                    Self::analyze_expression(allocator, if_statement.condition, symbol_table)?;
                 let condition_type = resolved_type(typed_condition);
 
                 match condition_type {
@@ -322,10 +319,10 @@ impl<'a> TypeResolver {
                 // Type check the then block
                 let then_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
                 let typed_then_block =
-                    Self::analyze_block(allocator, then_block, then_symbol_table)?;
+                    Self::analyze_block(allocator, if_statement.then_block, then_symbol_table)?;
 
                 // Type check the else block if present
-                let typed_else_block = if let Some(else_block) = else_block {
+                let typed_else_block = if let Some(else_block) = if_statement.else_block {
                     Some(Self::analyze_if_else_block(
                         allocator,
                         else_block,
@@ -335,11 +332,13 @@ impl<'a> TypeResolver {
                     None
                 };
 
-                statements.push(allocator.alloc(Statement::If {
+                let typed_if_statement = allocator.alloc(IfStatement {
                     condition: typed_condition,
                     then_block: typed_then_block,
                     else_block: typed_else_block,
-                }));
+                });
+
+                statements.push(allocator.alloc(Statement::If(typed_if_statement)));
             }
         };
         Ok(())

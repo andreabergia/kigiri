@@ -280,16 +280,12 @@ fn fmt_statement_with_context(
             write!(f, "{}  ", context.indent)?;
             fmt_with_context(f, block, context.indented())
         }
-        Statement::If {
-            condition,
-            then_block,
-            else_block,
-        } => {
+        Statement::If(if_statement) => {
             write!(f, "{}  if ", context.indent)?;
-            fmt_with_symbol_table(f, condition, context.symbol_table)?;
+            fmt_with_symbol_table(f, if_statement.condition, context.symbol_table)?;
             write!(f, " ")?;
-            fmt_with_context(f, then_block, context.indented())?;
-            if let Some(else_block) = else_block {
+            fmt_with_context(f, if_statement.then_block, context.indented())?;
+            if let Some(else_block) = if_statement.else_block {
                 write!(f, "{}  else ", context.indent)?;
                 fmt_if_else_block_with_context(f, else_block, context)?;
             }

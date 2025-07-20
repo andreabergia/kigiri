@@ -253,11 +253,12 @@ impl ParsedAstAllocator {
         'b: 's,
         'e: 's,
     {
-        self.allocator.alloc(Statement::If {
+        let if_statement = self.allocator.alloc(IfStatement {
             condition,
             then_block,
             else_block,
-        })
+        });
+        self.allocator.alloc(Statement::If(if_statement))
     }
 
     pub fn if_else_block<'s, 'b>(
