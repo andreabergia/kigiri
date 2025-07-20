@@ -132,10 +132,14 @@ fn parse_let_statement<'a>(
     ast_allocator.statement_let(initializers)
 }
 
-fn parse_if_else_recursive<'a>(
+fn parse_if_components<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a IfElseBlock<'a, PhaseParsed<'a>> {
+) -> (
+    &'a Expression<'a, PhaseParsed<'a>>,
+    &'a Block<'a, PhaseParsed<'a>>,
+    Option<&'a IfElseBlock<'a, PhaseParsed<'a>>>,
+) {
     let mut inner = rule.into_inner();
     let condition = parse_expression(ast_allocator, inner.next().expect("if condition"));
     let then_block = parse_block(ast_allocator, inner.next().expect("then block"));
@@ -150,6 +154,14 @@ fn parse_if_else_recursive<'a>(
         None
     };
 
+    (condition, then_block, else_block)
+}
+
+fn parse_if_else_recursive<'a>(
+    ast_allocator: &'a ParsedAstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a IfElseBlock<'a, PhaseParsed<'a>> {
+    let (condition, then_block, else_block) = parse_if_components(ast_allocator, rule);
     ast_allocator.if_else_if(condition, then_block, else_block)
 }
 
@@ -157,21 +169,7 @@ fn parse_if_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a Statement<'a, PhaseParsed<'a>> {
-    let mut inner = rule.into_inner();
-
-    let condition = parse_expression(ast_allocator, inner.next().expect("if condition"));
-    let then_block = parse_block(ast_allocator, inner.next().expect("then block"));
-
-    let else_block = if let Some(else_part) = inner.next() {
-        match else_part.as_rule() {
-            Rule::block => Some(ast_allocator.if_else_block(parse_block(ast_allocator, else_part))),
-            Rule::ifStatement => Some(parse_if_else_recursive(ast_allocator, else_part)),
-            _ => unreachable!("unexpected else part"),
-        }
-    } else {
-        None
-    };
-
+    let (condition, then_block, else_block) = parse_if_components(ast_allocator, rule);
     ast_allocator.statement_if(condition, then_block, else_block)
 }
 
