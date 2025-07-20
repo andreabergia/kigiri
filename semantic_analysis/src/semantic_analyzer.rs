@@ -67,6 +67,8 @@ pub enum SemanticAnalysisError {
         expected_type: Type,
         actual_type: String,
     },
+    #[error("if condition must be of type bool, found {actual_type}")]
+    IfConditionMustBeBool { actual_type: String },
 }
 
 #[derive(Default)]
@@ -529,6 +531,196 @@ fn empty() {}
 fn f(x: int) {}
 fn main() { f(empty()); }",
         "argument type mismatch in call to \"f\": argument 0 (x) expected int, found void"
+    );
+
+    // If statement tests
+    test_ok!(
+        if_statement_simple,
+        r"fn test() {
+  if true {
+    return;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  if true { #1
+    return;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        if_statement_with_else,
+        r"fn test() {
+  if false {
+    let x = 1;
+  } else {
+    let y = 2;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  if false { #1
+    let x: int = 1i;
+  }
+  else { #2
+    let y: int = 2i;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        if_statement_with_else_if,
+        r"fn test() {
+  if false {
+    let x = 1;
+  } else if true {
+    let y = 2;
+  } else {
+    let z = 3;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  if false { #1
+    let x: int = 1i;
+  }
+  else   if true { #2
+    let y: int = 2i;
+  }
+  else { #3
+    let z: int = 3i;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        if_statement_with_expression_condition,
+        r"fn test(x: int) {
+  if x > 0 {
+    return;
+  }
+}",
+        r"module test
+
+fn test(
+  x: int,
+) -> void
+{ #0
+  if (>b x 0i) { #1
+    return;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        if_statement_variable_scoping,
+        r"fn test() {
+  let x = 1;
+  if true {
+    let x = 2; 
+    x;
+  }
+  x;
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  let x: int = 1i;
+  if true { #1
+    let x: int = 2i;
+    x;
+  }
+  x;
+}
+
+"
+    );
+
+    test_ok!(
+        nested_if_statements,
+        r"fn test() {
+  if true {
+    if false {
+      let x = 1;
+    }
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  if true { #1
+    if false { #2
+      let x: int = 1i;
+    }
+  }
+}
+
+"
+    );
+
+    test_ko!(
+        if_condition_must_be_bool_int,
+        r"fn test() {
+  if 42 {
+    return;
+  }
+}",
+        "if condition must be of type bool, found int"
+    );
+
+    test_ko!(
+        if_condition_must_be_bool_double,
+        r"fn test() {
+  if 3.14 {
+    return;
+  }
+}",
+        "if condition must be of type bool, found double"
+    );
+
+    test_ko!(
+        if_condition_must_be_bool_void,
+        r"fn empty() {}
+fn test() {
+  if empty() {
+    return;
+  }
+}",
+        "if condition must be of type bool, found void"
+    );
+
+    test_ko!(
+        if_condition_must_be_bool_else_if,
+        r"fn test() {
+  if true {
+    return;
+  } else if 1 {
+    return;
+  }
+}",
+        "if condition must be of type bool, found int"
     );
 
     // TODO: all return match expected type? here or in separate pass?

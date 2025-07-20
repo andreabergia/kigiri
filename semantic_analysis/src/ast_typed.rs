@@ -1,9 +1,9 @@
 use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
-    FunctionDeclaration, FunctionSignature, LiteralValue, Module, Statement, StringId,
-    resolve_string_id,
+    resolve_string_id, AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase,
+    Expression, FunctionDeclaration, FunctionSignature, IfElseBlock, LiteralValue, Module, Statement,
+    StringId,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -183,11 +183,15 @@ impl DisplayTypedAstContext<'_> {
 fn fmt_with_context(
     f: &mut Formatter<'_>,
     block: &Block<PhaseTypeResolved>,
-    mut context: DisplayTypedAstContext,
+    context: DisplayTypedAstContext,
 ) -> std::fmt::Result {
-    writeln!(f, "{}{{ #{}", context.indent, block.id.0)?;
+    writeln!(f, "{{ #{}", block.id.0)?;
+    let block_context = DisplayTypedAstContext {
+        indent: context.indent.clone(),
+        symbol_table: block.symbol_table,
+    };
     for statement in &block.statements {
-        fmt_statement_with_context(f, statement, &context)?;
+        fmt_statement_with_context(f, statement, &block_context)?;
     }
     writeln!(f, "{}}}", context.indent)
 }
@@ -272,8 +276,56 @@ fn fmt_statement_with_context(
             fmt_with_symbol_table(f, expression, context.symbol_table)?;
             writeln!(f, ";")
         }
-        Statement::NestedBlock { block } => fmt_with_context(f, block, context.indented()),
-        Statement::If { .. } => todo!("if statement formatting not implemented yet"),
+        Statement::NestedBlock { block } => {
+            write!(f, "{}  ", context.indent)?;
+            fmt_with_context(f, block, context.indented())
+        }
+        Statement::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            write!(f, "{}  if ", context.indent)?;
+            fmt_with_symbol_table(f, condition, context.symbol_table)?;
+            write!(f, " ")?;
+            fmt_with_context(f, then_block, context.indented())?;
+            if let Some(else_block) = else_block {
+                write!(f, "{}  else ", context.indent)?;
+                fmt_if_else_block_with_context(f, else_block, context)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+fn fmt_if_else_block_with_context(
+    f: &mut Formatter<'_>,
+    else_block: &IfElseBlock<PhaseTypeResolved>,
+    context: &DisplayTypedAstContext,
+) -> std::fmt::Result {
+    match else_block {
+        IfElseBlock::Block(block) => fmt_with_context(f, block, context.indented()),
+        IfElseBlock::If(if_statement) => {
+            // For else if, we don't want extra indentation since it's part of the same if chain
+            if let Statement::If {
+                condition,
+                then_block,
+                else_block,
+            } = if_statement
+            {
+                write!(f, "  if ")?;
+                fmt_with_symbol_table(f, condition, context.symbol_table)?;
+                write!(f, " ")?;
+                fmt_with_context(f, then_block, context.indented())?;
+                if let Some(nested_else_block) = else_block {
+                    write!(f, "{}  else ", context.indent)?;
+                    fmt_if_else_block_with_context(f, nested_else_block, context)?;
+                }
+                Ok(())
+            } else {
+                panic!("Expected If statement in IfElseBlock::If");
+            }
+        }
     }
 }
 

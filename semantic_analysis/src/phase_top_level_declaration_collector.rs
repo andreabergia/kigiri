@@ -2,8 +2,8 @@ use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
 use parser::{
     AstAllocator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, LetInitializer, Module, PhaseParsed, Statement, StringId,
-    resolve_string_id,
+    FunctionSignaturesByName, IfElseBlock, LetInitializer, Module, PhaseParsed, Statement,
+    StringId, resolve_string_id,
 };
 
 pub(crate) struct TopLevelDeclarationCollector {}
@@ -127,7 +127,17 @@ impl<'a> TopLevelDeclarationCollector {
             Statement::NestedBlock { block } => Statement::NestedBlock {
                 block: Self::map_block(allocator, block)?,
             },
-            Statement::If { .. } => todo!("if statement collection not implemented yet"),
+            Statement::If {
+                condition,
+                then_block,
+                else_block,
+            } => Statement::If {
+                condition: Self::map_expression(allocator, condition)?,
+                then_block: Self::map_block(allocator, then_block)?,
+                else_block: else_block
+                    .map(|else_block| Self::map_if_else_block(allocator, else_block))
+                    .transpose()?,
+            },
         }))
     }
 
@@ -182,6 +192,19 @@ impl<'a> TopLevelDeclarationCollector {
                     args: mapped_args,
                     return_type: (),
                 }
+            }
+        }))
+    }
+
+    fn map_if_else_block(
+        allocator: &'a AstAllocator,
+        else_block: &IfElseBlock<PhaseParsed>,
+    ) -> Result<&'a IfElseBlock<'a, PhaseTopLevelDeclarationCollected<'a>>, SemanticAnalysisError>
+    {
+        Ok(allocator.alloc(match else_block {
+            IfElseBlock::Block(block) => IfElseBlock::Block(Self::map_block(allocator, block)?),
+            IfElseBlock::If(if_statement) => {
+                IfElseBlock::If(Self::map_statement(allocator, if_statement)?)
             }
         }))
     }

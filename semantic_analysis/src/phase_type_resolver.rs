@@ -4,8 +4,8 @@ use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type, res
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, LetInitializer, Module, Statement, StringId, UnaryOperator,
-    resolve_string_id,
+    FunctionSignaturesByName, IfElseBlock, LetInitializer, Module, Statement, StringId,
+    UnaryOperator, resolve_string_id,
 };
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -294,9 +294,81 @@ impl<'a> TypeResolver {
                 let typed_block = Self::analyze_block(allocator, block, nested_symbol_table)?;
                 statements.push(allocator.alloc(Statement::NestedBlock { block: typed_block }));
             }
-            Statement::If { .. } => todo!("if statement type resolution not implemented yet"),
+            Statement::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                // Type check the condition - it must be a boolean expression
+                let typed_condition = Self::analyze_expression(allocator, condition, symbol_table)?;
+                let condition_type = resolved_type(typed_condition);
+
+                match condition_type {
+                    Some(Type::Bool) => {
+                        // Condition is valid, continue with blocks
+                    }
+                    Some(other_type) => {
+                        return Err(SemanticAnalysisError::IfConditionMustBeBool {
+                            actual_type: other_type.to_string(),
+                        });
+                    }
+                    None => {
+                        return Err(SemanticAnalysisError::IfConditionMustBeBool {
+                            actual_type: "void".to_string(),
+                        });
+                    }
+                }
+
+                // Type check the then block
+                let then_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
+                let typed_then_block =
+                    Self::analyze_block(allocator, then_block, then_symbol_table)?;
+
+                // Type check the else block if present
+                let typed_else_block = if let Some(else_block) = else_block {
+                    Some(Self::analyze_if_else_block(
+                        allocator,
+                        else_block,
+                        symbol_table,
+                    )?)
+                } else {
+                    None
+                };
+
+                statements.push(allocator.alloc(Statement::If {
+                    condition: typed_condition,
+                    then_block: typed_then_block,
+                    else_block: typed_else_block,
+                }));
+            }
         };
         Ok(())
+    }
+
+    fn analyze_if_else_block(
+        allocator: &'a AstAllocator,
+        else_block: &IfElseBlock<PhaseTopLevelDeclarationCollected>,
+        symbol_table: &'a SymbolTable<'a>,
+    ) -> Result<&'a IfElseBlock<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
+        match else_block {
+            IfElseBlock::Block(block) => {
+                let else_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
+                let typed_block = Self::analyze_block(allocator, block, else_symbol_table)?;
+                Ok(allocator.alloc(IfElseBlock::Block(typed_block)))
+            }
+            IfElseBlock::If(if_statement) => {
+                let mut statements = allocator.new_bump_vec_with_capacity(1);
+                Self::analyze_statement(allocator, if_statement, &mut statements, symbol_table)?;
+
+                // The statement should be an If statement
+                if let Some(Statement::If { .. }) = statements.first() {
+                    Ok(allocator.alloc(IfElseBlock::If(statements[0])))
+                } else {
+                    // This shouldn't happen if the parser is correct
+                    panic!("Expected If statement in IfElseBlock::If");
+                }
+            }
+        }
     }
 
     fn analyze_expression(
