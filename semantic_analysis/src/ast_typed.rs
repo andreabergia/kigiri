@@ -280,18 +280,30 @@ fn fmt_statement_with_context(
             write!(f, "{}  ", context.indent)?;
             fmt_with_context(f, block, context.indented())
         }
-        Statement::If(if_statement) => {
-            write!(f, "{}  if ", context.indent)?;
-            fmt_with_symbol_table(f, if_statement.condition, context.symbol_table)?;
-            write!(f, " ")?;
-            fmt_with_context(f, if_statement.then_block, context.indented())?;
-            if let Some(else_block) = if_statement.else_block {
-                write!(f, "{}  else ", context.indent)?;
-                fmt_if_else_block_with_context(f, else_block, context)?;
-            }
-            Ok(())
-        }
+        Statement::If(if_statement) => fmt_if_statement_with_context(
+            f,
+            if_statement,
+            context,
+            &format!("{}  ", context.indent),
+        ),
     }
+}
+
+fn fmt_if_statement_with_context(
+    f: &mut Formatter<'_>,
+    if_statement: &IfStatement<PhaseTypeResolved>,
+    context: &DisplayTypedAstContext,
+    if_prefix: &str,
+) -> std::fmt::Result {
+    write!(f, "{}if ", if_prefix)?;
+    fmt_with_symbol_table(f, if_statement.condition, context.symbol_table)?;
+    write!(f, " ")?;
+    fmt_with_context(f, if_statement.then_block, context.indented())?;
+    if let Some(else_block) = if_statement.else_block {
+        write!(f, "{}  else ", context.indent)?;
+        fmt_if_else_block_with_context(f, else_block, context)?;
+    }
+    Ok(())
 }
 
 fn fmt_if_else_block_with_context(
@@ -303,15 +315,7 @@ fn fmt_if_else_block_with_context(
         IfElseBlock::Block(block) => fmt_with_context(f, block, context.indented()),
         IfElseBlock::If(if_statement) => {
             // For else if, we don't want extra indentation since it's part of the same if chain
-            write!(f, "  if ")?;
-            fmt_with_symbol_table(f, if_statement.condition, context.symbol_table)?;
-            write!(f, " ")?;
-            fmt_with_context(f, if_statement.then_block, context.indented())?;
-            if let Some(nested_else_block) = if_statement.else_block {
-                write!(f, "{}  else ", context.indent)?;
-                fmt_if_else_block_with_context(f, nested_else_block, context)?;
-            }
-            Ok(())
+            fmt_if_statement_with_context(f, if_statement, context, "  ")
         }
     }
 }
