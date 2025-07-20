@@ -132,7 +132,14 @@ fn write_function_declaration(
             None => "void".to_string(),
         }
     )?;
-    write_block(f, function_declaration.body)
+    fmt_block(
+        f,
+        function_declaration.body,
+        DisplayTypedAstContext {
+            indent: "".to_owned(),
+            symbol_table: function_declaration.body.symbol_table,
+        },
+    )
 }
 
 pub struct TypeResolvedBlock<'a, 'b, 'c> {
@@ -147,22 +154,15 @@ impl<'a, 'b, 'c> TypeResolvedBlock<'a, 'b, 'c> {
 
 impl Display for TypeResolvedBlock<'_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write_block(f, self.block)
+        fmt_block(
+            f,
+            self.block,
+            DisplayTypedAstContext {
+                indent: "".to_owned(),
+                symbol_table: self.block.symbol_table,
+            },
+        )
     }
-}
-
-fn write_block(
-    f: &mut Formatter<'_>,
-    block: &Block<'_, PhaseTypeResolved<'_>>,
-) -> std::fmt::Result {
-    fmt_with_context(
-        f,
-        block,
-        DisplayTypedAstContext {
-            indent: "".to_owned(),
-            symbol_table: block.symbol_table,
-        },
-    )
 }
 
 #[derive(Debug, Clone)]
@@ -180,7 +180,7 @@ impl DisplayTypedAstContext<'_> {
     }
 }
 
-fn fmt_with_context(
+fn fmt_block(
     f: &mut Formatter<'_>,
     block: &Block<PhaseTypeResolved>,
     context: DisplayTypedAstContext,
@@ -191,7 +191,7 @@ fn fmt_with_context(
         symbol_table: block.symbol_table,
     };
     for statement in &block.statements {
-        fmt_statement_with_context(f, statement, &block_context)?;
+        fmt_statement(f, statement, &block_context)?;
     }
     writeln!(f, "{}}}", context.indent)
 }
@@ -229,7 +229,7 @@ impl Display for VariableIndex {
     }
 }
 
-fn fmt_statement_with_context(
+fn fmt_statement(
     f: &mut Formatter<'_>,
     statement: &Statement<PhaseTypeResolved>,
     context: &DisplayTypedAstContext,
@@ -247,7 +247,7 @@ fn fmt_statement_with_context(
                     .lookup_by_id(initializer.variable)
                     .ok_or(std::fmt::Error)?;
                 write!(f, "{} = ", symbol)?;
-                fmt_with_symbol_table(f, initializer.value, context.symbol_table)?;
+                fmt_expression(f, initializer.value, context.symbol_table)?;
                 first = false;
             }
             writeln!(f, ";")
@@ -256,7 +256,7 @@ fn fmt_statement_with_context(
             let symbol = context.symbol_table.lookup_by_id(*target);
             if let Some(symbol) = symbol {
                 write!(f, "{}  {} = ", context.indent, symbol.name())?;
-                fmt_with_symbol_table(f, expression, context.symbol_table)?;
+                fmt_expression(f, expression, context.symbol_table)?;
                 writeln!(f, ";")
             } else {
                 Err(std::fmt::Error)
@@ -265,7 +265,7 @@ fn fmt_statement_with_context(
         Statement::Return { expression } => {
             if let Some(value) = expression {
                 write!(f, "{}  return ", context.indent)?;
-                fmt_with_symbol_table(f, value, context.symbol_table)?;
+                fmt_expression(f, value, context.symbol_table)?;
             } else {
                 write!(f, "{}  return", context.indent,)?;
             }
@@ -273,49 +273,46 @@ fn fmt_statement_with_context(
         }
         Statement::Expression { expression } => {
             write!(f, "{}  ", context.indent)?;
-            fmt_with_symbol_table(f, expression, context.symbol_table)?;
+            fmt_expression(f, expression, context.symbol_table)?;
             writeln!(f, ";")
         }
         Statement::NestedBlock { block } => {
             write!(f, "{}  ", context.indent)?;
-            fmt_with_context(f, block, context.indented())
+            fmt_block(f, block, context.indented())
         }
-        Statement::If(if_statement) => fmt_if_statement_with_context(
-            f,
-            if_statement,
-            context,
-            &format!("{}  ", context.indent),
-        ),
+        Statement::If(if_statement) => {
+            fmt_if_statement(f, if_statement, context, &format!("{}  ", context.indent))
+        }
     }
 }
 
-fn fmt_if_statement_with_context(
+fn fmt_if_statement(
     f: &mut Formatter<'_>,
     if_statement: &IfStatement<PhaseTypeResolved>,
     context: &DisplayTypedAstContext,
     if_prefix: &str,
 ) -> std::fmt::Result {
     write!(f, "{}if ", if_prefix)?;
-    fmt_with_symbol_table(f, if_statement.condition, context.symbol_table)?;
+    fmt_expression(f, if_statement.condition, context.symbol_table)?;
     write!(f, " ")?;
-    fmt_with_context(f, if_statement.then_block, context.indented())?;
+    fmt_block(f, if_statement.then_block, context.indented())?;
     if let Some(else_block) = if_statement.else_block {
         write!(f, "{}  else ", context.indent)?;
-        fmt_if_else_block_with_context(f, else_block, context)?;
+        fmt_if_else_block(f, else_block, context)?;
     }
     Ok(())
 }
 
-fn fmt_if_else_block_with_context(
+fn fmt_if_else_block(
     f: &mut Formatter<'_>,
     else_block: &IfElseBlock<PhaseTypeResolved>,
     context: &DisplayTypedAstContext,
 ) -> std::fmt::Result {
     match else_block {
-        IfElseBlock::Block(block) => fmt_with_context(f, block, context.indented()),
+        IfElseBlock::Block(block) => fmt_block(f, block, context.indented()),
         IfElseBlock::If(if_statement) => {
             // For else if, we don't want extra indentation since it's part of the same if chain
-            fmt_if_statement_with_context(f, if_statement, context, "  ")
+            fmt_if_statement(f, if_statement, context, "  ")
         }
     }
 }
@@ -327,7 +324,7 @@ struct TypedExpressionSymbolTableDisplayHelper<'e, 's, 't, 'p> {
 
 impl Display for TypedExpressionSymbolTableDisplayHelper<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        fmt_with_symbol_table(f, self.expression, self.symbol_table)
+        fmt_expression(f, self.expression, self.symbol_table)
     }
 }
 
@@ -342,7 +339,7 @@ pub fn to_string_with_symbol_table(
     .to_string()
 }
 
-fn fmt_with_symbol_table(
+fn fmt_expression(
     f: &mut Formatter<'_>,
     expression: &Expression<PhaseTypeResolved>,
     symbol_table: &SymbolTable<'_>,
@@ -366,7 +363,7 @@ fn fmt_with_symbol_table(
             operand,
         } => {
             write!(f, "({}{} ", operator, resolved_type.to_string_short(),);
-            fmt_with_symbol_table(f, operand, symbol_table)?;
+            fmt_expression(f, operand, symbol_table)?;
             write!(f, ")")
         }
         Expression::Binary {
@@ -377,9 +374,9 @@ fn fmt_with_symbol_table(
             ..
         } => {
             write!(f, "({}{} ", operator, result_type.to_string_short(),);
-            fmt_with_symbol_table(f, left, symbol_table)?;
+            fmt_expression(f, left, symbol_table)?;
             write!(f, " ")?;
-            fmt_with_symbol_table(f, right, symbol_table)?;
+            fmt_expression(f, right, symbol_table)?;
             write!(f, ")")
         }
         Expression::FunctionCall { name, args, .. } => {
@@ -390,7 +387,7 @@ fn fmt_with_symbol_table(
                 if !first {
                     write!(f, ", ")?;
                 }
-                fmt_with_symbol_table(f, arg, symbol_table)?;
+                fmt_expression(f, arg, symbol_table)?;
                 first = false;
             }
             write!(f, ")")
