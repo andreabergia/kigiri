@@ -90,3 +90,11 @@ The codebase uses a phase-based compilation model where AST nodes are parameteri
 
 - Keep comments focused and minimal - let the code speak for itself
 - Update this CLAUDE.md file if adding new development commands or changing the architecture
+
+### Git Commits
+
+- Write succinct commit messages that fit in 80 characters, subject line only
+- Use conventional commit format: `type: description` (e.g., `feat:`, `fix:`, `docs:`, `refactor:`)
+- Only add a description body when warranted - try hard to avoid needing it
+- Keep messages focused on what changed, not why (the code should explain why)
+- Do not add "Generated with Claude Code" or "Co-Authored-By: Claude" footers
