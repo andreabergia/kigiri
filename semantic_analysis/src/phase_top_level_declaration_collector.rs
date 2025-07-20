@@ -2,8 +2,8 @@ use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
 use parser::{
     AstAllocator, Block, Expression, FunctionDeclaration, FunctionSignature,
-    FunctionSignaturesByName, IfElseBlock, LetInitializer, Module, PhaseParsed, Statement,
-    StringId, resolve_string_id,
+    FunctionSignaturesByName, IfElseBlock, IfStatement, LetInitializer, Module, PhaseParsed,
+    Statement, StringId, resolve_string_id,
 };
 
 pub(crate) struct TopLevelDeclarationCollector {}
@@ -127,17 +127,21 @@ impl<'a> TopLevelDeclarationCollector {
             Statement::NestedBlock { block } => Statement::NestedBlock {
                 block: Self::map_block(allocator, block)?,
             },
-            Statement::If {
-                condition,
-                then_block,
-                else_block,
-            } => Statement::If {
-                condition: Self::map_expression(allocator, condition)?,
-                then_block: Self::map_block(allocator, then_block)?,
-                else_block: else_block
+            Statement::If(if_statement) => {
+                let mapped_condition = Self::map_expression(allocator, if_statement.condition)?;
+                let mapped_then_block = Self::map_block(allocator, if_statement.then_block)?;
+                let mapped_else_block = if_statement
+                    .else_block
                     .map(|else_block| Self::map_if_else_block(allocator, else_block))
-                    .transpose()?,
-            },
+                    .transpose()?;
+
+                let mapped_if_statement = allocator.alloc(IfStatement {
+                    condition: mapped_condition,
+                    then_block: mapped_then_block,
+                    else_block: mapped_else_block,
+                });
+                Statement::If(mapped_if_statement)
+            }
         }))
     }
 
@@ -204,7 +208,20 @@ impl<'a> TopLevelDeclarationCollector {
         Ok(allocator.alloc(match else_block {
             IfElseBlock::Block(block) => IfElseBlock::Block(Self::map_block(allocator, block)?),
             IfElseBlock::If(if_statement) => {
-                IfElseBlock::If(Self::map_statement(allocator, if_statement)?)
+                let mapped_condition = Self::map_expression(allocator, if_statement.condition)?;
+                let mapped_then_block = Self::map_block(allocator, if_statement.then_block)?;
+                let mapped_else_block = if let Some(else_block) = if_statement.else_block {
+                    Some(Self::map_if_else_block(allocator, else_block)?)
+                } else {
+                    None
+                };
+
+                let mapped_if_statement = allocator.alloc(IfStatement {
+                    condition: mapped_condition,
+                    then_block: mapped_then_block,
+                    else_block: mapped_else_block,
+                });
+                IfElseBlock::If(mapped_if_statement)
             }
         }))
     }

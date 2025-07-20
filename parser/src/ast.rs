@@ -70,17 +70,20 @@ pub enum Statement<'a, Phase: CompilationPhase> {
     NestedBlock {
         block: &'a Block<'a, Phase>,
     },
-    If {
-        condition: &'a Expression<'a, Phase>,
-        then_block: &'a Block<'a, Phase>,
-        else_block: Option<&'a IfElseBlock<'a, Phase>>,
-    },
+    If(&'a IfStatement<'a, Phase>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IfStatement<'a, Phase: CompilationPhase> {
+    pub condition: &'a Expression<'a, Phase>,
+    pub then_block: &'a Block<'a, Phase>,
+    pub else_block: Option<&'a IfElseBlock<'a, Phase>>,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum IfElseBlock<'a, Phase: CompilationPhase> {
     Block(&'a Block<'a, Phase>),
-    If(&'a Statement<'a, Phase>),
+    If(&'a IfStatement<'a, Phase>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -265,18 +268,20 @@ impl Display for Statement<'_, PhaseParsed<'_>> {
             Statement::NestedBlock { block } => {
                 write!(f, "{}", block)
             }
-            Statement::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
-                write!(f, "if {} {}", condition, then_block)?;
-                if let Some(else_block) = else_block {
-                    write!(f, " else {}", else_block)?;
-                }
-                Ok(())
+            Statement::If(if_statement) => {
+                write!(f, "{}", if_statement)
             }
         }
+    }
+}
+
+impl Display for IfStatement<'_, PhaseParsed<'_>> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "if {} {}", self.condition, self.then_block)?;
+        if let Some(else_block) = &self.else_block {
+            write!(f, " else {}", else_block)?;
+        }
+        Ok(())
     }
 }
 

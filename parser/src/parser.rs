@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration, LetInitializer,
-    Module, Statement, UnaryOperator,
+    BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration, IfElseBlock,
+    LetInitializer, Module, Statement, UnaryOperator,
 };
 use crate::grammar::{Grammar, Rule};
 use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
@@ -132,27 +132,44 @@ fn parse_let_statement<'a>(
     ast_allocator.statement_let(initializers)
 }
 
-fn parse_if_statement<'a>(
+fn parse_if_components<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Statement<'a, PhaseParsed<'a>> {
+) -> (
+    &'a Expression<'a, PhaseParsed<'a>>,
+    &'a Block<'a, PhaseParsed<'a>>,
+    Option<&'a IfElseBlock<'a, PhaseParsed<'a>>>,
+) {
     let mut inner = rule.into_inner();
-
     let condition = parse_expression(ast_allocator, inner.next().expect("if condition"));
     let then_block = parse_block(ast_allocator, inner.next().expect("then block"));
 
     let else_block = if let Some(else_part) = inner.next() {
         match else_part.as_rule() {
             Rule::block => Some(ast_allocator.if_else_block(parse_block(ast_allocator, else_part))),
-            Rule::ifStatement => {
-                Some(ast_allocator.if_else_if(parse_if_statement(ast_allocator, else_part)))
-            }
+            Rule::ifStatement => Some(parse_if_else_recursive(ast_allocator, else_part)),
             _ => unreachable!("unexpected else part"),
         }
     } else {
         None
     };
 
+    (condition, then_block, else_block)
+}
+
+fn parse_if_else_recursive<'a>(
+    ast_allocator: &'a ParsedAstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a IfElseBlock<'a, PhaseParsed<'a>> {
+    let (condition, then_block, else_block) = parse_if_components(ast_allocator, rule);
+    ast_allocator.if_else_if(condition, then_block, else_block)
+}
+
+fn parse_if_statement<'a>(
+    ast_allocator: &'a ParsedAstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Statement<'a, PhaseParsed<'a>> {
+    let (condition, then_block, else_block) = parse_if_components(ast_allocator, rule);
     ast_allocator.statement_if(condition, then_block, else_block)
 }
 
