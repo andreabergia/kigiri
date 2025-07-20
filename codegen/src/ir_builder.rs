@@ -42,7 +42,10 @@ impl<'i> FunctionIrBuilder<'i> {
             self.push_to_current_bb(self.ir_allocator.new_ret());
         }
 
-        self.ir_allocator.function(signature, first_bb)
+        let mut basic_blocks = self.ir_allocator.basic_blocks();
+        basic_blocks.push(first_bb);
+        self.ir_allocator
+            .function(signature, basic_blocks, first_bb.id)
     }
 
     fn generate_function_signature(
@@ -308,10 +311,12 @@ mod tests {
         r"module test
 
 fn one(
-) -> i
-{ #0
-  00000 i const 1i
-  00001 i ret @0
+) -> i {
+  entry_block: #0
+  { #0
+    00000 i const 1i
+    00001 i ret @0
+  }
 }
 "
     );
@@ -324,11 +329,13 @@ fn one(
 
 fn neg(
   x: int,
-) -> i
-{ #0
-  00000 i loadarg x
-  00001 i neg @0
-  00002 i ret @1
+) -> i {
+  entry_block: #0
+  { #0
+    00000 i loadarg x
+    00001 i neg @0
+    00002 i ret @1
+  }
 }
 "
     );
@@ -342,12 +349,14 @@ fn neg(
 
 fn add_one(
   x: double,
-) -> d
-{ #0
-  00000 d const 1d
-  00001 d loadarg x
-  00002 d add @0, @1
-  00003 d ret @2
+) -> d {
+  entry_block: #0
+  { #0
+    00000 d const 1d
+    00001 d loadarg x
+    00002 d add @0, @1
+    00003 d ret @2
+  }
 }
 "
     );
@@ -358,16 +367,20 @@ fn two() -> int { return 2; }",
         r"module test
 
 fn one(
-) -> i
-{ #0
-  00000 i const 1i
-  00001 i ret @0
+) -> i {
+  entry_block: #0
+  { #0
+    00000 i const 1i
+    00001 i ret @0
+  }
 }
 fn two(
-) -> i
-{ #1
-  00000 i const 2i
-  00001 i ret @0
+) -> i {
+  entry_block: #1
+  { #1
+    00000 i const 2i
+    00001 i ret @0
+  }
 }
 "
     );
@@ -377,9 +390,11 @@ fn two(
         r"module test
 
 fn empty(
-) -> void
-{ #0
-  00000 v ret
+) -> void {
+  entry_block: #0
+  { #0
+    00000 v ret
+  }
 }
 "
     );
@@ -392,13 +407,15 @@ fn empty(
         r"module test
 
 fn var(
-) -> b
-{ #0
-  var y: bool
-  00000 b const true
-  00001 b let y = @0
-  00002 b loadvar y
-  00003 b ret @2
+) -> b {
+  entry_block: #0
+  { #0
+    var y: bool
+    00000 b const true
+    00001 b let y = @0
+    00002 b loadvar y
+    00003 b ret @2
+  }
 }
 "
     );
@@ -410,15 +427,17 @@ fn var(
         r"module test
 
 fn var(
-) -> void
-{ #0
-  var y: int
-  var z: int
-  00000 i const 1i
-  00001 i let y = @0
-  00002 i const 2i
-  00003 i let z = @2
-  00004 v ret
+) -> void {
+  entry_block: #0
+  { #0
+    var y: int
+    var z: int
+    00000 i const 1i
+    00001 i let y = @0
+    00002 i const 2i
+    00003 i let z = @2
+    00004 v ret
+  }
 }
 "
     );
@@ -432,15 +451,17 @@ fn var(
         r"module test
 
 fn var(
-) -> i
-{ #0
-  var y: int
-  00000 i const 1i
-  00001 i let y = @0
-  00002 i const 2i
-  00003 i storevar y = @2
-  00004 i loadvar y
-  00005 i ret @4
+) -> i {
+  entry_block: #0
+  { #0
+    var y: int
+    00000 i const 1i
+    00001 i let y = @0
+    00002 i const 2i
+    00003 i storevar y = @2
+    00004 i loadvar y
+    00005 i ret @4
+  }
 }
 "
     );
@@ -454,15 +475,17 @@ fn var(
 
 fn arg_assign(
   x: int,
-) -> i
-{ #0
-  var x: int
-  00000 i loadarg x
-  00001 i const 1i
-  00002 i add @0, @1
-  00003 i let x = @2
-  00004 i loadvar x
-  00005 i ret @4
+) -> i {
+  entry_block: #0
+  { #0
+    var x: int
+    00000 i loadarg x
+    00001 i const 1i
+    00002 i add @0, @1
+    00003 i let x = @2
+    00004 i loadvar x
+    00005 i ret @4
+  }
 }
 "
     );
@@ -476,16 +499,20 @@ fn main() -> int {
         r"module test
 
 fn get_five(
-) -> i
-{ #0
-  00000 i const 5i
-  00001 i ret @0
+) -> i {
+  entry_block: #0
+  { #0
+    00000 i const 5i
+    00001 i ret @0
+  }
 }
 fn main(
-) -> i
-{ #1
-  00000 i call get_five()
-  00001 i ret @0
+) -> i {
+  entry_block: #1
+  { #1
+    00000 i call get_five()
+    00001 i ret @0
+  }
 }
 "
     );
@@ -501,20 +528,24 @@ fn main() -> int {
 fn add(
   x: int,
   y: int,
-) -> i
-{ #0
-  00000 i loadarg x
-  00001 i loadarg y
-  00002 i add @0, @1
-  00003 i ret @2
+) -> i {
+  entry_block: #0
+  { #0
+    00000 i loadarg x
+    00001 i loadarg y
+    00002 i add @0, @1
+    00003 i ret @2
+  }
 }
 fn main(
-) -> i
-{ #1
-  00000 i const 3i
-  00001 i const 7i
-  00002 i call add(@0, @1)
-  00003 i ret @2
+) -> i {
+  entry_block: #1
+  { #1
+    00000 i const 3i
+    00001 i const 7i
+    00002 i call add(@0, @1)
+    00003 i ret @2
+  }
 }
 "
     );
@@ -528,15 +559,19 @@ fn main() {
         r"module test
 
 fn print_hello(
-) -> void
-{ #0
-  00000 v ret
+) -> void {
+  entry_block: #0
+  { #0
+    00000 v ret
+  }
 }
 fn main(
-) -> void
-{ #1
-  00000 v call print_hello()
-  00001 v ret
+) -> void {
+  entry_block: #1
+  { #1
+    00000 v call print_hello()
+    00001 v ret
+  }
 }
 "
     );

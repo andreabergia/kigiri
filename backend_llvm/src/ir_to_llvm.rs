@@ -42,12 +42,16 @@ struct LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
 impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     fn new(context: &'c Context, builder: &'c2 Builder<'c>, function: &'ir Function<'ir2>) -> Self {
-        let num_instructions = function.body.instructions.borrow().len();
+        let first_block = function
+            .basic_blocks
+            .first()
+            .expect("function must have at least one basic block");
+        let num_instructions = first_block.instructions.borrow().len();
 
         let mut llvm_values = Vec::with_capacity(num_instructions);
         llvm_values.resize(num_instructions, None);
 
-        let variables = Vec::with_capacity(function.body.variables.borrow().len());
+        let variables = Vec::with_capacity(first_block.variables.borrow().len());
 
         Self {
             context,
@@ -59,7 +63,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     }
 
     fn alloca_variables(&self) -> Result<(), CodeGenError> {
-        for var in self.function.body.variables.borrow().iter() {
+        let first_block = self
+            .function
+            .basic_blocks
+            .first()
+            .expect("function must have at least one basic block");
+        for var in first_block.variables.borrow().iter() {
             let name = resolve_string_id(var.name).expect("variable name");
             let value = match var.variable_type {
                 Type::Int => self.builder.build_alloca(self.context.i64_type(), name)?,
@@ -117,7 +126,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
         self.alloca_variables()?;
 
-        for instruction in self.function.body.instructions.borrow().iter() {
+        let first_block = self
+            .function
+            .basic_blocks
+            .first()
+            .expect("function must have at least one basic block");
+        for instruction in first_block.instructions.borrow().iter() {
             match &instruction.payload {
                 InstructionPayload::Constant { constant, .. } => {
                     self.handle_constant(instruction.id, constant);
@@ -187,6 +201,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                         return_type,
                         arguments,
                     )?;
+                }
+                InstructionPayload::Jump { .. } => {
+                    todo!("Jump instructions not implemented in LLVM backend yet")
+                }
+                InstructionPayload::Branch { .. } => {
+                    todo!("Branch instructions not implemented in LLVM backend yet")
                 }
             }
         }

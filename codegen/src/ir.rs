@@ -14,7 +14,8 @@ pub struct Module<'a> {
 #[derive(Debug, PartialEq)]
 pub struct Function<'a> {
     pub signature: &'a FunctionSignature<'a>,
-    pub body: &'a BasicBlock<'a>,
+    pub basic_blocks: BumpVec<'a, &'a BasicBlock<'a>>,
+    pub entry_block_id: BlockId,
 }
 
 #[derive(Debug, PartialEq)]
@@ -103,6 +104,14 @@ pub enum InstructionPayload {
         return_type: Option<Type>,
         arguments: Vec<InstructionId>,
     },
+    Jump {
+        target_block: BlockId,
+    },
+    Branch {
+        condition: InstructionId,
+        then_block: BlockId,
+        else_block: BlockId,
+    },
 }
 
 // Impls
@@ -126,6 +135,8 @@ impl InstructionPayload {
             InstructionPayload::StoreVar { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Let { operand_type, .. } => Some(*operand_type),
             InstructionPayload::Call { return_type, .. } => *return_type,
+            InstructionPayload::Jump { .. } => None,
+            InstructionPayload::Branch { .. } => None,
         }
     }
 }
@@ -170,13 +181,19 @@ impl Display for Function<'_> {
         }
         writeln!(
             f,
-            ") -> {}",
+            ") -> {} {{",
             self.signature
                 .return_type
                 .as_ref()
                 .map_or("void", |t| t.to_string_short())
         )?;
-        write!(f, "{}", self.body)
+        writeln!(f, "  entry_block: #{}", self.entry_block_id.0)?;
+        for block in &self.basic_blocks {
+            for line in format!("{}", block).lines() {
+                writeln!(f, "  {}", line)?;
+            }
+        }
+        write!(f, "}}")
     }
 }
 
@@ -295,6 +312,14 @@ impl Display for InstructionPayload {
                     write!(f, "@{}", arg)?;
                 }
                 write!(f, ")")
+            }
+            InstructionPayload::Jump { target_block } => write!(f, "jmp #{}", target_block.0),
+            InstructionPayload::Branch {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                write!(f, "br @{}, #{}, #{}", condition, then_block.0, else_block.0)
             }
         }
     }
@@ -484,6 +509,10 @@ impl IrAllocator {
         BumpVec::new_in(&self.arena)
     }
 
+    pub fn basic_blocks(&self) -> BumpVec<&BasicBlock> {
+        BumpVec::new_in(&self.arena)
+    }
+
     pub fn module<'s>(
         &'s self,
         name: StringId,
@@ -512,12 +541,34 @@ impl IrAllocator {
         })
     }
 
+    pub fn new_jump(&self, target_block: BlockId) -> &Instruction {
+        self.new_instruction(InstructionPayload::Jump { target_block })
+    }
+
+    pub fn new_branch(
+        &self,
+        condition: &Instruction,
+        then_block: BlockId,
+        else_block: BlockId,
+    ) -> &Instruction {
+        self.new_instruction(InstructionPayload::Branch {
+            condition: condition.id,
+            then_block,
+            else_block,
+        })
+    }
+
     pub fn function<'s>(
         &'s self,
         signature: &'s FunctionSignature<'s>,
-        body: &'s BasicBlock<'s>,
+        basic_blocks: BumpVec<'s, &'s BasicBlock<'s>>,
+        entry_block_id: BlockId,
     ) -> &'s Function<'s> {
-        self.arena.alloc(Function { signature, body })
+        self.arena.alloc(Function {
+            signature,
+            basic_blocks,
+            entry_block_id,
+        })
     }
 }
 
@@ -605,6 +656,30 @@ mod tests {
             "00001 v call print(@0)",
             ir_allocator
                 .new_call(function_name, None, vec![const_0])
+                .to_string()
+        )
+    }
+
+    #[test]
+    fn test_display_instruction_jump() {
+        let ir_allocator = IrAllocator::new();
+        let target_block = BlockId(5);
+        assert_eq!(
+            "00000 v jmp #5",
+            ir_allocator.new_jump(target_block).to_string()
+        )
+    }
+
+    #[test]
+    fn test_display_instruction_branch() {
+        let ir_allocator = IrAllocator::new();
+        let condition = ir_allocator.new_const(LiteralValue::Boolean(true));
+        let then_block = BlockId(1);
+        let else_block = BlockId(2);
+        assert_eq!(
+            "00001 v br @0, #1, #2",
+            ir_allocator
+                .new_branch(condition, then_block, else_block)
                 .to_string()
         )
     }
