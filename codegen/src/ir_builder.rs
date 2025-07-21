@@ -282,18 +282,11 @@ impl<'i> FunctionIrBuilder<'i> {
 
         // Generate then block
         self.switch_to_basic_block(then_block);
-        let mut then_has_return = false;
-        for statement in &if_statement.then_block.statements {
-            if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
-                then_has_return = true;
-                break;
-            }
-        }
-        // If then block doesn't end with return, jump to merge
-        if !then_has_return {
-            let jump_instruction = self.ir_allocator.new_jump(merge_block.id);
-            self.push_to_current_bb(jump_instruction);
-        }
+        let then_has_return = self.process_statements_with_early_return(
+            &if_statement.then_block.statements,
+            symbol_table,
+            merge_block.id,
+        );
 
         // Generate else block if present
         let mut else_has_return = false;
@@ -323,21 +316,11 @@ impl<'i> FunctionIrBuilder<'i> {
         merge_block_id: BlockId,
     ) -> bool {
         match else_block {
-            IfElseBlock::Block(block) => {
-                let mut has_return = false;
-                for statement in &block.statements {
-                    if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
-                        has_return = true;
-                        break;
-                    }
-                }
-                // If else block doesn't end with return, jump to merge
-                if !has_return {
-                    let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
-                    self.push_to_current_bb(jump_instruction);
-                }
-                has_return
-            }
+            IfElseBlock::Block(block) => self.process_statements_with_early_return(
+                &block.statements,
+                symbol_table,
+                merge_block_id,
+            ),
             IfElseBlock::If(nested_if) => {
                 // Handle nested if (else if) manually to use the parent's merge block
                 let condition_instruction =
@@ -365,17 +348,11 @@ impl<'i> FunctionIrBuilder<'i> {
 
                 // Generate then block
                 self.switch_to_basic_block(then_block);
-                let mut then_has_return = false;
-                for statement in &nested_if.then_block.statements {
-                    if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
-                        then_has_return = true;
-                        break;
-                    }
-                }
-                if !then_has_return {
-                    let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
-                    self.push_to_current_bb(jump_instruction);
-                }
+                let then_has_return = self.process_statements_with_early_return(
+                    &nested_if.then_block.statements,
+                    symbol_table,
+                    merge_block_id,
+                );
 
                 // Generate else block if present
                 let mut else_has_return = false;
@@ -425,6 +402,26 @@ impl<'i> FunctionIrBuilder<'i> {
                 name: symbol.name,
                 variable_type,
             });
+    }
+
+    fn process_statements_with_early_return(
+        &self,
+        statements: &bumpalo::collections::Vec<&Statement<PhaseTypeResolved>>,
+        symbol_table: &SymbolTable,
+        merge_block_id: BlockId,
+    ) -> bool {
+        let mut has_return = false;
+        for statement in statements {
+            if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
+                has_return = true;
+                break;
+            }
+        }
+        if !has_return {
+            let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
+            self.push_to_current_bb(jump_instruction);
+        }
+        has_return
     }
 }
 
