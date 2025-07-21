@@ -1,13 +1,15 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use crate::{FunctionSignature, ir};
 use ir::Variable;
-use parser::{Expression, FunctionDeclaration, Statement};
+use parser::{BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement};
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
+use std::cell::RefCell;
 
 struct FunctionIrBuilder<'i> {
     ir_allocator: &'i IrAllocator,
     pub(crate) first_bb: &'i BasicBlock<'i>,
-    current_bb: &'i BasicBlock<'i>,
+    current_bb: RefCell<&'i BasicBlock<'i>>,
+    basic_blocks: RefCell<bumpalo::collections::Vec<'i, &'i BasicBlock<'i>>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -20,10 +22,13 @@ impl<'i> FunctionIrBuilder<'i> {
     fn new(ir_allocator: &'i IrAllocator) -> Self {
         ir_allocator.reset_instruction_id();
         let basic_block = ir_allocator.basic_block();
+        let mut basic_blocks = ir_allocator.basic_blocks();
+        basic_blocks.push(basic_block);
         Self {
             ir_allocator,
             first_bb: basic_block,
-            current_bb: basic_block,
+            current_bb: RefCell::new(basic_block),
+            basic_blocks: RefCell::new(basic_blocks),
         }
     }
 
@@ -42,10 +47,13 @@ impl<'i> FunctionIrBuilder<'i> {
             self.push_to_current_bb(self.ir_allocator.new_ret());
         }
 
-        let mut basic_blocks = self.ir_allocator.basic_blocks();
-        basic_blocks.push(first_bb);
+        // Take ownership of the basic_blocks by creating a new vector and copying
+        let mut new_basic_blocks = self.ir_allocator.basic_blocks();
+        for bb in self.basic_blocks.borrow().iter() {
+            new_basic_blocks.push(*bb);
+        }
         self.ir_allocator
-            .function(signature, basic_blocks, first_bb.id)
+            .function(signature, new_basic_blocks, first_bb.id)
     }
 
     fn generate_function_signature(
@@ -137,7 +145,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 FoundReturn::No
             }
             Statement::NestedBlock { .. } => todo!(),
-            Statement::If(_) => todo!("if statement codegen not implemented yet"),
+            Statement::If(if_statement) => self.handle_if_statement(if_statement, symbol_table),
         }
     }
 
@@ -245,8 +253,161 @@ impl<'i> FunctionIrBuilder<'i> {
         }
     }
 
+    fn handle_if_statement(
+        &self,
+        if_statement: &IfStatement<PhaseTypeResolved>,
+        symbol_table: &SymbolTable,
+    ) -> FoundReturn {
+        // Generate condition evaluation
+        let condition_instruction = self.handle_expression(if_statement.condition, symbol_table);
+
+        // Create basic blocks for then, else (if present), and merge
+        let then_block = self.create_basic_block();
+        let else_block = if if_statement.else_block.is_some() {
+            Some(self.create_basic_block())
+        } else {
+            None
+        };
+        let merge_block = self.create_basic_block();
+
+        // Generate branch instruction from current block
+        let branch_instruction = if let Some(else_bb) = else_block {
+            self.ir_allocator
+                .new_branch(condition_instruction, then_block.id, else_bb.id)
+        } else {
+            self.ir_allocator
+                .new_branch(condition_instruction, then_block.id, merge_block.id)
+        };
+        self.push_to_current_bb(branch_instruction);
+
+        // Generate then block
+        self.switch_to_basic_block(then_block);
+        let mut then_has_return = false;
+        for statement in &if_statement.then_block.statements {
+            if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
+                then_has_return = true;
+                break;
+            }
+        }
+        // If then block doesn't end with return, jump to merge
+        if !then_has_return {
+            let jump_instruction = self.ir_allocator.new_jump(merge_block.id);
+            self.push_to_current_bb(jump_instruction);
+        }
+
+        // Generate else block if present
+        let mut else_has_return = false;
+        if let Some(else_bb) = else_block {
+            if let Some(else_block_ast) = if_statement.else_block {
+                self.switch_to_basic_block(else_bb);
+                else_has_return =
+                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block.id);
+            }
+        }
+
+        // Switch to merge block for subsequent statements
+        self.switch_to_basic_block(merge_block);
+
+        // Return whether both branches have returns
+        if then_has_return && else_has_return {
+            FoundReturn::Yes
+        } else {
+            FoundReturn::No
+        }
+    }
+
+    fn handle_if_else_block(
+        &self,
+        else_block: &IfElseBlock<PhaseTypeResolved>,
+        symbol_table: &SymbolTable,
+        merge_block_id: BlockId,
+    ) -> bool {
+        match else_block {
+            IfElseBlock::Block(block) => {
+                let mut has_return = false;
+                for statement in &block.statements {
+                    if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
+                        has_return = true;
+                        break;
+                    }
+                }
+                // If else block doesn't end with return, jump to merge
+                if !has_return {
+                    let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
+                    self.push_to_current_bb(jump_instruction);
+                }
+                has_return
+            }
+            IfElseBlock::If(nested_if) => {
+                // Handle nested if (else if) manually to use the parent's merge block
+                let condition_instruction =
+                    self.handle_expression(nested_if.condition, symbol_table);
+
+                let then_block = self.create_basic_block();
+                let else_block = if nested_if.else_block.is_some() {
+                    Some(self.create_basic_block())
+                } else {
+                    None
+                };
+
+                // Generate branch instruction - use parent merge block if no else
+                let branch_instruction = if let Some(else_bb) = else_block {
+                    self.ir_allocator
+                        .new_branch(condition_instruction, then_block.id, else_bb.id)
+                } else {
+                    self.ir_allocator.new_branch(
+                        condition_instruction,
+                        then_block.id,
+                        merge_block_id,
+                    )
+                };
+                self.push_to_current_bb(branch_instruction);
+
+                // Generate then block
+                self.switch_to_basic_block(then_block);
+                let mut then_has_return = false;
+                for statement in &nested_if.then_block.statements {
+                    if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
+                        then_has_return = true;
+                        break;
+                    }
+                }
+                if !then_has_return {
+                    let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
+                    self.push_to_current_bb(jump_instruction);
+                }
+
+                // Generate else block if present
+                let mut else_has_return = false;
+                if let Some(else_bb) = else_block {
+                    if let Some(else_block_ast) = nested_if.else_block {
+                        self.switch_to_basic_block(else_bb);
+                        else_has_return =
+                            self.handle_if_else_block(else_block_ast, symbol_table, merge_block_id);
+                    }
+                }
+
+                then_has_return && else_has_return
+            }
+        }
+    }
+
+    fn create_basic_block(&self) -> &'i BasicBlock<'i> {
+        let bb = self.ir_allocator.basic_block();
+        self.basic_blocks.borrow_mut().push(bb);
+        bb
+    }
+
+    fn switch_to_basic_block(&self, bb: &'i BasicBlock<'i>) {
+        *self.current_bb.borrow_mut() = bb;
+    }
+
     fn push_to_current_bb(&self, instruction: &'i Instruction) {
-        self.current_bb.instructions.borrow_mut().push(instruction);
+        self.current_bb
+            .borrow()
+            .instructions
+            .borrow_mut()
+            .push(instruction);
     }
 
     fn push_variable_to_current_bb(
@@ -255,11 +416,15 @@ impl<'i> FunctionIrBuilder<'i> {
         symbol: &Symbol,
         variable_type: Type,
     ) {
-        self.current_bb.variables.borrow_mut().push(Variable {
-            index: variable_index,
-            name: symbol.name,
-            variable_type,
-        });
+        self.current_bb
+            .borrow()
+            .variables
+            .borrow_mut()
+            .push(Variable {
+                index: variable_index,
+                name: symbol.name,
+                variable_type,
+            });
     }
 }
 
@@ -571,6 +736,126 @@ fn main(
   { #1
     00000 v call print_hello()
     00001 v ret
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        if_statement_simple,
+        r"fn test(x: bool) -> int {
+    if (x) {
+        return 1;
+    }
+    return 2;
+}",
+        r"module test
+
+fn test(
+  x: bool,
+) -> i {
+  entry_block: #0
+  { #0
+    00000 b loadarg x
+    00001 v br @0, #1, #2
+  }
+  { #1
+    00002 i const 1i
+    00003 i ret @2
+  }
+  { #2
+    00004 i const 2i
+    00005 i ret @4
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        if_statement_with_else,
+        r"fn test(x: bool) -> int {
+    if (x) {
+        return 1;
+    } else {
+        return 2;
+    }
+}",
+        r"module test
+
+fn test(
+  x: bool,
+) -> i {
+  entry_block: #0
+  { #0
+    00000 b loadarg x
+    00001 v br @0, #1, #2
+  }
+  { #1
+    00002 i const 1i
+    00003 i ret @2
+  }
+  { #2
+    00004 i const 2i
+    00005 i ret @4
+  }
+  { #3
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        if_elseif_else,
+        r"fn test(x: int) -> int {
+    let result = 0;
+    if (x > 10) {
+        result = 1;
+    } else if (x > 5) {
+        result = 2;
+    } else {
+        result = 3;
+    }
+    return result;
+}",
+        r"module test
+
+fn test(
+  x: int,
+) -> i {
+  entry_block: #0
+  { #0
+    var result: int
+    00000 i const 0i
+    00001 i let result = @0
+    00002 i loadarg x
+    00003 i const 10i
+    00004 b gt @2, @3
+    00005 v br @4, #1, #2
+  }
+  { #1
+    00006 i const 1i
+    00007 i storevar result = @6
+    00008 v jmp #3
+  }
+  { #2
+    00009 i loadarg x
+    00010 i const 5i
+    00011 b gt @9, @10
+    00012 v br @11, #4, #5
+  }
+  { #3
+    00019 i loadvar result
+    00020 i ret @19
+  }
+  { #4
+    00013 i const 2i
+    00014 i storevar result = @13
+    00015 v jmp #3
+  }
+  { #5
+    00016 i const 3i
+    00017 i storevar result = @16
+    00018 v jmp #3
   }
 }
 "
