@@ -1,5 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{FunctionSignature, ir};
+use crate::{ir, FunctionSignature};
 use ir::Variable;
 use parser::{BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement};
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
@@ -286,7 +286,7 @@ impl<'i> FunctionIrBuilder<'i> {
             &if_statement.then_block.statements,
             symbol_table,
             merge_block.id,
-        );
+        ) == FoundReturn::Yes;
 
         // Generate else block if present
         let mut else_has_return = false;
@@ -294,7 +294,8 @@ impl<'i> FunctionIrBuilder<'i> {
             if let Some(else_block_ast) = if_statement.else_block {
                 self.switch_to_basic_block(else_bb);
                 else_has_return =
-                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block.id);
+                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block.id)
+                        == FoundReturn::Yes;
             }
         }
 
@@ -314,7 +315,7 @@ impl<'i> FunctionIrBuilder<'i> {
         else_block: &IfElseBlock<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
         merge_block_id: BlockId,
-    ) -> bool {
+    ) -> FoundReturn {
         match else_block {
             IfElseBlock::Block(block) => self.process_statements_with_early_return(
                 &block.statements,
@@ -352,7 +353,7 @@ impl<'i> FunctionIrBuilder<'i> {
                     &nested_if.then_block.statements,
                     symbol_table,
                     merge_block_id,
-                );
+                ) == FoundReturn::Yes;
 
                 // Generate else block if present
                 let mut else_has_return = false;
@@ -360,11 +361,16 @@ impl<'i> FunctionIrBuilder<'i> {
                     if let Some(else_block_ast) = nested_if.else_block {
                         self.switch_to_basic_block(else_bb);
                         else_has_return =
-                            self.handle_if_else_block(else_block_ast, symbol_table, merge_block_id);
+                            self.handle_if_else_block(else_block_ast, symbol_table, merge_block_id)
+                                == FoundReturn::Yes;
                     }
                 }
 
-                then_has_return && else_has_return
+                if then_has_return && else_has_return {
+                    FoundReturn::Yes
+                } else {
+                    FoundReturn::No
+                }
             }
         }
     }
@@ -409,19 +415,19 @@ impl<'i> FunctionIrBuilder<'i> {
         statements: &bumpalo::collections::Vec<&Statement<PhaseTypeResolved>>,
         symbol_table: &SymbolTable,
         merge_block_id: BlockId,
-    ) -> bool {
-        let mut has_return = false;
+    ) -> FoundReturn {
+        let mut found_return = FoundReturn::No;
         for statement in statements {
             if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
-                has_return = true;
+                found_return = FoundReturn::Yes;
                 break;
             }
         }
-        if !has_return {
+        if found_return == FoundReturn::No {
             let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
             self.push_to_current_bb(jump_instruction);
         }
-        has_return
+        found_return
     }
 }
 
