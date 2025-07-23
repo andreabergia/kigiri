@@ -258,14 +258,17 @@ impl<'i> FunctionIrBuilder<'i> {
         if_statement: &IfStatement<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
     ) -> FoundReturn {
-        let merge_block = self.create_basic_block();
+        let merge_block = self.create_basic_block_deferred();
         let result = self.handle_if_logic(
             if_statement.condition,
             &if_statement.then_block.statements,
             if_statement.else_block,
             symbol_table,
-            merge_block.id,
+            merge_block,
         );
+
+        // Add merge block to vector after then/else blocks have been created
+        self.add_basic_block(merge_block);
 
         // Switch to merge block for subsequent statements
         self.switch_to_basic_block(merge_block);
@@ -279,7 +282,7 @@ impl<'i> FunctionIrBuilder<'i> {
         then_statements: &bumpalo::collections::Vec<&Statement<PhaseTypeResolved>>,
         else_block: Option<&IfElseBlock<PhaseTypeResolved>>,
         symbol_table: &SymbolTable,
-        merge_block_id: BlockId,
+        merge_block: &'i BasicBlock<'i>,
     ) -> FoundReturn {
         // Generate condition evaluation
         let condition_instruction = self.handle_expression(condition, symbol_table);
@@ -298,7 +301,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 .new_branch(condition_instruction, then_block.id, else_bb.id)
         } else {
             self.ir_allocator
-                .new_branch(condition_instruction, then_block.id, merge_block_id)
+                .new_branch(condition_instruction, then_block.id, merge_block.id)
         };
         self.push_to_current_bb(branch_instruction);
 
@@ -307,7 +310,7 @@ impl<'i> FunctionIrBuilder<'i> {
         let then_has_return = self.process_statements_with_early_return(
             then_statements,
             symbol_table,
-            merge_block_id,
+            merge_block.id,
         ) == FoundReturn::Yes;
 
         // Generate else block if present
@@ -316,7 +319,7 @@ impl<'i> FunctionIrBuilder<'i> {
             if let Some(else_block_ast) = else_block {
                 self.switch_to_basic_block(else_bb);
                 else_has_return =
-                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block_id)
+                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block)
                         == FoundReturn::Yes;
             }
         }
@@ -333,20 +336,20 @@ impl<'i> FunctionIrBuilder<'i> {
         &self,
         else_block: &IfElseBlock<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
-        merge_block_id: BlockId,
+        merge_block: &'i BasicBlock<'i>,
     ) -> FoundReturn {
         match else_block {
             IfElseBlock::Block(block) => self.process_statements_with_early_return(
                 &block.statements,
                 symbol_table,
-                merge_block_id,
+                merge_block.id,
             ),
             IfElseBlock::If(nested_if) => self.handle_if_logic(
                 nested_if.condition,
                 &nested_if.then_block.statements,
                 nested_if.else_block,
                 symbol_table,
-                merge_block_id,
+                merge_block,
             ),
         }
     }
@@ -355,6 +358,14 @@ impl<'i> FunctionIrBuilder<'i> {
         let bb = self.ir_allocator.basic_block();
         self.basic_blocks.borrow_mut().push(bb);
         bb
+    }
+
+    fn create_basic_block_deferred(&self) -> &'i BasicBlock<'i> {
+        self.ir_allocator.basic_block()
+    }
+
+    fn add_basic_block(&self, bb: &'i BasicBlock<'i>) {
+        self.basic_blocks.borrow_mut().push(bb);
     }
 
     fn switch_to_basic_block(&self, bb: &'i BasicBlock<'i>) {
@@ -738,13 +749,13 @@ fn test(
     00000 b loadarg x
     00001 v br @0, #2, #1
   }
-  { #1
-    00004 i const 2i
-    00005 i ret @4
-  }
   { #2
     00002 i const 1i
     00003 i ret @2
+  }
+  { #1
+    00004 i const 2i
+    00005 i ret @4
   }
 }
 "
@@ -769,8 +780,6 @@ fn test(
     00000 b loadarg x
     00001 v br @0, #2, #3
   }
-  { #1
-  }
   { #2
     00002 i const 1i
     00003 i ret @2
@@ -778,6 +787,8 @@ fn test(
   { #3
     00004 i const 2i
     00005 i ret @4
+  }
+  { #1
   }
 }
 "
@@ -811,10 +822,6 @@ fn test(
     00004 b gt @2, @3
     00005 v br @4, #2, #3
   }
-  { #1
-    00019 i loadvar result
-    00020 i ret @19
-  }
   { #2
     00006 i const 1i
     00007 i storevar result = @6
@@ -835,6 +842,10 @@ fn test(
     00016 i const 3i
     00017 i storevar result = @16
     00018 v jmp #1
+  }
+  { #1
+    00019 i loadvar result
+    00020 i ret @19
   }
 }
 "
