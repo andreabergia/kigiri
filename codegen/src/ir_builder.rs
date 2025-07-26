@@ -1,5 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{FunctionSignature, ir};
+use crate::{ir, FunctionSignature};
 use ir::Variable;
 use parser::{BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement};
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
@@ -16,6 +16,15 @@ struct FunctionIrBuilder<'i> {
 enum FoundReturn {
     Yes,
     No,
+}
+
+impl FoundReturn {
+    fn and(&self, other: FoundReturn) -> FoundReturn {
+        match (self, other) {
+            (FoundReturn::Yes, FoundReturn::Yes) => FoundReturn::Yes,
+            _ => FoundReturn::No,
+        }
+    }
 }
 
 impl<'i> FunctionIrBuilder<'i> {
@@ -259,77 +268,13 @@ impl<'i> FunctionIrBuilder<'i> {
         symbol_table: &SymbolTable,
     ) -> FoundReturn {
         let merge_block = self.create_basic_block_deferred();
-        let result = self.handle_if_logic(
-            if_statement.condition,
-            &if_statement.then_block.statements,
-            if_statement.else_block,
-            symbol_table,
-            merge_block,
-        );
+        let result = self.handle_if_logic(if_statement, symbol_table, merge_block);
 
-        // Add merge block to vector after then/else blocks have been created
+        // Merge block at the end
         self.add_basic_block(merge_block);
-
-        // Switch to merge block for subsequent statements
         self.switch_to_basic_block(merge_block);
 
         result
-    }
-
-    fn handle_if_logic(
-        &self,
-        condition: &Expression<PhaseTypeResolved>,
-        then_statements: &bumpalo::collections::Vec<&Statement<PhaseTypeResolved>>,
-        else_block: Option<&IfElseBlock<PhaseTypeResolved>>,
-        symbol_table: &SymbolTable,
-        merge_block: &'i BasicBlock<'i>,
-    ) -> FoundReturn {
-        // Generate condition evaluation
-        let condition_instruction = self.handle_expression(condition, symbol_table);
-
-        // Create basic blocks for then and else (if present)
-        let then_block = self.create_basic_block();
-        let else_bb = if else_block.is_some() {
-            Some(self.create_basic_block())
-        } else {
-            None
-        };
-
-        // Generate branch instruction from current block
-        let branch_instruction = if let Some(else_bb) = else_bb {
-            self.ir_allocator
-                .new_branch(condition_instruction, then_block.id, else_bb.id)
-        } else {
-            self.ir_allocator
-                .new_branch(condition_instruction, then_block.id, merge_block.id)
-        };
-        self.push_to_current_bb(branch_instruction);
-
-        // Generate then block
-        self.switch_to_basic_block(then_block);
-        let then_has_return = self.process_statements_with_early_return(
-            then_statements,
-            symbol_table,
-            merge_block.id,
-        ) == FoundReturn::Yes;
-
-        // Generate else block if present
-        let mut else_has_return = false;
-        if let Some(else_bb) = else_bb {
-            if let Some(else_block_ast) = else_block {
-                self.switch_to_basic_block(else_bb);
-                else_has_return =
-                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block)
-                        == FoundReturn::Yes;
-            }
-        }
-
-        // Return whether both branches have returns
-        if then_has_return && else_has_return {
-            FoundReturn::Yes
-        } else {
-            FoundReturn::No
-        }
     }
 
     fn handle_if_else_block(
@@ -344,14 +289,57 @@ impl<'i> FunctionIrBuilder<'i> {
                 symbol_table,
                 merge_block.id,
             ),
-            IfElseBlock::If(nested_if) => self.handle_if_logic(
-                nested_if.condition,
-                &nested_if.then_block.statements,
-                nested_if.else_block,
-                symbol_table,
-                merge_block,
-            ),
+            IfElseBlock::If(nested_if) => {
+                self.handle_if_logic(nested_if, symbol_table, merge_block)
+            }
         }
+    }
+
+    fn handle_if_logic(
+        &self,
+        if_statement: &IfStatement<PhaseTypeResolved>,
+        symbol_table: &SymbolTable,
+        merge_block: &'i BasicBlock<'i>,
+    ) -> FoundReturn {
+        // Handle "then"
+        let then_block = self.create_basic_block();
+        let else_bb = if if_statement.else_block.is_some() {
+            Some(self.create_basic_block())
+        } else {
+            None
+        };
+
+        // Branch depending on the condition
+        let condition_instruction = self.handle_expression(if_statement.condition, symbol_table);
+        let branch_instruction = if let Some(else_bb) = else_bb {
+            self.ir_allocator
+                .new_branch(condition_instruction, then_block.id, else_bb.id)
+        } else {
+            self.ir_allocator
+                .new_branch(condition_instruction, then_block.id, merge_block.id)
+        };
+        self.push_to_current_bb(branch_instruction);
+
+        // Generate then block
+        self.switch_to_basic_block(then_block);
+        let then_has_return = self.process_statements_with_early_return(
+            &if_statement.then_block.statements,
+            symbol_table,
+            merge_block.id,
+        );
+
+        // Generate else block if present
+        let mut else_has_return = FoundReturn::No;
+        if let Some(else_bb) = else_bb {
+            if let Some(else_block_ast) = if_statement.else_block {
+                self.switch_to_basic_block(else_bb);
+                else_has_return =
+                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block);
+            }
+        }
+
+        // Return whether both branches have returns
+        then_has_return.and(else_has_return)
     }
 
     fn create_basic_block(&self) -> &'i BasicBlock<'i> {
