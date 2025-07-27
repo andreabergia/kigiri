@@ -1,7 +1,7 @@
-use codegen::{IrAllocator, build_ir_module};
-use inkwell::OptimizationLevel;
+use codegen::{build_ir_module, IrAllocator};
 use inkwell::context::Context;
 use inkwell::execution_engine::{ExecutionEngine, JitFunction};
+use inkwell::OptimizationLevel;
 use semantic_analysis::SemanticAnalyzer;
 
 fn jit_test(source: &str, test_callback: unsafe fn(ExecutionEngine) -> ()) {
@@ -230,5 +230,26 @@ fn test(condition: bool) -> int {
 
         assert_eq!(fun.call(true), 3);
         assert_eq!(fun.call(false), 1);
+    })
+}
+
+#[test]
+fn test_factorial() {
+    let source = r"
+fn fact(n: int) -> int {
+    if n <= 1 {
+        return 1;
+    }
+    return n * fact(n - 1);
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(i64) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("fact").unwrap();
+
+        assert_eq!(fun.call(0), 1);
+        assert_eq!(fun.call(1), 1);
+        assert_eq!(fun.call(2), 2);
+        assert_eq!(fun.call(3), 6);
+        assert_eq!(fun.call(4), 24);
     })
 }
