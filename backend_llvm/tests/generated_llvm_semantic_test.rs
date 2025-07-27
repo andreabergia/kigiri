@@ -109,3 +109,106 @@ fn f(x: int) -> int {
         assert_eq!(fun.call(2), 6);
     })
 }
+
+#[test]
+fn test_if_statement_simple() {
+    let source = r"
+fn test(x: bool) -> int {
+    if x {
+        return 1;
+    }
+    return 0;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(bool) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("test").unwrap();
+
+        assert_eq!(fun.call(true), 1);
+        assert_eq!(fun.call(false), 0);
+    })
+}
+
+#[test]
+fn test_if_statement_with_else() {
+    let source = r"
+fn test(x: bool) -> int {
+    if x {
+        return 1;
+    } else {
+        return 0;
+    }
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(bool) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("test").unwrap();
+
+        assert_eq!(fun.call(true), 1);
+        assert_eq!(fun.call(false), 0);
+    })
+}
+
+#[test]
+fn test_if_elseif_else() {
+    let source = r"
+fn test(x: int) -> int {
+    if x > 0 {
+        return 1;
+    } else if x < 0 {
+        return -1;
+    } else {
+        return 0;
+    }
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(i64) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("test").unwrap();
+
+        assert_eq!(fun.call(5), 1);
+        assert_eq!(fun.call(-3), -1);
+        assert_eq!(fun.call(0), 0);
+    })
+}
+
+#[test]
+fn test_if_statement_variable_assignment() {
+    let source = r"
+fn test(condition: bool) -> int {
+    let result = 0;
+    if condition {
+        result = 42;
+    }
+    return result;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(bool) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("test").unwrap();
+
+        assert_eq!(fun.call(true), 42);
+        assert_eq!(fun.call(false), 0);
+    })
+}
+
+#[test]
+fn test_nested_if_statements() {
+    let source = r"
+fn test(x: int, y: int) -> int {
+    if x > 0 {
+        if y > 0 {
+            return 1;
+        } else {
+            return 2;
+        }
+    } else {
+        return 3;
+    }
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(i64, i64) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("test").unwrap();
+
+        assert_eq!(fun.call(1, 1), 1);
+        assert_eq!(fun.call(1, -1), 2);
+        assert_eq!(fun.call(-1, 1), 3);
+        assert_eq!(fun.call(-1, -1), 3);
+    })
+}

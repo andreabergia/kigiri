@@ -1,6 +1,8 @@
 Language as a whole
-- [ ] cast
 - [ ] if
+  - [ ] avoid generating in LLVM an empty basic block (the merge block)
+- [ ] check variables, are they declared only in the first block? need more tests
+- [ ] cast
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
 - [ ] verify functions have a return on all paths, with a coherent type
 - [ ] keep track of mutable/immutable variables

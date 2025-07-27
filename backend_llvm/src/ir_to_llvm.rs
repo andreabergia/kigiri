@@ -1,4 +1,5 @@
 use codegen::{Function, Instruction, InstructionId, InstructionPayload, LiteralValue};
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -7,9 +8,10 @@ use inkwell::values::{
     BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
-use parser::{BinaryOperator, UnaryOperator, resolve_string_id};
+use parser::{resolve_string_id, BinaryOperator, BlockId, UnaryOperator};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
@@ -38,19 +40,27 @@ struct LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
     // Variables are indexed by their index
     variables: RefCell<Vec<PointerValue<'c>>>,
+
+    // Maps block IDs to LLVM basic blocks
+    llvm_blocks: RefCell<HashMap<BlockId, BasicBlock<'c>>>,
 }
 
 impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     fn new(context: &'c Context, builder: &'c2 Builder<'c>, function: &'ir Function<'ir2>) -> Self {
+        // Calculate total instructions across all blocks to size the vector appropriately
+        let total_instructions: usize = function
+            .basic_blocks
+            .iter()
+            .map(|block| block.instructions.borrow().len())
+            .sum();
+
+        let mut llvm_values = Vec::with_capacity(total_instructions);
+        llvm_values.resize(total_instructions, None);
+
         let first_block = function
             .basic_blocks
             .first()
             .expect("function must have at least one basic block");
-        let num_instructions = first_block.instructions.borrow().len();
-
-        let mut llvm_values = Vec::with_capacity(num_instructions);
-        llvm_values.resize(num_instructions, None);
-
         let variables = Vec::with_capacity(first_block.variables.borrow().len());
 
         Self {
@@ -59,6 +69,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             function,
             llvm_values: llvm_values.into(),
             variables: variables.into(),
+            llvm_blocks: RefCell::new(HashMap::new()),
         }
     }
 
@@ -121,92 +132,124 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         fun: FunctionValue<'c>,
         llvm_module: &Module<'c>,
     ) -> Result<(), CodeGenError> {
-        let bb = self.context.append_basic_block(fun, "entry");
-        self.builder.position_at_end(bb);
+        // Create LLVM basic blocks for all IR basic blocks
+        for (i, ir_block) in self.function.basic_blocks.iter().enumerate() {
+            let block_name = if i == 0 { "entry" } else { &format!("bb{}", i) };
+            let bb = self.context.append_basic_block(fun, block_name);
+            self.llvm_blocks.borrow_mut().insert(ir_block.id, bb);
+        }
 
+        // Position at entry block and allocate variables
+        let entry_block_id = self.function.entry_block_id;
+        let entry_bb = *self
+            .llvm_blocks
+            .borrow()
+            .get(&entry_block_id)
+            .expect("entry block should exist");
+        self.builder.position_at_end(entry_bb);
         self.alloca_variables()?;
 
-        let first_block = self
-            .function
-            .basic_blocks
-            .first()
-            .expect("function must have at least one basic block");
-        for instruction in first_block.instructions.borrow().iter() {
-            match &instruction.payload {
-                InstructionPayload::Constant { constant, .. } => {
-                    self.handle_constant(instruction.id, constant);
-                }
-                InstructionPayload::Unary {
-                    result_type: operand_type,
-                    operator,
-                    operand,
-                } => {
-                    self.handle_unary(instruction.id, operand_type, operator, *operand)?;
-                }
-                InstructionPayload::Binary {
-                    operator,
-                    operand_type,
-                    left,
-                    right,
-                    ..
-                } => {
-                    self.handle_binary(instruction.id, operator, operand_type, *left, *right)?;
-                }
-                InstructionPayload::Ret => {
-                    self.builder.build_return(None)?;
-                }
-                InstructionPayload::RetExpr {
-                    expression,
-                    operand_type,
-                } => {
-                    self.handle_return_expression(*expression, operand_type)?;
-                }
-                InstructionPayload::LoadVar {
-                    operand_type,
-                    variable_index,
-                    ..
-                } => {
-                    self.handle_load_var(instruction, operand_type, *variable_index)?;
-                }
-                InstructionPayload::LoadArg {
-                    operand_type,
-                    argument_index,
-                    ..
-                } => {
-                    self.handle_load_arg(fun, instruction, operand_type, *argument_index)?;
-                }
-                InstructionPayload::StoreVar {
-                    operand_type,
-                    variable_index,
-                    value,
-                    ..
-                } => {
-                    self.handle_store_var(operand_type, *variable_index, *value)?;
-                }
-                InstructionPayload::Let {
-                    variable_index,
-                    operand_type,
-                    initializer,
-                    ..
-                } => self.handle_let(*variable_index, operand_type, *initializer)?,
-                InstructionPayload::Call {
-                    function_name,
-                    return_type,
-                    arguments,
-                } => {
-                    self.handle_function_call(
-                        instruction.id,
-                        llvm_module,
-                        function_name,
-                        return_type,
-                        arguments,
-                    )?;
-                }
-                InstructionPayload::Jump { .. } => {
-                    todo!("Jump instructions not implemented in LLVM backend yet")
-                }
-                InstructionPayload::Branch { .. } => {
-                    todo!("Branch instructions not implemented in LLVM backend yet")
+        // Generate code for each basic block
+        for ir_block in self.function.basic_blocks.iter() {
+            let bb = *self
+                .llvm_blocks
+                .borrow()
+                .get(&ir_block.id)
+                .expect("basic block should exist");
+            self.builder.position_at_end(bb);
+
+            if ir_block.instructions.borrow().is_empty() {
+                // Empty block - add an unreachable instruction as terminator
+                self.builder.build_unreachable()?;
+            } else {
+                for instruction in ir_block.instructions.borrow().iter() {
+                    match &instruction.payload {
+                        InstructionPayload::Constant { constant, .. } => {
+                            self.handle_constant(instruction.id, constant);
+                        }
+                        InstructionPayload::Unary {
+                            result_type: operand_type,
+                            operator,
+                            operand,
+                        } => {
+                            self.handle_unary(instruction.id, operand_type, operator, *operand)?;
+                        }
+                        InstructionPayload::Binary {
+                            operator,
+                            operand_type,
+                            left,
+                            right,
+                            ..
+                        } => {
+                            self.handle_binary(
+                                instruction.id,
+                                operator,
+                                operand_type,
+                                *left,
+                                *right,
+                            )?;
+                        }
+                        InstructionPayload::Ret => {
+                            self.builder.build_return(None)?;
+                        }
+                        InstructionPayload::RetExpr {
+                            expression,
+                            operand_type,
+                        } => {
+                            self.handle_return_expression(*expression, operand_type)?;
+                        }
+                        InstructionPayload::LoadVar {
+                            operand_type,
+                            variable_index,
+                            ..
+                        } => {
+                            self.handle_load_var(instruction, operand_type, *variable_index)?;
+                        }
+                        InstructionPayload::LoadArg {
+                            operand_type,
+                            argument_index,
+                            ..
+                        } => {
+                            self.handle_load_arg(fun, instruction, operand_type, *argument_index)?;
+                        }
+                        InstructionPayload::StoreVar {
+                            operand_type,
+                            variable_index,
+                            value,
+                            ..
+                        } => {
+                            self.handle_store_var(operand_type, *variable_index, *value)?;
+                        }
+                        InstructionPayload::Let {
+                            variable_index,
+                            operand_type,
+                            initializer,
+                            ..
+                        } => self.handle_let(*variable_index, operand_type, *initializer)?,
+                        InstructionPayload::Call {
+                            function_name,
+                            return_type,
+                            arguments,
+                        } => {
+                            self.handle_function_call(
+                                instruction.id,
+                                llvm_module,
+                                function_name,
+                                return_type,
+                                arguments,
+                            )?;
+                        }
+                        InstructionPayload::Jump { target_block } => {
+                            self.handle_jump(*target_block)?;
+                        }
+                        InstructionPayload::Branch {
+                            condition,
+                            then_block,
+                            else_block,
+                        } => {
+                            self.handle_branch(*condition, *then_block, *else_block)?;
+                        }
+                    }
                 }
             }
         }
@@ -787,6 +830,39 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         Ok(())
     }
 
+    fn handle_jump(&self, target_block: BlockId) -> Result<(), CodeGenError> {
+        let target_bb = *self
+            .llvm_blocks
+            .borrow()
+            .get(&target_block)
+            .expect("target block should exist");
+        self.builder.build_unconditional_branch(target_bb)?;
+        Ok(())
+    }
+
+    fn handle_branch(
+        &self,
+        condition: InstructionId,
+        then_block: BlockId,
+        else_block: BlockId,
+    ) -> Result<(), CodeGenError> {
+        let condition_value = self.get_bool_value(condition);
+        let then_bb = *self
+            .llvm_blocks
+            .borrow()
+            .get(&then_block)
+            .expect("then block should exist");
+        let else_bb = *self
+            .llvm_blocks
+            .borrow()
+            .get(&else_block)
+            .expect("else block should exist");
+
+        self.builder
+            .build_conditional_branch(condition_value, then_bb, else_bb)?;
+        Ok(())
+    }
+
     fn name(prefix: &str, id: InstructionId) -> String {
         format!("{}_{}", prefix, id)
     }
@@ -845,11 +921,11 @@ pub fn ir_to_llvm<'c>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::IrAllocator;
     use codegen::build_ir_module;
+    use codegen::IrAllocator;
     use inkwell::context::Context;
     use semantic_analysis::{PhaseTypeResolved, SemanticAnalyzer};
-    use std::io::{Write, stderr};
+    use std::io::{stderr, Write};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
@@ -1171,5 +1247,80 @@ mod tests {
           ret void
         }
         "#);
+    }
+
+    #[test]
+    fn test_if_statement_simple() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test(x: bool) -> int {
+                if x {
+                    return 1;
+                }
+                return 0;
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir);
+    }
+
+    #[test]
+    fn test_if_statement_with_else() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test(x: bool) -> int {
+                if x {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir);
+    }
+
+    #[test]
+    fn test_if_elseif_else() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test(x: int) -> int {
+                if x > 0 {
+                    return 1;
+                } else if x < 0 {
+                    return -1;
+                } else {
+                    return 0;
+                }
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir);
+    }
+
+    #[test]
+    fn test_if_statement_variable_assignment() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test(condition: bool) -> int {
+                let result = 0;
+                if condition {
+                    result = 42;
+                }
+                return result;
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir);
+    }
+
+    #[test]
+    fn test_nested_if_statements() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test(x: int, y: int) -> int {
+                if x > 0 {
+                    if y > 0 {
+                        return 1;
+                    } else {
+                        return 2;
+                    }
+                } else {
+                    return 3;
+                }
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir);
     }
 }

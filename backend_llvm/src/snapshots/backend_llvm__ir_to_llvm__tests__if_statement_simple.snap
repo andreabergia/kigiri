@@ -1,0 +1,17 @@
+---
+source: backend_llvm/src/ir_to_llvm.rs
+expression: llvm_ir
+---
+; ModuleID = 'test'
+source_filename = "test"
+
+define i64 @test(i1 %x) {
+entry:
+  br i1 %x, label %bb1, label %bb2
+
+bb1:                                              ; preds = %entry
+  ret i64 1
+
+bb2:                                              ; preds = %entry
+  ret i64 0
+}

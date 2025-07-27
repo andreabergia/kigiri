@@ -42,7 +42,7 @@ pub struct FunctionArgument {
     pub argument_type: StringId,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, Hash)]
 pub struct BlockId(pub u32);
 
 #[derive(Debug, PartialEq)]

@@ -1,0 +1,21 @@
+---
+source: backend_llvm/src/ir_to_llvm.rs
+expression: llvm_ir
+---
+; ModuleID = 'test'
+source_filename = "test"
+
+define i64 @test(i1 %condition) {
+entry:
+  %result = alloca i64, align 8
+  store i64 0, ptr %result, align 4
+  br i1 %condition, label %bb1, label %bb2
+
+bb1:                                              ; preds = %entry
+  store i64 42, ptr %result, align 4
+  br label %bb2
+
+bb2:                                              ; preds = %bb1, %entry
+  %load_7 = load i64, ptr %result, align 4
+  ret i64 %load_7
+}
