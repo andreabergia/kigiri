@@ -1259,7 +1259,21 @@ mod tests {
                 return 0;
             }",
         );
-        insta::assert_snapshot!(llvm_ir);
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @test(i1 %x) {
+        bb0:
+          br i1 %x, label %bb2, label %bb1
+
+        bb2:                                              ; preds = %bb0
+          ret i64 1
+
+        bb1:                                              ; preds = %bb0
+          ret i64 0
+        }
+        "#);
     }
 
     #[test]
@@ -1273,7 +1287,24 @@ mod tests {
                 }
             }",
         );
-        insta::assert_snapshot!(llvm_ir);
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @test(i1 %x) {
+        bb0:
+          br i1 %x, label %bb2, label %bb3
+
+        bb2:                                              ; preds = %bb0
+          ret i64 1
+
+        bb3:                                              ; preds = %bb0
+          ret i64 0
+
+        bb1:                                              ; No predecessors!
+          unreachable
+        }
+        "#);
     }
 
     #[test]
@@ -1289,7 +1320,32 @@ mod tests {
                 }
             }",
         );
-        insta::assert_snapshot!(llvm_ir);
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @test(i64 %x) {
+        bb0:
+          %gt_2 = icmp sgt i64 %x, 0
+          br i1 %gt_2, label %bb2, label %bb3
+
+        bb2:                                              ; preds = %bb0
+          ret i64 1
+
+        bb3:                                              ; preds = %bb0
+          %lt_8 = icmp slt i64 %x, 0
+          br i1 %lt_8, label %bb4, label %bb5
+
+        bb4:                                              ; preds = %bb3
+          ret i64 -1
+
+        bb5:                                              ; preds = %bb3
+          ret i64 0
+
+        bb1:                                              ; No predecessors!
+          unreachable
+        }
+        "#);
     }
 
     #[test]
@@ -1303,7 +1359,25 @@ mod tests {
                 return result;
             }",
         );
-        insta::assert_snapshot!(llvm_ir);
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @test(i1 %condition) {
+        bb0:
+          %result = alloca i64, align 8
+          store i64 0, ptr %result, align 4
+          br i1 %condition, label %bb2, label %bb1
+
+        bb2:                                              ; preds = %bb0
+          store i64 42, ptr %result, align 4
+          br label %bb1
+
+        bb1:                                              ; preds = %bb2, %bb0
+          %load_7 = load i64, ptr %result, align 4
+          ret i64 %load_7
+        }
+        "#);
     }
 
     #[test]
@@ -1321,6 +1395,34 @@ mod tests {
                 }
             }",
         );
-        insta::assert_snapshot!(llvm_ir);
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @test(i64 %x, i64 %y) {
+        bb0:
+          %gt_2 = icmp sgt i64 %x, 0
+          br i1 %gt_2, label %bb2, label %bb3
+
+        bb2:                                              ; preds = %bb0
+          %gt_6 = icmp sgt i64 %y, 0
+          br i1 %gt_6, label %bb5, label %bb6
+
+        bb3:                                              ; preds = %bb0
+          ret i64 3
+
+        bb5:                                              ; preds = %bb2
+          ret i64 1
+
+        bb6:                                              ; preds = %bb2
+          ret i64 2
+
+        bb4:                                              ; No predecessors!
+          unreachable
+
+        bb1:                                              ; No predecessors!
+          unreachable
+        }
+        "#);
     }
 }
