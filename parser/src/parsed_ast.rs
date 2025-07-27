@@ -121,6 +121,10 @@ impl ParsedAstAllocator {
         self.allocator.next_block_id()
     }
 
+    pub fn reset_block_id(&self) {
+        self.allocator.reset_block_id();
+    }
+
     pub fn block_from_statements<'s, 'v>(
         &'s self,
         block_id: BlockId,

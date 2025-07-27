@@ -353,6 +353,10 @@ impl IrAllocator {
         BlockId(old)
     }
 
+    pub fn reset_block_id(&self) {
+        self.next_basic_block_id.replace(0);
+    }
+
     fn next_instruction_id(&self) -> InstructionId {
         let old = self.next_instruction_id.replace_with(|u| *u + 1);
         InstructionId(old)

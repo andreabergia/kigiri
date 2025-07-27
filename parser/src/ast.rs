@@ -437,6 +437,10 @@ impl AstAllocator {
         block_id
     }
 
+    pub fn reset_block_id(&self) {
+        self.next_block_id.set(BlockId(0));
+    }
+
     pub fn new_bump_vec<T>(&self) -> BumpVec<'_, T> {
         BumpVec::new_in(&self.arena)
     }

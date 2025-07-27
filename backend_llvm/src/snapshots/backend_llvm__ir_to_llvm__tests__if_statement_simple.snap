@@ -6,12 +6,12 @@ expression: llvm_ir
 source_filename = "test"
 
 define i64 @test(i1 %x) {
-entry:
-  br i1 %x, label %bb1, label %bb2
+bb0:
+  br i1 %x, label %bb2, label %bb1
 
-bb1:                                              ; preds = %entry
+bb2:                                              ; preds = %bb0
   ret i64 1
 
-bb2:                                              ; preds = %entry
+bb1:                                              ; preds = %bb0
   ret i64 0
 }

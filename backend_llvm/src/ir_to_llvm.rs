@@ -8,7 +8,7 @@ use inkwell::values::{
     BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
-use parser::{resolve_string_id, BinaryOperator, BlockId, UnaryOperator};
+use parser::{BinaryOperator, BlockId, UnaryOperator, resolve_string_id};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -133,8 +133,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         llvm_module: &Module<'c>,
     ) -> Result<(), CodeGenError> {
         // Create LLVM basic blocks for all IR basic blocks
-        for (i, ir_block) in self.function.basic_blocks.iter().enumerate() {
-            let block_name = if i == 0 { "entry" } else { &format!("bb{}", i) };
+        for ir_block in self.function.basic_blocks.iter() {
+            let block_name = &format!("bb{}", ir_block.id.0);
             let bb = self.context.append_basic_block(fun, block_name);
             self.llvm_blocks.borrow_mut().insert(ir_block.id, bb);
         }
@@ -921,11 +921,11 @@ pub fn ir_to_llvm<'c>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codegen::build_ir_module;
     use codegen::IrAllocator;
+    use codegen::build_ir_module;
     use inkwell::context::Context;
     use semantic_analysis::{PhaseTypeResolved, SemanticAnalyzer};
-    use std::io::{stderr, Write};
+    use std::io::{Write, stderr};
 
     // TODO: this needs to not be so duplicated across projects
     fn make_analyzed_ast<'s>(
@@ -965,7 +965,7 @@ mod tests {
         source_filename = "test"
 
         define void @empty() {
-        entry:
+        bb0:
           ret void
         }
         "#);
@@ -979,7 +979,7 @@ mod tests {
         source_filename = "test"
 
         define i64 @add_one(i64 %x) {
-        entry:
+        bb0:
           %add_2 = add i64 1, %x
           ret i64 %add_2
         }
@@ -995,7 +995,7 @@ mod tests {
         source_filename = "test"
 
         define double @add(double %x, double %y) {
-        entry:
+        bb0:
           %add_2 = fadd double %x, %y
           ret double %add_2
         }
@@ -1010,7 +1010,7 @@ mod tests {
         source_filename = "test"
 
         define double @neg(double %x) {
-        entry:
+        bb0:
           %neg_1 = fneg double %x
           ret double %neg_1
         }
@@ -1026,7 +1026,7 @@ mod tests {
         source_filename = "test"
 
         define i1 @greater(i64 %x, i64 %y) {
-        entry:
+        bb0:
           %gt_2 = icmp sgt i64 %x, %y
           ret i1 %gt_2
         }
@@ -1042,7 +1042,7 @@ mod tests {
         source_filename = "test"
 
         define i1 @greater(double %x, double %y) {
-        entry:
+        bb0:
           %fcmp_2 = fcmp ogt double %x, %y
           ret i1 %fcmp_2
         }
@@ -1057,7 +1057,7 @@ mod tests {
         source_filename = "test"
 
         define void @declare_var() {
-        entry:
+        bb0:
           %x = alloca i64, align 8
           %y = alloca i1, align 1
           store i64 1, ptr %x, align 4
@@ -1077,7 +1077,7 @@ mod tests {
         source_filename = "test"
 
         define i1 @use_var() {
-        entry:
+        bb0:
           %x = alloca i1, align 1
           %y = alloca i1, align 1
           store i1 false, ptr %x, align 1
@@ -1100,7 +1100,7 @@ mod tests {
         source_filename = "test"
 
         define void @set_var() {
-        entry:
+        bb0:
           %x = alloca i64, align 8
           %y = alloca i1, align 1
           store i64 0, ptr %x, align 4
@@ -1122,7 +1122,7 @@ mod tests {
         source_filename = "test"
 
         define double @vars() {
-        entry:
+        bb0:
           %x = alloca double, align 8
           %y = alloca double, align 8
           store double 1.000000e+00, ptr %x, align 8
@@ -1144,7 +1144,7 @@ mod tests {
         source_filename = "test"
 
         define i64 @set_param(i64 %x) {
-        entry:
+        bb0:
           %x1 = alloca i64, align 8
           %add_2 = add i64 %x, 1
           store i64 %add_2, ptr %x1, align 4
@@ -1165,12 +1165,12 @@ mod tests {
         source_filename = "test"
 
         define i64 @get_five() {
-        entry:
+        bb0:
           ret i64 5
         }
 
         define i64 @main() {
-        entry:
+        bb0:
           %call_0 = call i64 @get_five()
           ret i64 %call_0
         }
@@ -1188,13 +1188,13 @@ mod tests {
         source_filename = "test"
 
         define i64 @add(i64 %x, i64 %y) {
-        entry:
+        bb0:
           %add_2 = add i64 %x, %y
           ret i64 %add_2
         }
 
         define i64 @main() {
-        entry:
+        bb0:
           %call_2 = call i64 @add(i64 3, i64 7)
           ret i64 %call_2
         }
@@ -1212,12 +1212,12 @@ mod tests {
         source_filename = "test"
 
         define void @print_hello() {
-        entry:
+        bb0:
           ret void
         }
 
         define void @main() {
-        entry:
+        bb0:
           call void @print_hello()
           ret void
         }
@@ -1237,13 +1237,13 @@ mod tests {
         source_filename = "test"
 
         define void @main() {
-        entry:
+        bb0:
           call void @callee()
           ret void
         }
 
         define void @callee() {
-        entry:
+        bb0:
           ret void
         }
         "#);

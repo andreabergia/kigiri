@@ -31,6 +31,7 @@ impl FoundReturn {
 
 impl<'i> FunctionIrBuilder<'i> {
     fn new(ir_allocator: &'i IrAllocator) -> Self {
+        ir_allocator.reset_block_id();
         ir_allocator.reset_instruction_id();
         let basic_block = ir_allocator.basic_block();
         let mut basic_blocks = ir_allocator.basic_blocks();
@@ -511,8 +512,8 @@ fn one(
 }
 fn two(
 ) -> i {
-  entry_block: #1
-  { #1
+  entry_block: #0
+  { #0
     00000 i const 2i
     00001 i ret @0
   }
@@ -643,8 +644,8 @@ fn get_five(
 }
 fn main(
 ) -> i {
-  entry_block: #1
-  { #1
+  entry_block: #0
+  { #0
     00000 i call get_five()
     00001 i ret @0
   }
@@ -674,8 +675,8 @@ fn add(
 }
 fn main(
 ) -> i {
-  entry_block: #1
-  { #1
+  entry_block: #0
+  { #0
     00000 i const 3i
     00001 i const 7i
     00002 i call add(@0, @1)
@@ -702,8 +703,8 @@ fn print_hello(
 }
 fn main(
 ) -> void {
-  entry_block: #1
-  { #1
+  entry_block: #0
+  { #0
     00000 v call print_hello()
     00001 v ret
   }

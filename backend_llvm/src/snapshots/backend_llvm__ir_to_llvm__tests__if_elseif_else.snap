@@ -6,23 +6,23 @@ expression: llvm_ir
 source_filename = "test"
 
 define i64 @test(i64 %x) {
-entry:
+bb0:
   %gt_2 = icmp sgt i64 %x, 0
-  br i1 %gt_2, label %bb1, label %bb2
+  br i1 %gt_2, label %bb2, label %bb3
 
-bb1:                                              ; preds = %entry
+bb2:                                              ; preds = %bb0
   ret i64 1
 
-bb2:                                              ; preds = %entry
+bb3:                                              ; preds = %bb0
   %lt_8 = icmp slt i64 %x, 0
-  br i1 %lt_8, label %bb3, label %bb4
+  br i1 %lt_8, label %bb4, label %bb5
 
-bb3:                                              ; preds = %bb2
+bb4:                                              ; preds = %bb3
   ret i64 -1
 
-bb4:                                              ; preds = %bb2
+bb5:                                              ; preds = %bb3
   ret i64 0
 
-bb5:                                              ; No predecessors!
+bb1:                                              ; No predecessors!
   unreachable
 }

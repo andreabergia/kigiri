@@ -349,7 +349,7 @@ fn f(
 
 fn main(
 ) -> int
-{ #1
+{ #0
   return f();
 }
 
@@ -371,7 +371,7 @@ fn inc(
 
 fn main(
 ) -> int
-{ #1
+{ #0
   return inc(41i);
 }
 
@@ -391,7 +391,7 @@ fn empty(
 
 fn main(
 ) -> void
-{ #1
+{ #0
   empty();
 }
 

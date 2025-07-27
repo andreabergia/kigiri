@@ -252,6 +252,8 @@ fn parse_function_declaration<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a FunctionDeclaration<'a, PhaseParsed<'a>> {
+    ast_allocator.reset_block_id();
+
     let mut rule_iter = rule.into_inner();
     let name = rule_iter.next().expect("function name").as_str();
 
@@ -578,6 +580,35 @@ fn foo() {}
 fn foo(
 ) -> void
 { #0
+}
+"
+        );
+    }
+
+    #[test]
+    fn module_multiple_fn_have_independent_block_id() {
+        let ast_allocator = ParsedAstAllocator::default();
+        let module = parse(
+            &ast_allocator,
+            "test",
+            r"
+fn a() {}
+fn b() { { } }
+",
+        );
+        assert_eq!(
+            module.to_string(),
+            r"module test
+
+fn a(
+) -> void
+{ #0
+}
+fn b(
+) -> void
+{ #0
+{ #1
+}
 }
 "
         );
