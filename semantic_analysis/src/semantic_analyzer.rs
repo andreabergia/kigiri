@@ -723,5 +723,33 @@ fn test() {
         "if condition must be of type bool, found int"
     );
 
+    test_ok!(
+        variable_can_be_declared_in_ifs,
+        r"
+fn test(condition: bool) -> int {
+    let r = 1;
+    if condition {
+        let x = 2;
+        return x + r;
+    }
+    return r;
+}",
+        r"module test
+
+fn test(
+  condition: bool,
+) -> int
+{ #0
+  let r: int = 1i;
+  if condition { #1
+    let x: int = 2i;
+    return (+i x r);
+  }
+  return r;
+}
+
+"
+    );
+
     // TODO: all return match expected type? here or in separate pass?
 }

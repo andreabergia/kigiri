@@ -831,4 +831,45 @@ fn test(
 }
 "
     );
+
+    test_module_ir!(
+        variable_can_be_declared_in_ifs,
+        r"
+fn test(condition: bool) -> int {
+    let r = 1;
+    if condition {
+        let x = 2;
+        return x + r;
+    }
+    return r;
+}",
+        r"module test
+
+fn test(
+  condition: bool,
+) -> i {
+  entry_block: #0
+  { #0
+    var r: int
+    00000 i const 1i
+    00001 i let r = @0
+    00002 b loadarg condition
+    00003 v br @2, #2, #1
+  }
+  { #2
+    var x: int
+    00004 i const 2i
+    00005 i let x = @4
+    00006 i loadvar x
+    00007 i loadvar r
+    00008 i add @6, @7
+    00009 i ret @8
+  }
+  { #1
+    00010 i loadvar r
+    00011 i ret @10
+  }
+}
+"
+    );
 }

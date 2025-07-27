@@ -57,11 +57,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         let mut llvm_values = Vec::with_capacity(total_instructions);
         llvm_values.resize(total_instructions, None);
 
-        let first_block = function
+        let total_variables: usize = function
             .basic_blocks
-            .first()
-            .expect("function must have at least one basic block");
-        let variables = Vec::with_capacity(first_block.variables.borrow().len());
+            .iter()
+            .map(|block| block.variables.borrow().len())
+            .sum();
+        let variables = Vec::with_capacity(total_variables);
 
         Self {
             context,
@@ -74,12 +75,17 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     }
 
     fn alloca_variables(&self) -> Result<(), CodeGenError> {
-        let first_block = self
-            .function
-            .basic_blocks
-            .first()
-            .expect("function must have at least one basic block");
-        for var in first_block.variables.borrow().iter() {
+        // Sort cross-block variables by their index, to ensure correct allocation order
+        let mut all_variables = Vec::new();
+        for block in self.function.basic_blocks.iter() {
+            for var in block.variables.borrow().iter() {
+                all_variables.push(*var);
+            }
+        }
+        all_variables.sort_by_key(|var| usize::from(var.index));
+
+        // Allocate variables in index order
+        for var in all_variables {
             let name = resolve_string_id(var.name).expect("variable name");
             let value = match var.variable_type {
                 Type::Int => self.builder.build_alloca(self.context.i64_type(), name)?,
@@ -1405,6 +1411,37 @@ mod tests {
 
         bb6:                                              ; preds = %bb2
           ret i64 2
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_variable_declared_in_if_block() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test(condition: bool) -> int {
+                if condition {
+                    let x = 42;
+                    return x;
+                }
+                return 0;
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i64 @test(i1 %condition) {
+        bb0:
+          %x = alloca i64, align 8
+          br i1 %condition, label %bb2, label %bb1
+
+        bb2:                                              ; preds = %bb0
+          store i64 42, ptr %x, align 4
+          %load_4 = load i64, ptr %x, align 4
+          ret i64 %load_4
+
+        bb1:                                              ; preds = %bb0
+          ret i64 0
         }
         "#);
     }

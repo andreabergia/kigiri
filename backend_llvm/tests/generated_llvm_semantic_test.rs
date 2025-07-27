@@ -212,3 +212,23 @@ fn test(x: int, y: int) -> int {
         assert_eq!(fun.call(-1, -1), 3);
     })
 }
+
+#[test]
+fn test_if_statement_variable_declaration_in_block() {
+    let source = r"
+fn test(condition: bool) -> int {
+    let r = 1;
+    if condition {
+        let x = 2;
+        return x + r;
+    }
+    return r;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(bool) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("test").unwrap();
+
+        assert_eq!(fun.call(true), 3);
+        assert_eq!(fun.call(false), 1);
+    })
+}

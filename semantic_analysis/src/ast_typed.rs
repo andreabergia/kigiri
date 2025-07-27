@@ -460,14 +460,23 @@ impl<'a> SymbolTable<'a> {
         })
     }
 
+    fn root(&'a self) -> &'a SymbolTable<'a> {
+        if let Some(parent) = self.parent {
+            parent.root()
+        } else {
+            self
+        }
+    }
+
     pub fn add_symbol(
-        &self,
+        &'a self,
         allocator: &'a AstAllocator,
         name: StringId,
         kind: SymbolKind<'a>,
     ) -> SymbolAndId<'a> {
         if let SymbolKind::Variable { .. } = kind {
-            *self.num_variables.borrow_mut() += 1;
+            let root = self.root();
+            *root.num_variables.borrow_mut() += 1;
         }
 
         let id = next_symbol_id();
@@ -505,8 +514,10 @@ impl<'a> SymbolTable<'a> {
         self.allocated_symbols.borrow().is_empty()
     }
 
-    pub fn next_variable_index(&self) -> VariableIndex {
-        VariableIndex::from(*self.num_variables.borrow())
+    pub fn next_variable_index(&'a self) -> VariableIndex {
+        // Variable indices should be global across the function, so delegate to root
+        let root = self.root();
+        VariableIndex::from(*root.num_variables.borrow())
     }
 }
 
