@@ -1,7 +1,9 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{ir, FunctionSignature};
+use crate::{FunctionSignature, ir};
 use ir::Variable;
-use parser::{BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement};
+use parser::{
+    Block, BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement,
+};
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
 use std::cell::RefCell;
 
@@ -45,13 +47,8 @@ impl<'i> FunctionIrBuilder<'i> {
         let signature = self.generate_function_signature(function);
 
         let first_bb = self.first_bb;
-        let mut found_return = false;
-        for statement in function.body.statements.iter() {
-            if self.handle_statement(statement, function.symbol_table) == FoundReturn::Yes {
-                found_return = true;
-            }
-        }
-        if !found_return {
+        let found_return = self.handle_block(function.body);
+        if found_return == FoundReturn::No {
             // If no return statement was found, we add an implicit return
             self.push_to_current_bb(self.ir_allocator.new_ret());
         }
@@ -86,6 +83,15 @@ impl<'i> FunctionIrBuilder<'i> {
                     }
                 })),
         )
+    }
+    fn handle_block(&self, block: &Block<PhaseTypeResolved>) -> FoundReturn {
+        let mut found_return = FoundReturn::No;
+        for statement in &block.statements {
+            if self.handle_statement(statement, block.symbol_table) == FoundReturn::Yes {
+                found_return = FoundReturn::Yes;
+            }
+        }
+        found_return
     }
 
     fn handle_statement(
@@ -284,11 +290,7 @@ impl<'i> FunctionIrBuilder<'i> {
         merge_block: &'i BasicBlock<'i>,
     ) -> FoundReturn {
         match else_block {
-            IfElseBlock::Block(block) => self.process_statements_with_early_return(
-                &block.statements,
-                symbol_table,
-                merge_block.id,
-            ),
+            IfElseBlock::Block(block) => self.handle_then_else_block(block, merge_block.id),
             IfElseBlock::If(nested_if) => {
                 self.handle_if_logic(nested_if, symbol_table, merge_block)
             }
@@ -322,11 +324,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
         // Generate then block
         self.switch_to_basic_block(then_block);
-        let then_has_return = self.process_statements_with_early_return(
-            &if_statement.then_block.statements,
-            symbol_table,
-            merge_block.id,
-        );
+        let then_has_return = self.handle_then_else_block(if_statement.then_block, merge_block.id);
 
         // Generate else block if present
         let mut else_has_return = FoundReturn::No;
@@ -340,6 +338,20 @@ impl<'i> FunctionIrBuilder<'i> {
 
         // Return whether both branches have returns
         then_has_return.and(else_has_return)
+    }
+
+    /// Generates statements for the block and a jump to the merge block if no return is found
+    fn handle_then_else_block(
+        &self,
+        block: &Block<PhaseTypeResolved>,
+        merge_block_id: BlockId,
+    ) -> FoundReturn {
+        let found_return = self.handle_block(block);
+        if found_return == FoundReturn::No {
+            let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
+            self.push_to_current_bb(jump_instruction);
+        }
+        found_return
     }
 
     fn create_basic_block(&self) -> &'i BasicBlock<'i> {
@@ -383,26 +395,6 @@ impl<'i> FunctionIrBuilder<'i> {
                 name: symbol.name,
                 variable_type,
             });
-    }
-
-    fn process_statements_with_early_return(
-        &self,
-        statements: &bumpalo::collections::Vec<&Statement<PhaseTypeResolved>>,
-        symbol_table: &SymbolTable,
-        merge_block_id: BlockId,
-    ) -> FoundReturn {
-        let mut found_return = FoundReturn::No;
-        for statement in statements {
-            if self.handle_statement(statement, symbol_table) == FoundReturn::Yes {
-                found_return = FoundReturn::Yes;
-                break;
-            }
-        }
-        if found_return == FoundReturn::No {
-            let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
-            self.push_to_current_bb(jump_instruction);
-        }
-        found_return
     }
 }
 
