@@ -6,7 +6,9 @@
 - ✅ **AST Definitions** - `Statement::If` and `IfElseBlock` enum defined in `parser/src/ast.rs`
 - ✅ **Parsed AST** - Complete Display implementation for if statements
 - ✅ **Semantic Analysis** - Full implementation completed with comprehensive tests
-- ✅ **Tests** - 9 passing semantic analysis tests covering all if statement patterns
+- ✅ **Codegen** - Complete IR generation for if statements with control flow and tests
+- ✅ **Tests** - 9 passing semantic analysis tests + 3 passing codegen tests for if statements
+- 🔄 **LLVM Backend** - Infrastructure ready, control flow instruction compilation pending
 
 ## Completed Implementation ✅
 
@@ -28,8 +30,8 @@
 
 ## Remaining Implementation Tasks
 
-### 2. Code Generation Phase (`codegen` crate) - 🔄 PARTIALLY IMPLEMENTED
-**Current Status**: IR architecture updated for control flow, if statement codegen still needs implementation
+### 2. Code Generation Phase (`codegen` crate) - ✅ COMPLETE
+**Current Status**: Full if statement codegen implementation complete with comprehensive tests
 
 - ✅ **IR Architecture Changes** - Control flow foundation complete:
   - ✅ Add multi-basic-block support to IR (`Function` now contains `basic_blocks: BumpVec`)
@@ -42,13 +44,13 @@
   - ✅ `Jump { target_block: BlockId }`
   - [ ] Consider `Phi` nodes for SSA form variable merging
 
-- [ ] **IR Builder** - Implement if statement codegen in `ir_builder.rs`:
-  - [ ] Generate condition evaluation IR
-  - [ ] Create basic blocks for then/else branches
-  - [ ] Handle conditional jumps between blocks
-  - [ ] Manage control flow merge points
-  - [ ] Handle nested if statements
-  - [ ] Ensure proper variable scoping in blocks
+- ✅ **IR Builder** - If statement codegen complete in `ir_builder.rs`:
+  - ✅ Generate condition evaluation IR (`handle_if_statement()` implemented)
+  - ✅ Create basic blocks for then/else branches
+  - ✅ Handle conditional jumps between blocks  
+  - ✅ Manage control flow merge points with merge block
+  - ✅ Handle nested if statements (`handle_if_logic()` and `handle_if_else_block()`)
+  - ✅ Ensure proper variable scoping in blocks
 
 ### 3. LLVM Backend Phase (`backend_llvm` crate) - 🔄 PARTIALLY IMPLEMENTED
 **Current Status**: Updated for multi-block functions, control flow instructions need implementation
@@ -64,10 +66,10 @@
 
 ### 4. Testing & Validation
 - ✅ **Semantic Analysis Tests**: 9 comprehensive tests passing
-- [ ] **Codegen Tests**:
-  - [ ] IR generation tests for if statements
-  - [ ] Multi-basic-block IR structure tests
-  - [ ] Control flow IR instruction tests
+- ✅ **Codegen Tests**:
+  - ✅ IR generation tests for if statements (`if_statement_simple`, `if_statement_with_else`, `if_elseif_else` tests passing)
+  - ✅ Multi-basic-block IR structure tests 
+  - ✅ Control flow IR instruction tests
 
 - [ ] **LLVM Backend Tests**:
   - [ ] LLVM compilation tests for if statements
@@ -97,10 +99,10 @@
 
 ## Implementation Progress
 1. ✅ **Semantic Analysis** - COMPLETE (type resolution, error handling, tests)
-2. 🔄 **Codegen** - IR ARCHITECTURE COMPLETE (if statement codegen implementation pending)
+2. ✅ **Codegen** - COMPLETE (IR architecture, if statement codegen, tests all implemented)
 3. 🔄 **LLVM Backend** - INFRASTRUCTURE UPDATED (control flow instruction handling pending)
-4. 🔄 **Testing** - Semantic tests complete, codegen/LLVM tests pending
-5. ❌ **Integration** - Awaiting if statement codegen implementation
+4. 🔄 **Testing** - Semantic and codegen tests complete, LLVM tests pending
+5. 🔄 **Integration** - Codegen complete, awaiting LLVM backend control flow implementation
 
 ## Key Files to Modify
 
@@ -111,9 +113,10 @@
 
 ### ❌ Remaining 
 - ✅ `codegen/src/ir.rs` - Multi-basic-block support and control flow instructions complete
-- ❌ `codegen/src/ir_builder.rs` - Implement if statement IR generation (currently `todo!()` at line 137)
-- 🔄 `backend_llvm/src/ir_to_llvm.rs` - Infrastructure updated, control flow instruction handling pending
-- ❌ Test files in codegen and backend_llvm crates
+- ✅ `codegen/src/ir_builder.rs` - If statement IR generation complete (`handle_if_statement()`, `handle_if_logic()`, `handle_if_else_block()`)
+- 🔄 `backend_llvm/src/ir_to_llvm.rs` - Infrastructure updated, control flow instruction handling pending (Branch/Jump still `todo!()`)
+- ✅ Test files in codegen crate - if statement tests implemented and passing
+- ❌ Test files in backend_llvm crate for control flow
 
 ## Technical Notes & Challenges
 
@@ -127,11 +130,11 @@
 - ✅ Variable scoping in then/else blocks working correctly
 - ✅ Basic block management implemented with multi-block function support
 - ✅ Control flow instructions (Jump, Branch) added to IR
+- ✅ If statement codegen in ir_builder complete with comprehensive control flow handling
 - ❌ LLVM phi nodes and conditional branches not implemented
-- ❌ If statement codegen in ir_builder still needs implementation
 
 ### Next Steps Priority
 1. ✅ **Extend IR architecture** to support multiple basic blocks per function
 2. ✅ **Add control flow instructions** (Branch, Jump) to IR instruction set  
-3. **Implement if statement codegen** in `ir_builder.rs` (remove `todo!()` at line 137)
-4. **Add LLVM compilation** for control flow instructions (implement Jump/Branch handling)
+3. ✅ **Implement if statement codegen** in `ir_builder.rs` (complete with proper control flow handling)
+4. **Add LLVM compilation** for control flow instructions (implement Jump/Branch handling in `ir_to_llvm.rs`)
