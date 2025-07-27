@@ -132,11 +132,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         fun: FunctionValue<'c>,
         llvm_module: &Module<'c>,
     ) -> Result<(), CodeGenError> {
-        // Create LLVM basic blocks for all IR basic blocks
+        // Create LLVM basic blocks for non-empty IR basic blocks
         for ir_block in self.function.basic_blocks.iter() {
-            let block_name = &format!("bb{}", ir_block.id.0);
-            let bb = self.context.append_basic_block(fun, block_name);
-            self.llvm_blocks.borrow_mut().insert(ir_block.id, bb);
+            if !ir_block.instructions.borrow().is_empty() {
+                let block_name = &format!("bb{}", ir_block.id.0);
+                let bb = self.context.append_basic_block(fun, block_name);
+                self.llvm_blocks.borrow_mut().insert(ir_block.id, bb);
+            }
         }
 
         // Position at entry block and allocate variables
@@ -149,8 +151,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         self.builder.position_at_end(entry_bb);
         self.alloca_variables()?;
 
-        // Generate code for each basic block
+        // Generate code for each non-empty basic block
         for ir_block in self.function.basic_blocks.iter() {
+            if ir_block.instructions.borrow().is_empty() {
+                continue;
+            }
+
             let bb = *self
                 .llvm_blocks
                 .borrow()
@@ -158,97 +164,86 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 .expect("basic block should exist");
             self.builder.position_at_end(bb);
 
-            if ir_block.instructions.borrow().is_empty() {
-                // Empty block - add an unreachable instruction as terminator
-                self.builder.build_unreachable()?;
-            } else {
-                for instruction in ir_block.instructions.borrow().iter() {
-                    match &instruction.payload {
-                        InstructionPayload::Constant { constant, .. } => {
-                            self.handle_constant(instruction.id, constant);
-                        }
-                        InstructionPayload::Unary {
-                            result_type: operand_type,
-                            operator,
-                            operand,
-                        } => {
-                            self.handle_unary(instruction.id, operand_type, operator, *operand)?;
-                        }
-                        InstructionPayload::Binary {
-                            operator,
-                            operand_type,
-                            left,
-                            right,
-                            ..
-                        } => {
-                            self.handle_binary(
-                                instruction.id,
-                                operator,
-                                operand_type,
-                                *left,
-                                *right,
-                            )?;
-                        }
-                        InstructionPayload::Ret => {
-                            self.builder.build_return(None)?;
-                        }
-                        InstructionPayload::RetExpr {
-                            expression,
-                            operand_type,
-                        } => {
-                            self.handle_return_expression(*expression, operand_type)?;
-                        }
-                        InstructionPayload::LoadVar {
-                            operand_type,
-                            variable_index,
-                            ..
-                        } => {
-                            self.handle_load_var(instruction, operand_type, *variable_index)?;
-                        }
-                        InstructionPayload::LoadArg {
-                            operand_type,
-                            argument_index,
-                            ..
-                        } => {
-                            self.handle_load_arg(fun, instruction, operand_type, *argument_index)?;
-                        }
-                        InstructionPayload::StoreVar {
-                            operand_type,
-                            variable_index,
-                            value,
-                            ..
-                        } => {
-                            self.handle_store_var(operand_type, *variable_index, *value)?;
-                        }
-                        InstructionPayload::Let {
-                            variable_index,
-                            operand_type,
-                            initializer,
-                            ..
-                        } => self.handle_let(*variable_index, operand_type, *initializer)?,
-                        InstructionPayload::Call {
+            for instruction in ir_block.instructions.borrow().iter() {
+                match &instruction.payload {
+                    InstructionPayload::Constant { constant, .. } => {
+                        self.handle_constant(instruction.id, constant);
+                    }
+                    InstructionPayload::Unary {
+                        result_type: operand_type,
+                        operator,
+                        operand,
+                    } => {
+                        self.handle_unary(instruction.id, operand_type, operator, *operand)?;
+                    }
+                    InstructionPayload::Binary {
+                        operator,
+                        operand_type,
+                        left,
+                        right,
+                        ..
+                    } => {
+                        self.handle_binary(instruction.id, operator, operand_type, *left, *right)?;
+                    }
+                    InstructionPayload::Ret => {
+                        self.builder.build_return(None)?;
+                    }
+                    InstructionPayload::RetExpr {
+                        expression,
+                        operand_type,
+                    } => {
+                        self.handle_return_expression(*expression, operand_type)?;
+                    }
+                    InstructionPayload::LoadVar {
+                        operand_type,
+                        variable_index,
+                        ..
+                    } => {
+                        self.handle_load_var(instruction, operand_type, *variable_index)?;
+                    }
+                    InstructionPayload::LoadArg {
+                        operand_type,
+                        argument_index,
+                        ..
+                    } => {
+                        self.handle_load_arg(fun, instruction, operand_type, *argument_index)?;
+                    }
+                    InstructionPayload::StoreVar {
+                        operand_type,
+                        variable_index,
+                        value,
+                        ..
+                    } => {
+                        self.handle_store_var(operand_type, *variable_index, *value)?;
+                    }
+                    InstructionPayload::Let {
+                        variable_index,
+                        operand_type,
+                        initializer,
+                        ..
+                    } => self.handle_let(*variable_index, operand_type, *initializer)?,
+                    InstructionPayload::Call {
+                        function_name,
+                        return_type,
+                        arguments,
+                    } => {
+                        self.handle_function_call(
+                            instruction.id,
+                            llvm_module,
                             function_name,
                             return_type,
                             arguments,
-                        } => {
-                            self.handle_function_call(
-                                instruction.id,
-                                llvm_module,
-                                function_name,
-                                return_type,
-                                arguments,
-                            )?;
-                        }
-                        InstructionPayload::Jump { target_block } => {
-                            self.handle_jump(*target_block)?;
-                        }
-                        InstructionPayload::Branch {
-                            condition,
-                            then_block,
-                            else_block,
-                        } => {
-                            self.handle_branch(*condition, *then_block, *else_block)?;
-                        }
+                        )?;
+                    }
+                    InstructionPayload::Jump { target_block } => {
+                        self.handle_jump(*target_block)?;
+                    }
+                    InstructionPayload::Branch {
+                        condition,
+                        then_block,
+                        else_block,
+                    } => {
+                        self.handle_branch(*condition, *then_block, *else_block)?;
                     }
                 }
             }
@@ -1300,9 +1295,6 @@ mod tests {
 
         bb3:                                              ; preds = %bb0
           ret i64 0
-
-        bb1:                                              ; No predecessors!
-          unreachable
         }
         "#);
     }
@@ -1341,9 +1333,6 @@ mod tests {
 
         bb5:                                              ; preds = %bb3
           ret i64 0
-
-        bb1:                                              ; No predecessors!
-          unreachable
         }
         "#);
     }
@@ -1416,12 +1405,6 @@ mod tests {
 
         bb6:                                              ; preds = %bb2
           ret i64 2
-
-        bb4:                                              ; No predecessors!
-          unreachable
-
-        bb1:                                              ; No predecessors!
-          unreachable
         }
         "#);
     }
