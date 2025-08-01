@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration, IfElseBlock,
-    LetInitializer, Module, Statement, UnaryOperator,
+    LetInitializer, Module, Statement, UnaryOperator, WhileStatement,
 };
 use crate::grammar::{Grammar, Rule};
 use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
@@ -173,6 +173,16 @@ fn parse_if_statement<'a>(
     ast_allocator.statement_if(condition, then_block, else_block)
 }
 
+fn parse_while_statement<'a>(
+    ast_allocator: &'a ParsedAstAllocator,
+    rule: Pair<'_, Rule>,
+) -> &'a Statement<'a, PhaseParsed<'a>> {
+    let mut inner = rule.into_inner();
+    let condition = parse_expression(ast_allocator, inner.next().expect("while condition"));
+    let body = parse_block(ast_allocator, inner.next().expect("while body"));
+    ast_allocator.statement_while(condition, body)
+}
+
 fn parse_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
@@ -204,6 +214,7 @@ fn parse_statement<'a>(
             ast_allocator.statement_expression(expression)
         }
         Rule::ifStatement => parse_if_statement(ast_allocator, pair),
+        Rule::whileStatement => parse_while_statement(ast_allocator, pair),
         _ => unreachable!(),
     }
 }
@@ -532,6 +543,20 @@ y = 1i;
 y = (- 1i);
 } else { #3
 y = 0i;
+}
+}"
+    );
+
+    test_block!(
+        statement_while_simple,
+        r"{
+    while x > 0 {
+        x = x - 1;
+    }
+}",
+        r"{ #0
+while (> x 0i) { #1
+x = (- x 1i);
 }
 }"
     );

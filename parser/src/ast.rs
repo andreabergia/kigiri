@@ -71,6 +71,7 @@ pub enum Statement<'a, Phase: CompilationPhase> {
         block: &'a Block<'a, Phase>,
     },
     If(&'a IfStatement<'a, Phase>),
+    While(&'a WhileStatement<'a, Phase>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -84,6 +85,12 @@ pub struct IfStatement<'a, Phase: CompilationPhase> {
 pub enum IfElseBlock<'a, Phase: CompilationPhase> {
     Block(&'a Block<'a, Phase>),
     If(&'a IfStatement<'a, Phase>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct WhileStatement<'a, Phase: CompilationPhase> {
+    pub condition: &'a Expression<'a, Phase>,
+    pub body: &'a Block<'a, Phase>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -271,6 +278,9 @@ impl Display for Statement<'_, PhaseParsed<'_>> {
             Statement::If(if_statement) => {
                 write!(f, "{}", if_statement)
             }
+            Statement::While(while_statement) => {
+                write!(f, "{}", while_statement)
+            }
         }
     }
 }
@@ -291,6 +301,12 @@ impl Display for IfElseBlock<'_, PhaseParsed<'_>> {
             IfElseBlock::Block(block) => write!(f, "{}", block),
             IfElseBlock::If(if_stmt) => write!(f, "{}", if_stmt),
         }
+    }
+}
+
+impl Display for WhileStatement<'_, PhaseParsed<'_>> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "while {} {}", self.condition, self.body)
     }
 }
 

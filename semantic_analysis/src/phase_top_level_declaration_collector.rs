@@ -3,7 +3,7 @@ use crate::semantic_analyzer::SemanticAnalysisError;
 use parser::{
     AstAllocator, Block, Expression, FunctionDeclaration, FunctionSignature,
     FunctionSignaturesByName, IfElseBlock, IfStatement, LetInitializer, Module, PhaseParsed,
-    Statement, StringId, resolve_string_id,
+    Statement, StringId, WhileStatement, resolve_string_id,
 };
 
 pub(crate) struct TopLevelDeclarationCollector {}
@@ -141,6 +141,16 @@ impl<'a> TopLevelDeclarationCollector {
                     else_block: mapped_else_block,
                 });
                 Statement::If(mapped_if_statement)
+            }
+            Statement::While(while_statement) => {
+                let mapped_condition = Self::map_expression(allocator, while_statement.condition)?;
+                let mapped_body = Self::map_block(allocator, while_statement.body)?;
+
+                let mapped_while_statement = allocator.alloc(WhileStatement {
+                    condition: mapped_condition,
+                    body: mapped_body,
+                });
+                Statement::While(mapped_while_statement)
             }
         }))
     }

@@ -5,7 +5,7 @@ use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
     FunctionSignaturesByName, IfElseBlock, IfStatement, LetInitializer, Module, Statement,
-    StringId, UnaryOperator, resolve_string_id,
+    StringId, UnaryOperator, WhileStatement, resolve_string_id,
 };
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -339,6 +339,40 @@ impl<'a> TypeResolver {
                 });
 
                 statements.push(allocator.alloc(Statement::If(typed_if_statement)));
+            }
+            Statement::While(while_statement) => {
+                // Type check the condition - it must be a boolean expression
+                let typed_condition =
+                    Self::analyze_expression(allocator, while_statement.condition, symbol_table)?;
+                let condition_type = resolved_type(typed_condition);
+
+                match condition_type {
+                    Some(Type::Bool) => {
+                        // Condition is valid, continue with body
+                    }
+                    Some(other_type) => {
+                        return Err(SemanticAnalysisError::WhileConditionMustBeBool {
+                            actual_type: other_type.to_string(),
+                        });
+                    }
+                    None => {
+                        return Err(SemanticAnalysisError::WhileConditionMustBeBool {
+                            actual_type: "void".to_string(),
+                        });
+                    }
+                }
+
+                // Type check the body block
+                let body_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
+                let typed_body =
+                    Self::analyze_block(allocator, while_statement.body, body_symbol_table)?;
+
+                let typed_while_statement = allocator.alloc(WhileStatement {
+                    condition: typed_condition,
+                    body: typed_body,
+                });
+
+                statements.push(allocator.alloc(Statement::While(typed_while_statement)));
             }
         };
         Ok(())

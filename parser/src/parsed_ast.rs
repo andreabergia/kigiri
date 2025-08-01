@@ -2,7 +2,7 @@ use crate::symbols::StringId;
 use crate::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionArgument,
     FunctionDeclaration, FunctionSignature, IfElseBlock, IfStatement, LetInitializer, LiteralValue,
-    Module, Statement, UnaryOperator, intern_string,
+    Module, Statement, UnaryOperator, WhileStatement, intern_string,
 };
 use bumpalo::collections::Vec as BumpVec;
 use std::collections::HashMap;
@@ -292,5 +292,18 @@ impl ParsedAstAllocator {
             else_block,
         });
         self.allocator.alloc(IfElseBlock::If(if_statement))
+    }
+
+    pub fn statement_while<'s, 'c, 'b>(
+        &'s self,
+        condition: &'c Expression<'c, PhaseParsed<'s>>,
+        body: &'b Block<'b, PhaseParsed<'s>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
+    where
+        'c: 's,
+        'b: 's,
+    {
+        let while_statement = self.allocator.alloc(WhileStatement { condition, body });
+        self.allocator.alloc(Statement::While(while_statement))
     }
 }

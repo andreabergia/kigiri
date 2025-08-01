@@ -3,7 +3,7 @@ use bumpalo::collections::Vec as BumpVec;
 use parser::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
     FunctionDeclaration, FunctionSignature, IfElseBlock, IfStatement, LiteralValue, Module,
-    Statement, StringId, resolve_string_id,
+    Statement, StringId, WhileStatement, resolve_string_id,
 };
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -282,6 +282,12 @@ fn fmt_statement(
         }
         Statement::If(if_statement) => {
             fmt_if_statement(f, if_statement, context, &format!("{}  ", context.indent))
+        }
+        Statement::While(while_statement) => {
+            write!(f, "{}  while ", context.indent)?;
+            fmt_expression(f, while_statement.condition, context.symbol_table)?;
+            write!(f, " ")?;
+            fmt_block(f, while_statement.body, context.indented())
         }
     }
 }

@@ -3,6 +3,7 @@ use crate::{FunctionSignature, ir};
 use ir::Variable;
 use parser::{
     Block, BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement,
+    WhileStatement,
 };
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
 use std::cell::RefCell;
@@ -162,6 +163,10 @@ impl<'i> FunctionIrBuilder<'i> {
             }
             Statement::NestedBlock { .. } => todo!(),
             Statement::If(if_statement) => self.handle_if_statement(if_statement, symbol_table),
+            Statement::While(_while_statement) => {
+                // TODO: implement while statement IR generation
+                todo!("while statement IR generation not yet implemented")
+            }
         }
     }
 

@@ -69,6 +69,8 @@ pub enum SemanticAnalysisError {
     },
     #[error("if condition must be of type bool, found {actual_type}")]
     IfConditionMustBeBool { actual_type: String },
+    #[error("while condition must be of type bool, found {actual_type}")]
+    WhileConditionMustBeBool { actual_type: String },
 }
 
 #[derive(Default)]
@@ -749,6 +751,37 @@ fn test(
 }
 
 "
+    );
+
+    // While statement tests
+    test_ok!(
+        while_statement_simple,
+        r"fn test() {
+  while true {
+    return;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  while true { #1
+    return;
+  }
+}
+
+"
+    );
+
+    test_ko!(
+        while_condition_must_be_bool,
+        r"fn test() {
+  while 42 {
+    return;
+  }
+}",
+        "while condition must be of type bool, found int"
     );
 
     // TODO: all return match expected type? here or in separate pass?

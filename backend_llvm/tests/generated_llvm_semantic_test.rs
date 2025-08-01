@@ -1,7 +1,7 @@
-use codegen::{build_ir_module, IrAllocator};
+use codegen::{IrAllocator, build_ir_module};
+use inkwell::OptimizationLevel;
 use inkwell::context::Context;
 use inkwell::execution_engine::{ExecutionEngine, JitFunction};
-use inkwell::OptimizationLevel;
 use semantic_analysis::SemanticAnalyzer;
 
 fn jit_test(source: &str, test_callback: unsafe fn(ExecutionEngine) -> ()) {
