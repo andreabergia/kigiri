@@ -112,15 +112,24 @@ Merge Block
 
 This design leverages all the existing basic block infrastructure while creating the loop-back pattern that distinguishes while loops from if statements.
 
-## Files to Modify
+## Implementation Status
 
-1. `parser/src/grammar.pest` - Add while statement grammar
-2. `parser/src/ast.rs` - Add WhileStatement struct and Statement::While variant
-3. `parser/src/parser.rs` - Add while statement parsing logic
-4. `semantic_analysis/src/phase_top_level_declaration_collector.rs` - Add while statement mapping
-5. `semantic_analysis/src/phase_type_resolver.rs` - Add while statement type checking
-6. `codegen/src/ir_builder.rs` - Add while statement IR generation
-7. Add tests for while loop functionality
+### Completed (commit 2e8b28e)
+
+1. ✅ `parser/src/grammar.pest` - Added while statement grammar
+2. ✅ `parser/src/ast.rs` - Added WhileStatement struct and Statement::While variant
+3. ✅ `parser/src/parser.rs` - Added while statement parsing logic
+4. ✅ `semantic_analysis/src/phase_top_level_declaration_collector.rs` - Added while statement mapping
+5. ✅ `semantic_analysis/src/phase_type_resolver.rs` - Added while statement type checking
+6. ✅ `semantic_analysis/src/ast_typed.rs` - Added typed AST support
+7. ✅ `semantic_analysis/src/semantic_analyzer.rs` - Added semantic analysis integration
+8. ✅ `parser/src/parsed_ast.rs` - Added parsed AST support
+
+### Remaining Work
+
+1. `codegen/src/ir_builder.rs` - Complete while statement IR generation (partially implemented)
+2. Add comprehensive tests for while loop functionality
+3. LLVM backend integration (may already work with existing Jump/Branch instructions)
 
 ## Testing Strategy
 
