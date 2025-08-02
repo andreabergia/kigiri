@@ -163,9 +163,8 @@ impl<'i> FunctionIrBuilder<'i> {
             }
             Statement::NestedBlock { .. } => todo!(),
             Statement::If(if_statement) => self.handle_if_statement(if_statement, symbol_table),
-            Statement::While(_while_statement) => {
-                // TODO: implement while statement IR generation
-                todo!("while statement IR generation not yet implemented")
+            Statement::While(while_statement) => {
+                self.handle_while_statement(while_statement, symbol_table)
             }
         }
     }
@@ -344,6 +343,39 @@ impl<'i> FunctionIrBuilder<'i> {
 
         // Return whether both branches have returns
         then_has_return.and(else_has_return)
+    }
+
+    fn handle_while_statement(
+        &self,
+        while_statement: &WhileStatement<PhaseTypeResolved>,
+        symbol_table: &SymbolTable,
+    ) -> FoundReturn {
+        let condition_block = self.create_basic_block();
+        let body_block = self.create_basic_block();
+        let merge_block = self.create_basic_block_deferred();
+
+        self.push_to_current_bb(self.ir_allocator.new_jump(condition_block.id));
+
+        // Condition block
+        self.switch_to_basic_block(condition_block);
+        let condition_instruction = self.handle_expression(while_statement.condition, symbol_table);
+        let branch_instruction =
+            self.ir_allocator
+                .new_branch(condition_instruction, body_block.id, merge_block.id);
+        self.push_to_current_bb(branch_instruction);
+
+        // Body block
+        self.switch_to_basic_block(body_block);
+        let body_has_return = self.handle_block(while_statement.body);
+        if body_has_return == FoundReturn::No {
+            self.push_to_current_bb(self.ir_allocator.new_jump(condition_block.id));
+        }
+
+        // Merge block
+        self.add_basic_block(merge_block);
+        self.switch_to_basic_block(merge_block);
+
+        FoundReturn::No // While loops don't guarantee returns
     }
 
     /// Generates statements for the block and a jump to the merge block if no return is found
@@ -873,6 +905,157 @@ fn test(
   { #1
     00010 i loadvar r
     00011 i ret @10
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        while_simple,
+        r"fn test() -> int {
+    let x = 0;
+    while (x < 10) {
+        x = x + 1;
+    }
+    return x;
+}",
+        r"module test
+
+fn test(
+) -> i {
+  entry_block: #0
+  { #0
+    var x: int
+    00000 i const 0i
+    00001 i let x = @0
+    00002 v jmp #1
+  }
+  { #1
+    00003 i loadvar x
+    00004 i const 10i
+    00005 b lt @3, @4
+    00006 v br @5, #2, #3
+  }
+  { #2
+    00007 i loadvar x
+    00008 i const 1i
+    00009 i add @7, @8
+    00010 i storevar x = @9
+    00011 v jmp #1
+  }
+  { #3
+    00012 i loadvar x
+    00013 i ret @12
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        while_with_early_return,
+        r"fn test() -> int {
+    let x = 0;
+    while (x < 10) {
+        if (x == 5) {
+            return x;
+        }
+        x = x + 1;
+    }
+    return x;
+}",
+        r"module test
+
+fn test(
+) -> i {
+  entry_block: #0
+  { #0
+    var x: int
+    00000 i const 0i
+    00001 i let x = @0
+    00002 v jmp #1
+  }
+  { #1
+    00003 i loadvar x
+    00004 i const 10i
+    00005 b lt @3, @4
+    00006 v br @5, #2, #3
+  }
+  { #2
+    00007 i loadvar x
+    00008 i const 5i
+    00009 b eq @7, @8
+    00010 v br @9, #5, #4
+  }
+  { #5
+    00011 i loadvar x
+    00012 i ret @11
+  }
+  { #4
+    00013 i loadvar x
+    00014 i const 1i
+    00015 i add @13, @14
+    00016 i storevar x = @15
+    00017 v jmp #1
+  }
+  { #3
+    00018 i loadvar x
+    00019 i ret @18
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        while_variable_scope,
+        r"fn test() -> int {
+    let sum = 0;
+    let i = 0;
+    while (i < 5) {
+        let temp = i * 2;
+        sum = sum + temp;
+        i = i + 1;
+    }
+    return sum;
+}",
+        r"module test
+
+fn test(
+) -> i {
+  entry_block: #0
+  { #0
+    var sum: int
+    var i: int
+    00000 i const 0i
+    00001 i let sum = @0
+    00002 i const 0i
+    00003 i let i = @2
+    00004 v jmp #1
+  }
+  { #1
+    00005 i loadvar i
+    00006 i const 5i
+    00007 b lt @5, @6
+    00008 v br @7, #2, #3
+  }
+  { #2
+    var temp: int
+    00009 i loadvar i
+    00010 i const 2i
+    00011 i mul @9, @10
+    00012 i let temp = @11
+    00013 i loadvar sum
+    00014 i loadvar temp
+    00015 i add @13, @14
+    00016 i storevar sum = @15
+    00017 i loadvar i
+    00018 i const 1i
+    00019 i add @17, @18
+    00020 i storevar i = @19
+    00021 v jmp #1
+  }
+  { #3
+    00022 i loadvar sum
+    00023 i ret @22
   }
 }
 "
