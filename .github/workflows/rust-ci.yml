@@ -43,6 +43,14 @@ jobs:
         with:
           tool: cargo-nextest
 
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run security audit
+        run: cargo audit
+
       - name: Run tests
         run: cargo nextest run
         env:
