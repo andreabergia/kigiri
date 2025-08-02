@@ -125,11 +125,16 @@ This design leverages all the existing basic block infrastructure while creating
 7. ✅ `semantic_analysis/src/semantic_analyzer.rs` - Added semantic analysis integration
 8. ✅ `parser/src/parsed_ast.rs` - Added parsed AST support
 
+### Completed (commit 5b3a59d)
+
+1. ✅ `codegen/src/ir_builder.rs` - Completed while statement IR generation with handle_while_statement method
+2. ✅ Added comprehensive tests for while loop IR generation (simple loops, early returns, variable scoping)
+3. ✅ All 183 tests pass including new while loop tests
+
 ### Remaining Work
 
-1. `codegen/src/ir_builder.rs` - Complete while statement IR generation (partially implemented)
-2. Add comprehensive tests for while loop functionality
-3. LLVM backend integration (may already work with existing Jump/Branch instructions)
+1. LLVM backend integration (may already work with existing Jump/Branch instructions)
+2. End-to-end testing with LLVM backend
 
 ## Testing Strategy
 
