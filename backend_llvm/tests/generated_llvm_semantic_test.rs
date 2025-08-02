@@ -253,3 +253,76 @@ fn fact(n: int) -> int {
         assert_eq!(fun.call(4), 24);
     })
 }
+
+#[test]
+fn test_while_loop_simple() {
+    let source = r"
+fn count_down(n: int) -> int {
+    let result = 0;
+    let counter = n;
+    while counter > 0 {
+        result = result + counter;
+        counter = counter - 1;
+    }
+    return result;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(i64) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("count_down").unwrap();
+
+        assert_eq!(fun.call(0), 0);
+        assert_eq!(fun.call(1), 1);
+        assert_eq!(fun.call(3), 6); // 3 + 2 + 1
+        assert_eq!(fun.call(5), 15); // 5 + 4 + 3 + 2 + 1
+    })
+}
+
+#[test]
+fn test_while_loop_with_early_return() {
+    let source = r"
+fn find_first_multiple(start: int, target: int) -> int {
+    let current = start;
+    while current < 100 {
+        if current % target == 0 {
+            return current;
+        }
+        current = current + 1;
+    }
+    return -1;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(i64, i64) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("find_first_multiple").unwrap();
+
+        assert_eq!(fun.call(10, 5), 10); // 10 is multiple of 5
+        assert_eq!(fun.call(11, 5), 15); // first multiple of 5 >= 11
+        assert_eq!(fun.call(98, 3), 99); // first multiple of 3 >= 98
+    })
+}
+
+#[test]
+fn test_nested_while_loops() {
+    let source = r"
+fn multiply_by_addition(a: int, b: int) -> int {
+    let result = 0;
+    let i = 0;
+    while i < a {
+        let j = 0;
+        while j < b {
+            result = result + 1;
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return result;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(i64, i64) -> i64;
+        let fun: JitFunction<F> = jit_engine.get_function("multiply_by_addition").unwrap();
+
+        assert_eq!(fun.call(0, 5), 0);
+        assert_eq!(fun.call(3, 0), 0);
+        assert_eq!(fun.call(3, 4), 12);
+        assert_eq!(fun.call(2, 7), 14);
+    })
+}

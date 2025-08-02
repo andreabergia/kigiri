@@ -514,7 +514,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     .build_int_signed_div(left, right, &Self::name("div", id))?
             }
             BinaryOperator::Rem => {
-                todo!()
+                self.builder
+                    .build_int_signed_rem(left, right, &Self::name("rem", id))?
             }
             BinaryOperator::Exp => {
                 todo!()
@@ -620,6 +621,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 let result = self
                     .builder
                     .build_float_div(left, right, &Self::name("div", id))?;
+                self.store_value(id, result.as_basic_value_enum());
+            }
+            BinaryOperator::Rem => {
+                let result = self
+                    .builder
+                    .build_float_rem(left, right, &Self::name("rem", id))?;
                 self.store_value(id, result.as_basic_value_enum());
             }
             BinaryOperator::Eq
