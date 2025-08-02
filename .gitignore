@@ -2,3 +2,4 @@ target
 .idea
 mutants.out
 .claude/settings.local.json
+coverage.info

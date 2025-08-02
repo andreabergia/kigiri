@@ -17,6 +17,7 @@ lint:
 
 clean:
     cargo clean
+    cargo llvm-cov clean
 
 find-unused-dependencies:
     cargo +nightly udeps --all-targets
@@ -32,3 +33,12 @@ audit:
 
 audit-fix:
     cargo audit fix --dry-run
+
+coverage:
+    cargo llvm-cov nextest
+
+coverage-html:
+    cargo llvm-cov nextest --html
+
+coverage-lcov:
+    cargo llvm-cov nextest --lcov --output-path coverage.info

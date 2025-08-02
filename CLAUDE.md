@@ -13,9 +13,12 @@ Main commands:
 - `just test-verbose` - Run tests with output capture disabled
 - `just lint` - Check formatting and run clippy with fixes
 - `just fmt` - Format code with `cargo fmt --all`
-- `just clean` - Clean build artifacts
+- `just clean` - Clean build artifacts and coverage data
 - `just audit` - Check dependencies for security vulnerabilities
 - `just audit-fix` - Preview automatic fixes for vulnerabilities (dry-run)
+- `just coverage` - Generate code coverage report using nextest
+- `just coverage-html` - Generate HTML coverage report using nextest
+- `just coverage-lcov` - Generate LCOV format coverage for CI using nextest
 - `just` - Run test, lint, and formatter.
 
 Note: The project uses `cargo nextest` for testing instead of standard `cargo test`.
@@ -58,6 +61,13 @@ The codebase uses a phase-based compilation model where AST nodes are parameteri
 - Uses `insta` for snapshot testing
 - Tests are organized per crate with some integration tests
 - LLVM backend has generated semantic tests
+
+### Code Coverage
+
+- Uses `cargo-llvm-cov` for precise LLVM-based coverage measurement
+- Install with: `cargo install cargo-llvm-cov`
+- All coverage commands automatically use nextest for consistency
+- Generate reports with `just coverage-html` for interactive HTML reports
 
 ### Key Dependencies
 
