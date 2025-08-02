@@ -14,6 +14,8 @@ Main commands:
 - `just lint` - Check formatting and run clippy with fixes
 - `just fmt` - Format code with `cargo fmt --all`
 - `just clean` - Clean build artifacts
+- `just audit` - Check dependencies for security vulnerabilities
+- `just audit-fix` - Preview automatic fixes for vulnerabilities (dry-run)
 - `just` - Run test, lint, and formatter.
 
 Note: The project uses `cargo nextest` for testing instead of standard `cargo test`.

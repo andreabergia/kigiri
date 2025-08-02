@@ -26,3 +26,9 @@ fmt:
 
 insta:
     cargo insta review
+
+audit:
+    cargo audit
+
+audit-fix:
+    cargo audit fix --dry-run
