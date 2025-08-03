@@ -1,7 +1,7 @@
 use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
 use crate::phase_type_resolver::TypeResolver;
-use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type};
-use parser::{AstAllocator, BinaryOperator, CompilationPhase, Module, PhaseParsed, UnaryOperator};
+use crate::{PhaseTypeResolved, SymbolTable, Type};
+use parser::{AstAllocator, BinaryOperator, Module, PhaseParsed, UnaryOperator};
 use thiserror::Error;
 
 // For the moment I am using _one_ error type for all the passes
@@ -95,7 +95,7 @@ impl SemanticAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TypeResolvedModule;
+    use crate::{ArgumentIndex, SymbolKind, TypeResolvedModule};
 
     macro_rules! test_ok {
         ($name: ident, $source: expr, $expected_typed_ast: expr) => {

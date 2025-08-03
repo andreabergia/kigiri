@@ -53,12 +53,7 @@ impl<'a> TypeResolver {
         // Second pass: analyze functions with access to the global symbol table
         let mut functions = allocator.new_bump_vec_with_capacity(module.functions.len());
         for function in module.functions.iter() {
-            let function = Self::analyze_function(
-                allocator,
-                function,
-                global_symbol_table,
-                &mapped_signatures,
-            )?;
+            let function = Self::analyze_function(allocator, function, &mapped_signatures)?;
             functions.push(function);
         }
 
@@ -119,7 +114,6 @@ impl<'a> TypeResolver {
     fn analyze_function(
         allocator: &'a AstAllocator,
         function: &FunctionDeclaration<PhaseTopLevelDeclarationCollected>,
-        global_symbol_table: &'a SymbolTable<'a>,
         mapped_signatures: &MappedFunctionSignatures<'a>,
     ) -> Result<&'a FunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let MappedFunctionSignature {
@@ -238,10 +232,7 @@ impl<'a> TypeResolver {
                                     expression: value,
                                 }))
                             }
-                            SymbolKind::Argument {
-                                argument_type,
-                                index,
-                            } => {
+                            SymbolKind::Argument { argument_type, .. } => {
                                 if expression_type != argument_type {
                                     return Err(SemanticAnalysisError::MismatchedAssignmentType {
                                         symbol_name,
@@ -476,11 +467,7 @@ impl<'a> TypeResolver {
                 }
             }
 
-            Expression::FunctionCall {
-                name,
-                args,
-                return_type,
-            } => {
+            Expression::FunctionCall { name, args, .. } => {
                 let function_symbol = symbol_table.lookup_by_name(*name);
                 let Some(function_symbol) = function_symbol else {
                     return Err(SemanticAnalysisError::FunctionNotFound {
@@ -594,7 +581,7 @@ impl<'a> TypeResolver {
                         operand_type: "void".to_string(),
                     })?;
 
-                if (Self::unary_op_is_allowed(operator.clone(), operand_type)) {
+                if Self::unary_op_is_allowed(operator.clone(), operand_type) {
                     Ok(allocator.alloc(Expression::Unary {
                         resolved_type: operand_type,
                         operator: operator.clone(),

@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 mod ast;
 mod grammar;
 mod parsed_ast;

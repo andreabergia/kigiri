@@ -6,7 +6,7 @@ use crate::{
 };
 use bumpalo::collections::Vec as BumpVec;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 #[derive(Debug, PartialEq)]

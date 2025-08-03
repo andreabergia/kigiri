@@ -176,8 +176,7 @@ impl<'i> FunctionIrBuilder<'i> {
     ) -> &'i Instruction {
         match expression {
             Expression::Identifier {
-                resolved_type,
-                name: symbol_id,
+                name: symbol_id, ..
             } => {
                 let symbol = symbol_table
                     .lookup_by_id(*symbol_id)
@@ -202,18 +201,13 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(instruction);
                 instruction
             }
-            Expression::Literal {
-                resolved_type,
-                value,
-            } => {
+            Expression::Literal { value, .. } => {
                 let instruction = self.ir_allocator.new_const(value.clone());
                 self.push_to_current_bb(instruction);
                 instruction
             }
             Expression::Unary {
-                resolved_type,
-                operator,
-                operand,
+                operator, operand, ..
             } => {
                 let operand_instruction = self.handle_expression(operand, symbol_table);
 

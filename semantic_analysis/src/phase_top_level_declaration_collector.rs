@@ -3,7 +3,7 @@ use crate::semantic_analyzer::SemanticAnalysisError;
 use parser::{
     AstAllocator, Block, Expression, FunctionDeclaration, FunctionSignature,
     FunctionSignaturesByName, IfElseBlock, IfStatement, LetInitializer, Module, PhaseParsed,
-    Statement, StringId, WhileStatement, resolve_string_id,
+    Statement, WhileStatement,
 };
 
 pub(crate) struct TopLevelDeclarationCollector {}
@@ -235,21 +235,6 @@ impl<'a> TopLevelDeclarationCollector {
             }
         }))
     }
-
-    fn resolve_function_signature(
-        function_signatures: &FunctionSignaturesByName<'a, PhaseTopLevelDeclarationCollected<'a>>,
-        name: &StringId,
-    ) -> Result<
-        &'a FunctionSignature<'a, PhaseTopLevelDeclarationCollected<'a>>,
-        SemanticAnalysisError,
-    > {
-        function_signatures
-            .get(name)
-            .cloned()
-            .ok_or(SemanticAnalysisError::FunctionNotFound {
-                function_name: resolve_string_id(*name).expect("function name").to_owned(),
-            })
-    }
 }
 
 #[cfg(test)]
@@ -325,12 +310,7 @@ fn add(a: int, b: int) -> int {
             Statement::Expression { expression } => expression,
             _ => panic!("Expected a return statement"),
         };
-        let Expression::FunctionCall {
-            name,
-            args,
-            return_type,
-        } = expression
-        else {
+        let Expression::FunctionCall { name, args, .. } = expression else {
             panic!("Expected a function call expression")
         };
         assert_eq!(*name, intern_string("add"));

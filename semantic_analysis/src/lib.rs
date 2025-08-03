@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 mod ast_top_level_declaration;
 mod ast_typed;
 mod phase_top_level_declaration_collector;

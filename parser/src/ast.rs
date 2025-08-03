@@ -1,6 +1,6 @@
-use crate::FunctionSignaturesByName;
 use crate::parsed_ast::PhaseParsed;
-use crate::symbols::{StringId, intern_string, resolve_string_id};
+use crate::symbols::{resolve_string_id, StringId};
+use crate::FunctionSignaturesByName;
 use bumpalo::collections::Vec as BumpVec;
 use std::cell::Cell;
 use std::fmt::{Debug, Display, Formatter};
@@ -482,6 +482,7 @@ impl AstAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intern_string;
     use crate::parsed_ast::ParsedAstAllocator;
 
     #[test]
@@ -537,7 +538,6 @@ x;
         let ast_allocator = ParsedAstAllocator::default();
 
         let block_id = ast_allocator.next_block_id();
-        let x = ast_allocator.identifier("x");
         let statements = ast_allocator.statements();
         let block = ast_allocator.block_from_statements(block_id, statements);
 

@@ -28,7 +28,6 @@ codebase. The plan addresses code quality, performance optimization, and develop
 
 - Inconsistent error handling (35 `unwrap()`, 90 `expect()`, 6 `panic!`)
 - TODOs present in 4 files indicating incomplete features
-- `#![allow(unused)]` in all crates suggesting dead code
 
 #### Action Items
 
@@ -36,7 +35,7 @@ codebase. The plan addresses code quality, performance optimization, and develop
     - Convert to `Result` propagation where appropriate
     - Add meaningful error messages with `expect()`
     - Focus on production code paths first
-- [ ] **Remove `#![allow(unused)]` attributes**
+- [x] **Remove `#![allow(unused)]` attributes** ✅
     - Clean up dead code and unused imports
     - Enable stricter linting (`#![deny(unused)]`)
     - Fix all compiler warnings
@@ -112,7 +111,7 @@ codebase. The plan addresses code quality, performance optimization, and develop
 
 ### Phase 1: Code Quality Foundation (Weeks 1-2)
 
-- Remove `#![allow(unused)]` and clean dead code
+- ✅ Remove `#![allow(unused)]` and clean dead code
 - Replace critical `unwrap()` calls in production paths
 - Address urgent TODOs in semantic analysis and backend
 

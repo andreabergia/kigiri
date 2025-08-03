@@ -1,9 +1,8 @@
 use bumpalo::collections::Vec as BumpVec;
 use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
-use std::any::Any;
 use std::cell::RefCell;
-use std::fmt::{Binary, Display, Formatter};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq)]
 pub struct Module<'a> {
@@ -269,12 +268,7 @@ impl Display for InstructionPayload {
                     resolve_string_id(*name).expect("should find argument name")
                 )
             }
-            InstructionPayload::StoreVar {
-                name,
-                value,
-                variable_index,
-                ..
-            } => {
+            InstructionPayload::StoreVar { name, value, .. } => {
                 write!(
                     f,
                     "storevar {} = @{}",
@@ -283,10 +277,7 @@ impl Display for InstructionPayload {
                 )
             }
             InstructionPayload::Let {
-                name,
-                initializer,
-                variable_index,
-                ..
+                name, initializer, ..
             } => {
                 write!(
                     f,

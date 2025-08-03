@@ -1,11 +1,9 @@
 use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
 use parser::{
-    AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression,
-    FunctionDeclaration, FunctionSignature, IfElseBlock, IfStatement, LiteralValue, Module,
-    Statement, StringId, WhileStatement, resolve_string_id,
+    AstAllocator, Block, CompilationPhase, Expression, FunctionDeclaration, FunctionSignature,
+    IfElseBlock, IfStatement, Module, Statement, StringId, resolve_string_id,
 };
-use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
@@ -352,8 +350,7 @@ fn fmt_expression(
 ) -> std::fmt::Result {
     match expression {
         Expression::Identifier {
-            resolved_type,
-            name: symbol_id,
+            name: symbol_id, ..
         } => match symbol_table.lookup_by_id(*symbol_id) {
             None => Err(std::fmt::Error),
             Some(symbol) => {
@@ -368,7 +365,7 @@ fn fmt_expression(
             operator,
             operand,
         } => {
-            write!(f, "({}{} ", operator, resolved_type.to_string_short(),);
+            write!(f, "({}{} ", operator, resolved_type.to_string_short(),)?;
             fmt_expression(f, operand, symbol_table)?;
             write!(f, ")")
         }
@@ -379,7 +376,7 @@ fn fmt_expression(
             right,
             ..
         } => {
-            write!(f, "({}{} ", operator, result_type.to_string_short(),);
+            write!(f, "({}{} ", operator, result_type.to_string_short(),)?;
             fmt_expression(f, left, symbol_table)?;
             write!(f, " ")?;
             fmt_expression(f, right, symbol_table)?;
@@ -387,7 +384,7 @@ fn fmt_expression(
         }
         Expression::FunctionCall { name, args, .. } => {
             let symbol = symbol_table.lookup_by_id(*name).ok_or(std::fmt::Error)?;
-            write!(f, "{}(", symbol.name());
+            write!(f, "{}(", symbol.name())?;
             let mut first = true;
             for arg in args.iter() {
                 if !first {
@@ -540,6 +537,7 @@ pub fn resolved_type(expression: &Expression<'_, PhaseTypeResolved<'_>>) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parser::{BinaryOperator, BlockId, LiteralValue};
 
     #[test]
     fn display_contains_type_after_operator() {
@@ -581,7 +579,7 @@ mod tests {
 
     fn make_block_with_return_1i(allocator: &AstAllocator) -> &Block<PhaseTypeResolved> {
         let symbol_table: &SymbolTable = SymbolTable::new(allocator, None);
-        let mut block = allocator.alloc(Block {
+        let block = allocator.alloc(Block {
             id: BlockId(1),
             statements: allocator.new_bump_vec_from_iter(vec![allocator.alloc(
                 Statement::Return {
@@ -607,7 +605,7 @@ mod tests {
             symbol_table: outer_symbol_table,
         };
 
-        let mut inner = make_block_with_return_1i(&allocator);
+        let inner = make_block_with_return_1i(&allocator);
         outer
             .statements
             .push(allocator.alloc(Statement::NestedBlock { block: inner }));

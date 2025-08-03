@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration, IfElseBlock,
-    LetInitializer, Module, Statement, UnaryOperator, WhileStatement,
+    LetInitializer, Module, Statement, UnaryOperator,
 };
 use crate::grammar::{Grammar, Rule};
 use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
