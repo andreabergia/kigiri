@@ -1,5 +1,6 @@
 use crate::semantic_analyzer::SemanticAnalysisError;
-use parser::{LiteralValue, StringId, resolve_string_id};
+use kigiri_memory::{StringId, resolve_string_id};
+use parser::LiteralValue;
 use std::fmt::Display;
 use std::fmt::Formatter;
 

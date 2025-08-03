@@ -240,9 +240,8 @@ impl<'a> TopLevelDeclarationCollector {
 #[cfg(test)]
 mod tests {
     use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
-    use parser::{
-        AstAllocator, Expression, FunctionArgument, FunctionSignature, Statement, intern_string,
-    };
+    use kigiri_memory::intern_string;
+    use parser::{AstAllocator, Expression, FunctionArgument, FunctionSignature, Statement};
 
     #[test]
     fn function_call_resolved() {

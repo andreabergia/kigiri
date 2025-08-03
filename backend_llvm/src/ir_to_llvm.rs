@@ -8,7 +8,8 @@ use inkwell::values::{
     BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
-use parser::{BinaryOperator, BlockId, UnaryOperator, resolve_string_id};
+use kigiri_memory::{StringId, resolve_string_id};
+use parser::{BinaryOperator, BlockId, UnaryOperator};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -792,7 +793,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         &self,
         id: InstructionId,
         llvm_module: &Module<'c>,
-        function_name: &parser::StringId,
+        function_name: &StringId,
         return_type: &Option<Type>,
         arguments: &[InstructionId],
     ) -> Result<(), CodeGenError> {

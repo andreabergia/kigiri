@@ -1,7 +1,7 @@
-use crate::parsed_ast::PhaseParsed;
-use crate::symbols::{resolve_string_id, StringId};
 use crate::FunctionSignaturesByName;
+use crate::parsed_ast::PhaseParsed;
 use bumpalo::collections::Vec as BumpVec;
+use kigiri_memory::{StringId, resolve_string_id};
 use std::cell::Cell;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -482,8 +482,8 @@ impl AstAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intern_string;
     use crate::parsed_ast::ParsedAstAllocator;
+    use kigiri_memory::intern_string;
 
     #[test]
     fn can_allocate_via_ast() {

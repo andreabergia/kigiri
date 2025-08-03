@@ -1,5 +1,6 @@
 use bumpalo::collections::Vec as BumpVec;
-use parser::{BinaryOperator, BlockId, LiteralValue, StringId, UnaryOperator, resolve_string_id};
+use kigiri_memory::{StringId, resolve_string_id};
+use parser::{BinaryOperator, BlockId, LiteralValue, UnaryOperator};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
@@ -570,7 +571,8 @@ impl IrAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser::{UnaryOperator, intern_string};
+    use kigiri_memory::intern_string;
+    use parser::UnaryOperator;
 
     #[test]
     fn test_display_instruction_ret() {

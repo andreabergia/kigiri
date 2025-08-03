@@ -15,6 +15,7 @@ dependencies = [
  "codegen",
  "inkwell",
  "insta",
+ "kigiri_memory",
  "parser",
  "semantic_analysis",
  "thiserror 2.0.12",
@@ -55,6 +56,7 @@ name = "codegen"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "kigiri_memory",
  "parser",
  "semantic_analysis",
 ]
@@ -130,9 +132,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.15.2"
+version = "0.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
+checksum = "5971ac85611da7067dbfcabef3c70ebb5606018acd9e2a3903a0da507521e0d5"
 dependencies = [
  "foldhash",
 ]
@@ -171,6 +173,13 @@ dependencies = [
  "console",
  "once_cell",
  "similar",
+]
+
+[[package]]
+name = "kigiri_memory"
+version = "0.1.0"
+dependencies = [
+ "string-interner",
 ]
 
 [[package]]
@@ -216,9 +225,9 @@ name = "parser"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "kigiri_memory",
  "pest",
  "pest_derive",
- "string-interner",
 ]
 
 [[package]]
@@ -295,6 +304,7 @@ name = "semantic_analysis"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "kigiri_memory",
  "parser",
  "thiserror 2.0.12",
 ]

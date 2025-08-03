@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kigiri_memory = { path = "../kigiri_memory" }
 parser = { path = "../parser" }
 semantic_analysis = { path = "../semantic_analysis" }
 bumpalo = { workspace = true, features = ["collections"] }

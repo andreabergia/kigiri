@@ -1,8 +1,9 @@
 use crate::types::Type;
 use bumpalo::collections::Vec as BumpVec;
+use kigiri_memory::{StringId, resolve_string_id};
 use parser::{
     AstAllocator, Block, CompilationPhase, Expression, FunctionDeclaration, FunctionSignature,
-    IfElseBlock, IfStatement, Module, Statement, StringId, resolve_string_id,
+    IfElseBlock, IfStatement, Module, Statement,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;

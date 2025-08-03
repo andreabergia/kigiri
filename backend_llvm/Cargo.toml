@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-inkwell = { workspace = true }
-thiserror = { workspace = true }
+kigiri_memory = { path = "../kigiri_memory" }
 parser = { path = "../parser" }
 semantic_analysis = { path = "../semantic_analysis" }
 codegen = { path = "../codegen" }
+inkwell = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

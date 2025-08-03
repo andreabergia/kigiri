@@ -96,6 +96,7 @@ impl SemanticAnalyzer {
 mod tests {
     use super::*;
     use crate::{ArgumentIndex, SymbolKind, TypeResolvedModule};
+    use kigiri_memory::intern_string;
 
     macro_rules! test_ok {
         ($name: ident, $source: expr, $expected_typed_ast: expr) => {
@@ -156,7 +157,7 @@ mod tests {
         assert_eq!(1, fun.symbol_table.len());
         let symbol = fun
             .symbol_table
-            .lookup_by_name(parser::intern_string("x"))
+            .lookup_by_name(intern_string("x"))
             .expect("should have found argument x");
         assert_eq!(
             SymbolKind::Argument {

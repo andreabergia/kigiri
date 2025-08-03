@@ -1,4 +1,5 @@
-use parser::{CompilationPhase, FunctionArgument, StringId};
+use kigiri_memory::StringId;
+use parser::{CompilationPhase, FunctionArgument};
 use std::marker::PhantomData;
 
 #[derive(Debug, PartialEq)]

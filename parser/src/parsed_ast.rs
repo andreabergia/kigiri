@@ -1,10 +1,10 @@
-use crate::symbols::StringId;
 use crate::{
     AstAllocator, BinaryOperator, Block, BlockId, CompilationPhase, Expression, FunctionArgument,
     FunctionDeclaration, FunctionSignature, IfElseBlock, IfStatement, LetInitializer, LiteralValue,
-    Module, Statement, UnaryOperator, WhileStatement, intern_string,
+    Module, Statement, UnaryOperator, WhileStatement,
 };
 use bumpalo::collections::Vec as BumpVec;
+use kigiri_memory::{StringId, intern_string};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
