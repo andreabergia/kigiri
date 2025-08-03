@@ -6,7 +6,8 @@ use semantic_analysis::SemanticAnalyzer;
 
 fn jit_test(source: &str, test_callback: unsafe fn(ExecutionEngine) -> ()) {
     let ast_allocator = parser::ParsedAstAllocator::default();
-    let parsed_module = parser::parse(&ast_allocator, "test", source);
+    let parsed_module =
+        parser::parse(&ast_allocator, "test", source).expect("parse should succeed");
 
     let semantic_analyzer = SemanticAnalyzer::default();
     let typed_module = semantic_analyzer

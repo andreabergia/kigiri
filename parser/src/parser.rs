@@ -2,12 +2,13 @@ use crate::ast::{
     BinaryOperator, Block, Expression, FunctionArgument, FunctionDeclaration, IfElseBlock,
     LetInitializer, Module, Statement, UnaryOperator,
 };
+use crate::error::{ParseError, ParseResult};
 use crate::grammar::{Grammar, Rule};
 use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
-use kigiri_memory::{intern_string, BumpVec};
+use kigiri_memory::{BumpVec, intern_string};
+use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
-use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -35,59 +36,125 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 fn parse_expression<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Expression<'a, PhaseParsed<'a>> {
+) -> ParseResult<&'a Expression<'a, PhaseParsed<'a>>> {
     PRATT_PARSER
-        .map_primary(|primary| match primary.as_rule() {
-            Rule::number => {
-                let pair = primary.into_inner().next().expect("number literal");
-                let text = pair.as_str();
-                match pair.as_rule() {
-                    Rule::intNumber => {
-                        ast_allocator.literal_int(i64::from_str(text).expect("parse int"))
+        .map_primary(|primary| -> ParseResult<_> {
+            match primary.as_rule() {
+                Rule::number => {
+                    let pair =
+                        primary
+                            .into_inner()
+                            .next()
+                            .ok_or_else(|| ParseError::InternalError {
+                                message: "expected a number literal".to_owned(),
+                            })?;
+                    let text = pair.as_str();
+                    match pair.as_rule() {
+                        Rule::intNumber => {
+                            let value = i64::from_str(text).map_err(|source| {
+                                ParseError::IntegerParseError {
+                                    text: text.to_owned(),
+                                    source,
+                                }
+                            })?;
+                            Ok(ast_allocator.literal_int(value))
+                        }
+                        Rule::hexNumber => {
+                            let lowercase_text = text.to_ascii_lowercase();
+                            let hex_text = lowercase_text.trim_start_matches("0x");
+                            let value = i64::from_str_radix(hex_text, 16).map_err(|source| {
+                                ParseError::IntegerParseError {
+                                    text: text.to_owned(),
+                                    source,
+                                }
+                            })?;
+                            Ok(ast_allocator.literal_int(value))
+                        }
+                        Rule::doubleNumber => {
+                            let value = f64::from_str(text).map_err(|source| {
+                                ParseError::FloatParseError {
+                                    text: text.to_string(),
+                                    source,
+                                }
+                            })?;
+                            Ok(ast_allocator.literal_double(value))
+                        }
+                        rule => Err(ParseError::InternalError {
+                            message: format!(
+                                "expected an intNumber, hexNumber, or doubleNumber, but got {:?}",
+                                rule
+                            ),
+                        }),
                     }
-                    Rule::hexNumber => ast_allocator.literal_int(
-                        i64::from_str_radix(text.to_ascii_lowercase().trim_start_matches("0x"), 16)
-                            .expect("parse hex int"),
-                    ),
-                    Rule::doubleNumber => {
-                        ast_allocator.literal_double(f64::from_str(text).expect("parse double"))
-                    }
-                    _ => unreachable!(""),
                 }
+                Rule::identifier => Ok(ast_allocator.identifier(primary.as_str())),
+                Rule::expression => parse_expression(ast_allocator, primary),
+                Rule::bool => {
+                    let value = primary.as_str().parse().map_err(|source| {
+                        ParseError::BooleanParseError {
+                            text: primary.as_str().to_owned(),
+                            source,
+                        }
+                    })?;
+                    Ok(ast_allocator.literal_bool(value))
+                }
+                Rule::functionCall => parse_function_call(ast_allocator, primary),
+                rule => Err(ParseError::InternalError {
+                    message: format!(
+                        "number, identifier, expression, bool, or functionCall, but found {:?}",
+                        rule
+                    ),
+                }),
             }
-            Rule::identifier => ast_allocator.identifier(primary.as_str()),
-            Rule::expression => parse_expression(ast_allocator, primary),
-            Rule::bool => ast_allocator.literal_bool(primary.as_str().parse().expect("parse bool")),
-            Rule::functionCall => parse_function_call(ast_allocator, primary),
-            _ => unreachable!(""),
         })
-        .map_prefix(|prefix, operand| match prefix.as_rule() {
-            Rule::neg => ast_allocator.unary(UnaryOperator::Neg, operand),
-            Rule::not => ast_allocator.unary(UnaryOperator::Not, operand),
-            Rule::bitwise_not => ast_allocator.unary(UnaryOperator::BitwiseNot, operand),
-            _ => unreachable!(),
+        .map_prefix(|prefix, operand| -> ParseResult<_> {
+            let operand = operand?;
+            match prefix.as_rule() {
+                Rule::neg => Ok(ast_allocator.unary(UnaryOperator::Neg, operand)),
+                Rule::not => Ok(ast_allocator.unary(UnaryOperator::Not, operand)),
+                Rule::bitwise_not => Ok(ast_allocator.unary(UnaryOperator::BitwiseNot, operand)),
+                rule => Err(ParseError::InternalError {
+                    message: format!("expected neg, not, or bitwise_not, but found {:?}", rule),
+                }),
+            }
         })
-        .map_infix(|left, op, right| match op.as_rule() {
-            Rule::add => ast_allocator.binary(BinaryOperator::Add, left, right),
-            Rule::mul => ast_allocator.binary(BinaryOperator::Mul, left, right),
-            Rule::sub => ast_allocator.binary(BinaryOperator::Sub, left, right),
-            Rule::div => ast_allocator.binary(BinaryOperator::Div, left, right),
-            Rule::rem => ast_allocator.binary(BinaryOperator::Rem, left, right),
-            Rule::exp => ast_allocator.binary(BinaryOperator::Exp, left, right),
-            Rule::eq => ast_allocator.binary(BinaryOperator::Eq, left, right),
-            Rule::neq => ast_allocator.binary(BinaryOperator::Neq, left, right),
-            Rule::lt => ast_allocator.binary(BinaryOperator::Lt, left, right),
-            Rule::lte => ast_allocator.binary(BinaryOperator::Lte, left, right),
-            Rule::gt => ast_allocator.binary(BinaryOperator::Gt, left, right),
-            Rule::gte => ast_allocator.binary(BinaryOperator::Gte, left, right),
-            Rule::and => ast_allocator.binary(BinaryOperator::And, left, right),
-            Rule::or => ast_allocator.binary(BinaryOperator::Or, left, right),
-            Rule::bitwise_and => ast_allocator.binary(BinaryOperator::BitwiseAnd, left, right),
-            Rule::bitwise_or => ast_allocator.binary(BinaryOperator::BitwiseOr, left, right),
-            Rule::bitwise_xor => ast_allocator.binary(BinaryOperator::BitwiseXor, left, right),
-            Rule::bitwise_shl => ast_allocator.binary(BinaryOperator::BitwiseShl, left, right),
-            Rule::bitwise_shr => ast_allocator.binary(BinaryOperator::BitwiseShr, left, right),
-            _ => unreachable!(),
+        .map_infix(|left, op, right| -> ParseResult<_> {
+            let left = left?;
+            let right = right?;
+            match op.as_rule() {
+                Rule::add => Ok(ast_allocator.binary(BinaryOperator::Add, left, right)),
+                Rule::mul => Ok(ast_allocator.binary(BinaryOperator::Mul, left, right)),
+                Rule::sub => Ok(ast_allocator.binary(BinaryOperator::Sub, left, right)),
+                Rule::div => Ok(ast_allocator.binary(BinaryOperator::Div, left, right)),
+                Rule::rem => Ok(ast_allocator.binary(BinaryOperator::Rem, left, right)),
+                Rule::exp => Ok(ast_allocator.binary(BinaryOperator::Exp, left, right)),
+                Rule::eq => Ok(ast_allocator.binary(BinaryOperator::Eq, left, right)),
+                Rule::neq => Ok(ast_allocator.binary(BinaryOperator::Neq, left, right)),
+                Rule::lt => Ok(ast_allocator.binary(BinaryOperator::Lt, left, right)),
+                Rule::lte => Ok(ast_allocator.binary(BinaryOperator::Lte, left, right)),
+                Rule::gt => Ok(ast_allocator.binary(BinaryOperator::Gt, left, right)),
+                Rule::gte => Ok(ast_allocator.binary(BinaryOperator::Gte, left, right)),
+                Rule::and => Ok(ast_allocator.binary(BinaryOperator::And, left, right)),
+                Rule::or => Ok(ast_allocator.binary(BinaryOperator::Or, left, right)),
+                Rule::bitwise_and => {
+                    Ok(ast_allocator.binary(BinaryOperator::BitwiseAnd, left, right))
+                }
+                Rule::bitwise_or => {
+                    Ok(ast_allocator.binary(BinaryOperator::BitwiseOr, left, right))
+                }
+                Rule::bitwise_xor => {
+                    Ok(ast_allocator.binary(BinaryOperator::BitwiseXor, left, right))
+                }
+                Rule::bitwise_shl => {
+                    Ok(ast_allocator.binary(BinaryOperator::BitwiseShl, left, right))
+                }
+                Rule::bitwise_shr => {
+                    Ok(ast_allocator.binary(BinaryOperator::BitwiseShr, left, right))
+                }
+                rule => Err(ParseError::InternalError {
+                    message: format!("expected binary operator, but found {:?}", rule),
+                }),
+            }
         })
         .parse(rule.into_inner())
 }
@@ -95,22 +162,31 @@ fn parse_expression<'a>(
 fn parse_function_call<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Expression<'a, PhaseParsed<'a>> {
+) -> ParseResult<&'a Expression<'a, PhaseParsed<'a>>> {
     let mut inner = rule.into_inner();
-    let name = inner.next().expect("callee name").as_str();
+    let name = inner
+        .next()
+        .ok_or_else(|| ParseError::InternalError {
+            message: "expected callee name in function call".to_owned(),
+        })?
+        .as_str();
 
     let mut args = ast_allocator.function_call_arguments();
-    for arg in inner.next().expect("call arguments").into_inner() {
-        args.push(parse_expression(ast_allocator, arg));
+    let args_rule = inner.next().ok_or_else(|| ParseError::InternalError {
+        message: "expected call arguments in function call".to_owned(),
+    })?;
+
+    for arg in args_rule.into_inner() {
+        args.push(parse_expression(ast_allocator, arg)?);
     }
 
-    ast_allocator.function_call(name, args)
+    Ok(ast_allocator.function_call(name, args))
 }
 
 fn parse_let_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Statement<'a, PhaseParsed<'a>> {
+) -> ParseResult<&'a Statement<'a, PhaseParsed<'a>>> {
     let mut iter = rule.into_inner();
     let mut initializers = ast_allocator.statement_let_initializers();
     loop {
@@ -119,111 +195,175 @@ fn parse_let_statement<'a>(
         };
         let mut initializer_rule = initializer_rule.into_inner();
 
-        let id = initializer_rule.next().expect("variable identifier");
+        let id = initializer_rule
+            .next()
+            .ok_or_else(|| ParseError::InternalError {
+                message: "expected variable identifier in let statement".to_owned(),
+            })?;
         let id = intern_string(id.as_str());
 
-        let value = initializer_rule.next().expect("variable value");
-        let value = parse_expression(ast_allocator, value);
+        let value = initializer_rule
+            .next()
+            .ok_or_else(|| ParseError::InternalError {
+                message: "expected variable value in let statement".to_owned(),
+            })?;
+        let value = parse_expression(ast_allocator, value)?;
 
         initializers.push(LetInitializer {
             variable: id,
             value,
         })
     }
-    ast_allocator.statement_let(initializers)
+    Ok(ast_allocator.statement_let(initializers))
+}
+
+struct ParsedIfComponents<'a> {
+    condition: &'a Expression<'a, PhaseParsed<'a>>,
+    then_block: &'a Block<'a, PhaseParsed<'a>>,
+    else_block: Option<&'a IfElseBlock<'a, PhaseParsed<'a>>>,
 }
 
 fn parse_if_components<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> (
-    &'a Expression<'a, PhaseParsed<'a>>,
-    &'a Block<'a, PhaseParsed<'a>>,
-    Option<&'a IfElseBlock<'a, PhaseParsed<'a>>>,
-) {
+) -> ParseResult<ParsedIfComponents<'a>> {
     let mut inner = rule.into_inner();
-    let condition = parse_expression(ast_allocator, inner.next().expect("if condition"));
-    let then_block = parse_block(ast_allocator, inner.next().expect("then block"));
+    let condition = parse_expression(
+        ast_allocator,
+        inner.next().ok_or_else(|| ParseError::InternalError {
+            message: "expected if condition in if statement".to_owned(),
+        })?,
+    )?;
+    let then_block = parse_block(
+        ast_allocator,
+        inner.next().ok_or_else(|| ParseError::InternalError {
+            message: "expected then block in if statement".to_owned(),
+        })?,
+    )?;
 
     let else_block = if let Some(else_part) = inner.next() {
         match else_part.as_rule() {
-            Rule::block => Some(ast_allocator.if_else_block(parse_block(ast_allocator, else_part))),
-            Rule::ifStatement => Some(parse_if_else_recursive(ast_allocator, else_part)),
-            _ => unreachable!("unexpected else part"),
+            Rule::block => {
+                Some(ast_allocator.if_else_block(parse_block(ast_allocator, else_part)?))
+            }
+            Rule::ifStatement => Some(parse_if_else_recursive(ast_allocator, else_part)?),
+            rule => {
+                return Err(ParseError::InternalError {
+                    message: format!("expected block or ifStatement, but found {:?}", rule),
+                });
+            }
         }
     } else {
         None
     };
 
-    (condition, then_block, else_block)
+    Ok(ParsedIfComponents {
+        condition,
+        then_block,
+        else_block,
+    })
 }
 
 fn parse_if_else_recursive<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a IfElseBlock<'a, PhaseParsed<'a>> {
-    let (condition, then_block, else_block) = parse_if_components(ast_allocator, rule);
-    ast_allocator.if_else_if(condition, then_block, else_block)
+) -> ParseResult<&'a IfElseBlock<'a, PhaseParsed<'a>>> {
+    let ParsedIfComponents {
+        condition,
+        then_block,
+        else_block,
+    } = parse_if_components(ast_allocator, rule)?;
+    Ok(ast_allocator.if_else_if(condition, then_block, else_block))
 }
 
 fn parse_if_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Statement<'a, PhaseParsed<'a>> {
-    let (condition, then_block, else_block) = parse_if_components(ast_allocator, rule);
-    ast_allocator.statement_if(condition, then_block, else_block)
+) -> ParseResult<&'a Statement<'a, PhaseParsed<'a>>> {
+    let ParsedIfComponents {
+        condition,
+        then_block,
+        else_block,
+    } = parse_if_components(ast_allocator, rule)?;
+    Ok(ast_allocator.statement_if(condition, then_block, else_block))
 }
 
 fn parse_while_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Statement<'a, PhaseParsed<'a>> {
+) -> ParseResult<&'a Statement<'a, PhaseParsed<'a>>> {
     let mut inner = rule.into_inner();
-    let condition = parse_expression(ast_allocator, inner.next().expect("while condition"));
-    let body = parse_block(ast_allocator, inner.next().expect("while body"));
-    ast_allocator.statement_while(condition, body)
+    let condition = parse_expression(
+        ast_allocator,
+        inner.next().ok_or_else(|| ParseError::InternalError {
+            message: "expected while condition in while statement".to_owned(),
+        })?,
+    )?;
+    let body = parse_block(
+        ast_allocator,
+        inner.next().ok_or_else(|| ParseError::InternalError {
+            message: "expected while body in while statement".to_owned(),
+        })?,
+    )?;
+    Ok(ast_allocator.statement_while(condition, body))
 }
 
 fn parse_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Statement<'a, PhaseParsed<'a>> {
-    let pair = rule.into_inner().next().expect("statement");
+) -> ParseResult<&'a Statement<'a, PhaseParsed<'a>>> {
+    let pair = rule
+        .into_inner()
+        .next()
+        .ok_or_else(|| ParseError::InternalError {
+            message: "expected statement in statement rule".to_owned(),
+        })?;
     match pair.as_rule() {
         Rule::letStatement => parse_let_statement(ast_allocator, pair),
         Rule::assignmentStatement => {
             let mut inner = pair.into_inner();
             let identifier = inner
                 .next()
-                .expect("identifier on lhs of assignment")
+                .ok_or_else(|| ParseError::InternalError {
+                    message: "expected identifier on lhs of assignment in assignment statement"
+                        .to_owned(),
+                })?
                 .as_str();
             let expression = parse_expression(
                 ast_allocator,
-                inner.next().expect("expression on rhs of assignment"),
-            );
-            ast_allocator.statement_assignment(identifier, expression)
+                inner.next().ok_or_else(|| ParseError::InternalError {
+                    message: "expected expression on rhs of assignment in assignment statement"
+                        .to_owned(),
+                })?,
+            )?;
+            Ok(ast_allocator.statement_assignment(identifier, expression))
         }
         Rule::returnStatement => {
-            let expression = pair
-                .into_inner()
-                .next()
-                .map(|p| parse_expression(ast_allocator, p));
-            ast_allocator.statement_return(expression)
+            let expression = match pair.into_inner().next() {
+                Some(p) => Some(parse_expression(ast_allocator, p)?),
+                None => None,
+            };
+            Ok(ast_allocator.statement_return(expression))
         }
         Rule::expression => {
-            let expression = parse_expression(ast_allocator, pair);
-            ast_allocator.statement_expression(expression)
+            let expression = parse_expression(ast_allocator, pair)?;
+            Ok(ast_allocator.statement_expression(expression))
         }
         Rule::ifStatement => parse_if_statement(ast_allocator, pair),
         Rule::whileStatement => parse_while_statement(ast_allocator, pair),
-        _ => unreachable!(),
+        rule => Err(ParseError::InternalError {
+            message: format!(
+                "expected letStatement, assignmentStatement, returnStatement, expression, ifStatement, or whileStatement, but found {:?}",
+                rule
+            ),
+        }),
     }
 }
 
 fn parse_block<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a Block<'a, PhaseParsed<'a>> {
+) -> ParseResult<&'a Block<'a, PhaseParsed<'a>>> {
     // We want a parent block to have a smaller id than any nested block,
     // so we generate the block_id first and then recurse.
     let block_id = ast_allocator.next_block_id();
@@ -231,70 +371,105 @@ fn parse_block<'a>(
     let mut statements = ast_allocator.statements();
     for pair in rule.into_inner() {
         match pair.as_rule() {
-            Rule::statement => statements.push(parse_statement(ast_allocator, pair)),
+            Rule::statement => statements.push(parse_statement(ast_allocator, pair)?),
             Rule::block => {
-                statements.push(ast_allocator.nested_block(parse_block(ast_allocator, pair)))
+                statements.push(ast_allocator.nested_block(parse_block(ast_allocator, pair)?))
             }
-            _ => unreachable!(),
+            rule => {
+                return Err(ParseError::InternalError {
+                    message: format!("expected statement or block, but found {:?}", rule),
+                });
+            }
         }
     }
-    ast_allocator.block_from_statements(block_id, statements)
+    Ok(ast_allocator.block_from_statements(block_id, statements))
 }
 
 fn parse_function_declaration_arguments<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> BumpVec<'a, FunctionArgument> {
+) -> ParseResult<BumpVec<'a, FunctionArgument>> {
     let mut arguments = ast_allocator.function_arguments();
 
     for arg in rule.into_inner() {
         let mut arg = arg.into_inner();
-        let name = arg.next().expect("argument name").as_str();
-        let arg_type = arg.next().expect("argument type").as_str();
+        let name = arg
+            .next()
+            .ok_or_else(|| ParseError::InternalError {
+                message: "expected argument name in function argument".to_owned(),
+            })?
+            .as_str();
+        let arg_type = arg
+            .next()
+            .ok_or_else(|| ParseError::InternalError {
+                message: "expected argument type in function argument".to_owned(),
+            })?
+            .as_str();
         arguments.push(FunctionArgument {
             name: intern_string(name),
             argument_type: intern_string(arg_type),
         })
     }
 
-    arguments
+    Ok(arguments)
 }
 
 fn parse_function_declaration<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
-) -> &'a FunctionDeclaration<'a, PhaseParsed<'a>> {
+) -> ParseResult<&'a FunctionDeclaration<'a, PhaseParsed<'a>>> {
     ast_allocator.reset_block_id();
 
     let mut rule_iter = rule.into_inner();
-    let name = rule_iter.next().expect("function name").as_str();
+    let name = rule_iter
+        .next()
+        .ok_or_else(|| ParseError::InternalError {
+            message: "expected function name in function declaration".to_owned(),
+        })?
+        .as_str();
 
-    let arguments_rule = rule_iter.next().expect("function arguments");
-    let arguments = parse_function_declaration_arguments(ast_allocator, arguments_rule);
+    let arguments_rule = rule_iter.next().ok_or_else(|| ParseError::InternalError {
+        message: "expected function arguments in function declaration".to_owned(),
+    })?;
+    let arguments = parse_function_declaration_arguments(ast_allocator, arguments_rule)?;
 
-    let next = rule_iter.next().expect("function return type or body");
+    let next = rule_iter.next().ok_or_else(|| ParseError::InternalError {
+        message: "expected function return type or body in function declaration".to_owned(),
+    })?;
     let (return_type, body_rule) = if let Rule::functionReturnType = next.as_rule() {
-        let return_type = next.into_inner().next().expect("return type").as_str();
+        let return_type = next
+            .into_inner()
+            .next()
+            .ok_or_else(|| ParseError::InternalError {
+                message: "expected return type in function return type".to_owned(),
+            })?
+            .as_str();
         (
             Some(intern_string(return_type)),
-            rule_iter.next().expect("function body"),
+            rule_iter.next().ok_or_else(|| ParseError::InternalError {
+                message: "expected function body in function declaration".to_owned(),
+            })?,
         )
     } else {
         (None, next)
     };
 
-    let body = parse_block(ast_allocator, body_rule);
+    let body = parse_block(ast_allocator, body_rule)?;
 
-    assert!(rule_iter.next().is_none());
+    if rule_iter.next().is_some() {
+        return Err(ParseError::InternalError {
+            message: "unexpected extra elements in function declaration".to_owned(),
+        });
+    }
 
-    ast_allocator.function_declaration(name, return_type, arguments, body)
+    Ok(ast_allocator.function_declaration(name, return_type, arguments, body))
 }
 
 fn parse_module<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     module_name: &str,
     rule: Pair<'_, Rule>,
-) -> &'a Module<'a, PhaseParsed<'a>> {
+) -> ParseResult<&'a Module<'a, PhaseParsed<'a>>> {
     let mut functions = ast_allocator.functions();
     let mut function_signatures = FunctionSignaturesByName::default();
 
@@ -303,26 +478,33 @@ fn parse_module<'a>(
         match inner.as_rule() {
             Rule::EOI => continue,
             Rule::functionDeclaration => {
-                let fun = parse_function_declaration(ast_allocator, inner);
+                let fun = parse_function_declaration(ast_allocator, inner)?;
                 function_signatures.insert(fun.signature.name, fun.signature);
                 functions.push(fun);
             }
-            _ => unreachable!(),
+            rule => {
+                return Err(ParseError::InternalError {
+                    message: format!("expected functionDeclaration or EOI, but found {:?}", rule),
+                });
+            }
         }
     }
 
-    ast_allocator.module(module_name, functions, function_signatures)
+    Ok(ast_allocator.module(module_name, functions, function_signatures))
 }
 
 pub fn parse<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     module_name: &str,
     text: &str,
-) -> &'a Module<'a, PhaseParsed<'a>> {
-    let pair = Grammar::parse(Rule::module, text)
-        .unwrap()
+) -> ParseResult<&'a Module<'a, PhaseParsed<'a>>> {
+    let pairs = Grammar::parse(Rule::module, text).map_err(Box::new)?;
+    let pair = pairs
+        .into_iter()
         .next()
-        .expect("rule pairs");
+        .ok_or_else(|| ParseError::InternalError {
+            message: "expected module in input text".to_owned(),
+        })?;
     parse_module(ast_allocator, module_name, pair)
 }
 
@@ -338,7 +520,7 @@ mod tests {
             .expect("expression")
             .next()
             .expect("expression pair");
-        parse_expression(ast_allocator, pair)
+        parse_expression(ast_allocator, pair).expect("parse expression")
     }
 
     fn parse_as_block<'a>(
@@ -349,7 +531,7 @@ mod tests {
             .expect("block")
             .next()
             .expect("block pair");
-        parse_block(ast_allocator, pair)
+        parse_block(ast_allocator, pair).expect("parse block")
     }
 
     /// Generates a test case to verify the AST produced by a given source expression.
@@ -579,7 +761,8 @@ fn add(x: int, y: int) -> int {
     return x + y;
 }
 ",
-        );
+        )
+        .expect("parse module");
         assert_eq!(
             module.to_string(),
             r"module test
@@ -604,7 +787,8 @@ return (+ x y);
             r"
 fn foo() {}
 ",
-        );
+        )
+        .expect("parse module");
         assert_eq!(
             module.to_string(),
             r"module test
@@ -627,7 +811,8 @@ fn foo(
 fn a() {}
 fn b() { { } }
 ",
-        );
+        )
+        .expect("parse module");
         assert_eq!(
             module.to_string(),
             r"module test

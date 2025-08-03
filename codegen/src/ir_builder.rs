@@ -450,7 +450,8 @@ mod tests {
 
     fn analyze_module<'i>(ir_allocator: &'i IrAllocator, source: &str) -> &'i Module<'i> {
         let ast_allocator = parser::ParsedAstAllocator::default();
-        let ast_module = parser::parse(&ast_allocator, "test", source);
+        let ast_module =
+            parser::parse(&ast_allocator, "test", source).expect("parse should succeed");
 
         let semantic_analyzer = SemanticAnalyzer::default();
         let typed_module = semantic_analyzer

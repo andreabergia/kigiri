@@ -227,6 +227,7 @@ dependencies = [
  "kigiri_memory",
  "pest",
  "pest_derive",
+ "thiserror 2.0.12",
 ]
 
 [[package]]

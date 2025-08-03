@@ -256,7 +256,7 @@ fn add(a: int, b: int) -> int {
 ";
 
         let ast_allocator = parser::ParsedAstAllocator::default();
-        let module = parser::parse(&ast_allocator, "test", SOURCE);
+        let module = parser::parse(&ast_allocator, "test", SOURCE).expect("parse should succeed");
 
         let allocator = AstAllocator::default();
         let analyzed = TopLevelDeclarationCollector::analyze_module(&allocator, module)

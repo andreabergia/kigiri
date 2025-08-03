@@ -942,7 +942,7 @@ mod tests {
         source: &str,
     ) -> &'s parser::Module<'s, PhaseTypeResolved<'s>> {
         let ast_allocator = parser::ParsedAstAllocator::default();
-        let module = parser::parse(&ast_allocator, "test", source);
+        let module = parser::parse(&ast_allocator, "test", source).expect("parse should succeed");
 
         let result = semantic_analyzer.analyze_module(module);
         result.expect("should have passed semantic analysis")

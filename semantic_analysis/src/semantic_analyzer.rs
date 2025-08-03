@@ -103,7 +103,8 @@ mod tests {
             #[test]
             fn $name() {
                 let ast_allocator = parser::ParsedAstAllocator::default();
-                let module = parser::parse(&ast_allocator, "test", $source);
+                let module =
+                    parser::parse(&ast_allocator, "test", $source).expect("parse should succeed");
 
                 let analyzer = SemanticAnalyzer::default();
                 let result = analyzer.analyze_module(module);
@@ -123,7 +124,8 @@ mod tests {
             #[test]
             fn $name() {
                 let ast_allocator = parser::ParsedAstAllocator::default();
-                let module = parser::parse(&ast_allocator, "test", $source);
+                let module =
+                    parser::parse(&ast_allocator, "test", $source).expect("parse should succeed");
 
                 let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
                 let result = analyzer.analyze_module(module);
@@ -145,7 +147,8 @@ mod tests {
             &ast_allocator,
             "test",
             "fn inc(x: int) -> int { return 1 + x; }",
-        );
+        )
+        .expect("parse should succeed");
 
         let analyzer: SemanticAnalyzer = SemanticAnalyzer::default();
         let result = analyzer
