@@ -1,7 +1,6 @@
 use crate::FunctionSignaturesByName;
 use crate::parsed_ast::PhaseParsed;
-use bumpalo::collections::Vec as BumpVec;
-use kigiri_memory::{StringId, resolve_string_id};
+use kigiri_memory::{BumpArena, BumpVec, StringId, resolve_string_id};
 use std::cell::Cell;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -438,7 +437,7 @@ impl Display for Expression<'_, PhaseParsed<'_>> {
 
 #[derive(Default)]
 pub struct AstAllocator {
-    arena: bumpalo::Bump,
+    arena: BumpArena,
     next_block_id: Cell<BlockId>,
 }
 

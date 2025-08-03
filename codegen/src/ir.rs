@@ -1,5 +1,4 @@
-use bumpalo::collections::Vec as BumpVec;
-use kigiri_memory::{StringId, resolve_string_id};
+use kigiri_memory::{BumpArena, BumpVec, StringId, resolve_string_id};
 use parser::{BinaryOperator, BlockId, LiteralValue, UnaryOperator};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
 use std::cell::RefCell;
@@ -320,7 +319,7 @@ impl Display for InstructionPayload {
 // IR allocator
 
 pub struct IrAllocator {
-    arena: bumpalo::Bump,
+    arena: BumpArena,
     next_basic_block_id: RefCell<u32>,
     next_instruction_id: RefCell<u32>,
 }
@@ -334,7 +333,7 @@ impl Default for IrAllocator {
 impl IrAllocator {
     pub fn new() -> Self {
         Self {
-            arena: bumpalo::Bump::new(),
+            arena: BumpArena::new(),
             next_basic_block_id: RefCell::new(0u32),
             next_instruction_id: RefCell::new(0u32),
         }

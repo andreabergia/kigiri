@@ -4,8 +4,7 @@ use crate::ast::{
 };
 use crate::grammar::{Grammar, Rule};
 use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
-use bumpalo::collections::Vec as BumpVec;
-use kigiri_memory::intern_string;
+use kigiri_memory::{BumpVec, intern_string};
 use pest::Parser;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};

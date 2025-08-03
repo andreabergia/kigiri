@@ -7,4 +7,3 @@ edition = "2024"
 kigiri_memory = { path = "../kigiri_memory" }
 parser = { path = "../parser" }
 semantic_analysis = { path = "../semantic_analysis" }
-bumpalo = { workspace = true, features = ["collections"] }

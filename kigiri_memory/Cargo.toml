@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 string-interner = { workspace = true }
+bumpalo = { workspace = true, features = ["collections"] }

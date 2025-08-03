@@ -55,7 +55,6 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 name = "codegen"
 version = "0.1.0"
 dependencies = [
- "bumpalo",
  "kigiri_memory",
  "parser",
  "semantic_analysis",
@@ -179,6 +178,7 @@ dependencies = [
 name = "kigiri_memory"
 version = "0.1.0"
 dependencies = [
+ "bumpalo",
  "string-interner",
 ]
 
@@ -224,7 +224,6 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 name = "parser"
 version = "0.1.0"
 dependencies = [
- "bumpalo",
  "kigiri_memory",
  "pest",
  "pest_derive",
@@ -303,7 +302,6 @@ checksum = "53a49587ad06b26609c52e423de037e7f57f20d53535d66e08c695f347df952a"
 name = "semantic_analysis"
 version = "0.1.0"
 dependencies = [
- "bumpalo",
  "kigiri_memory",
  "parser",
  "thiserror 2.0.12",

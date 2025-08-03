@@ -1,6 +1,7 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use crate::{FunctionSignature, ir};
 use ir::Variable;
+use kigiri_memory::BumpVec;
 use parser::{
     Block, BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement,
     WhileStatement,
@@ -12,7 +13,7 @@ struct FunctionIrBuilder<'i> {
     ir_allocator: &'i IrAllocator,
     pub(crate) first_bb: &'i BasicBlock<'i>,
     current_bb: RefCell<&'i BasicBlock<'i>>,
-    basic_blocks: RefCell<bumpalo::collections::Vec<'i, &'i BasicBlock<'i>>>,
+    basic_blocks: RefCell<BumpVec<'i, &'i BasicBlock<'i>>>,
 }
 
 #[derive(Debug, PartialEq)]

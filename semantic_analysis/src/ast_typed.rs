@@ -1,6 +1,5 @@
 use crate::types::Type;
-use bumpalo::collections::Vec as BumpVec;
-use kigiri_memory::{StringId, resolve_string_id};
+use kigiri_memory::{BumpVec, StringId, resolve_string_id};
 use parser::{
     AstAllocator, Block, CompilationPhase, Expression, FunctionDeclaration, FunctionSignature,
     IfElseBlock, IfStatement, Module, Statement,

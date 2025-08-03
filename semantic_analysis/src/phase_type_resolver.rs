@@ -1,8 +1,7 @@
 use crate::ast_top_level_declaration::PhaseTopLevelDeclarationCollected;
 use crate::semantic_analyzer::SemanticAnalysisError;
 use crate::{ArgumentIndex, PhaseTypeResolved, SymbolKind, SymbolTable, Type, resolved_type};
-use bumpalo::collections::Vec as BumpVec;
-use kigiri_memory::{StringId, resolve_string_id};
+use kigiri_memory::{BumpVec, StringId, resolve_string_id};
 use parser::{
     AstAllocator, BinaryOperator, Block, Expression, FunctionDeclaration, FunctionSignature,
     FunctionSignaturesByName, IfElseBlock, IfStatement, LetInitializer, Module, Statement,
