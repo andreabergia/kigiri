@@ -11,7 +11,10 @@ mod tests {
     use pest::Parser;
 
     fn assert_can_be_parsed_as(input: &str, rule: Rule) {
-        let parsed = Grammar::parse(rule, input).unwrap().next().unwrap();
+        let parsed = Grammar::parse(rule, input)
+            .expect("parse grammar")
+            .next()
+            .expect("as rule");
         assert_eq!(input, parsed.as_str());
     }
 

@@ -4,10 +4,10 @@ use crate::ast::{
 };
 use crate::grammar::{Grammar, Rule};
 use crate::parsed_ast::{FunctionSignaturesByName, ParsedAstAllocator, PhaseParsed};
-use kigiri_memory::{BumpVec, intern_string};
-use pest::Parser;
+use kigiri_memory::{intern_string, BumpVec};
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::Parser;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -39,23 +39,25 @@ fn parse_expression<'a>(
     PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::number => {
-                let pair = primary.into_inner().next().unwrap();
+                let pair = primary.into_inner().next().expect("number literal");
                 let text = pair.as_str();
                 match pair.as_rule() {
-                    Rule::intNumber => ast_allocator.literal_int(i64::from_str(text).unwrap()),
+                    Rule::intNumber => {
+                        ast_allocator.literal_int(i64::from_str(text).expect("parse int"))
+                    }
                     Rule::hexNumber => ast_allocator.literal_int(
                         i64::from_str_radix(text.to_ascii_lowercase().trim_start_matches("0x"), 16)
-                            .unwrap(),
+                            .expect("parse hex int"),
                     ),
                     Rule::doubleNumber => {
-                        ast_allocator.literal_double(f64::from_str(text).unwrap())
+                        ast_allocator.literal_double(f64::from_str(text).expect("parse double"))
                     }
                     _ => unreachable!(""),
                 }
             }
             Rule::identifier => ast_allocator.identifier(primary.as_str()),
             Rule::expression => parse_expression(ast_allocator, primary),
-            Rule::bool => ast_allocator.literal_bool(primary.as_str().parse().unwrap()),
+            Rule::bool => ast_allocator.literal_bool(primary.as_str().parse().expect("parse bool")),
             Rule::functionCall => parse_function_call(ast_allocator, primary),
             _ => unreachable!(""),
         })
@@ -95,10 +97,10 @@ fn parse_function_call<'a>(
     rule: Pair<'_, Rule>,
 ) -> &'a Expression<'a, PhaseParsed<'a>> {
     let mut inner = rule.into_inner();
-    let name = inner.next().unwrap().as_str();
+    let name = inner.next().expect("callee name").as_str();
 
     let mut args = ast_allocator.function_call_arguments();
-    for arg in inner.next().unwrap().into_inner() {
+    for arg in inner.next().expect("call arguments").into_inner() {
         args.push(parse_expression(ast_allocator, arg));
     }
 
@@ -117,10 +119,10 @@ fn parse_let_statement<'a>(
         };
         let mut initializer_rule = initializer_rule.into_inner();
 
-        let id = initializer_rule.next().unwrap();
+        let id = initializer_rule.next().expect("variable identifier");
         let id = intern_string(id.as_str());
 
-        let value = initializer_rule.next().unwrap();
+        let value = initializer_rule.next().expect("variable value");
         let value = parse_expression(ast_allocator, value);
 
         initializers.push(LetInitializer {
@@ -186,7 +188,7 @@ fn parse_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
 ) -> &'a Statement<'a, PhaseParsed<'a>> {
-    let pair = rule.into_inner().next().unwrap();
+    let pair = rule.into_inner().next().expect("statement");
     match pair.as_rule() {
         Rule::letStatement => parse_let_statement(ast_allocator, pair),
         Rule::assignmentStatement => {
@@ -312,37 +314,43 @@ fn parse_module<'a>(
     ast_allocator.module(module_name, functions, function_signatures)
 }
 
-pub fn parse_as_expression<'a>(
-    ast_allocator: &'a ParsedAstAllocator,
-    text: &str,
-) -> &'a Expression<'a, PhaseParsed<'a>> {
-    let pair = Grammar::parse(Rule::expression, text)
-        .unwrap()
-        .next()
-        .unwrap();
-    parse_expression(ast_allocator, pair)
-}
-
-pub fn parse_as_block<'a>(
-    ast_allocator: &'a ParsedAstAllocator,
-    text: &str,
-) -> &'a Block<'a, PhaseParsed<'a>> {
-    let pair = Grammar::parse(Rule::block, text).unwrap().next().unwrap();
-    parse_block(ast_allocator, pair)
-}
-
 pub fn parse<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     module_name: &str,
     text: &str,
 ) -> &'a Module<'a, PhaseParsed<'a>> {
-    let pair = Grammar::parse(Rule::module, text).unwrap().next().unwrap();
+    let pair = Grammar::parse(Rule::module, text)
+        .unwrap()
+        .next()
+        .expect("rule pairs");
     parse_module(ast_allocator, module_name, pair)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_as_expression<'a>(
+        ast_allocator: &'a ParsedAstAllocator,
+        text: &str,
+    ) -> &'a Expression<'a, PhaseParsed<'a>> {
+        let pair = Grammar::parse(Rule::expression, text)
+            .expect("expression")
+            .next()
+            .expect("expression pair");
+        parse_expression(ast_allocator, pair)
+    }
+
+    fn parse_as_block<'a>(
+        ast_allocator: &'a ParsedAstAllocator,
+        text: &str,
+    ) -> &'a Block<'a, PhaseParsed<'a>> {
+        let pair = Grammar::parse(Rule::block, text)
+            .expect("block")
+            .next()
+            .expect("block pair");
+        parse_block(ast_allocator, pair)
+    }
 
     /// Generates a test case to verify the AST produced by a given source expression.
     /// The AST is passed as its string representation.
