@@ -95,11 +95,8 @@ impl<'a, 'b, 'c> TypeResolvedModule<'a, 'b, 'c> {
 
 impl Display for TypeResolvedModule<'_, '_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "module {}",
-            resolve_string_id(self.module.name).expect("should find module name")
-        )?;
+        let module_name = resolve_string_id(self.module.name).ok_or(std::fmt::Error)?;
+        writeln!(f, "module {}", module_name)?;
         writeln!(f)?;
         for function in &self.module.functions {
             write_function_declaration(f, function)?;
@@ -113,13 +110,11 @@ fn write_function_declaration(
     f: &mut Formatter<'_>,
     function_declaration: &FunctionDeclaration<PhaseTypeResolved>,
 ) -> std::fmt::Result {
-    writeln!(
-        f,
-        "fn {}(",
-        resolve_string_id(function_declaration.signature.name).expect("function name")
-    )?;
+    let function_name =
+        resolve_string_id(function_declaration.signature.name).ok_or(std::fmt::Error)?;
+    writeln!(f, "fn {}(", function_name)?;
     for arg in function_declaration.signature.arguments.iter() {
-        let symbol_name = resolve_string_id(arg.name).expect("symbol name");
+        let symbol_name = resolve_string_id(arg.name).ok_or(std::fmt::Error)?;
         writeln!(f, "  {}: {},", symbol_name, Type::name(arg.symbol_type()))?;
     }
     writeln!(
@@ -195,8 +190,8 @@ fn fmt_block(
 }
 
 impl Symbol<'_> {
-    fn name(&self) -> &str {
-        resolve_string_id(self.name).expect("symbol name")
+    fn name(&self) -> Result<&str, std::fmt::Error> {
+        resolve_string_id(self.name).ok_or(std::fmt::Error)
     }
 
     pub fn symbol_type(&self) -> Option<Type> {
@@ -211,7 +206,7 @@ impl Symbol<'_> {
 
 impl Display for Symbol<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.name(), Type::name(self.symbol_type()))
+        write!(f, "{}: {}", self.name()?, Type::name(self.symbol_type()))
     }
 }
 
@@ -253,7 +248,7 @@ fn fmt_statement(
         Statement::Assignment { target, expression } => {
             let symbol = context.symbol_table.lookup_by_id(*target);
             if let Some(symbol) = symbol {
-                write!(f, "{}  {} = ", context.indent, symbol.name())?;
+                write!(f, "{}  {} = ", context.indent, symbol.name()?)?;
                 fmt_expression(f, expression, context.symbol_table)?;
                 writeln!(f, ";")
             } else {
@@ -354,7 +349,7 @@ fn fmt_expression(
         } => match symbol_table.lookup_by_id(*symbol_id) {
             None => Err(std::fmt::Error),
             Some(symbol) => {
-                write!(f, "{}", symbol.name())
+                write!(f, "{}", symbol.name()?)
             }
         },
         Expression::Literal { value, .. } => {
@@ -384,7 +379,7 @@ fn fmt_expression(
         }
         Expression::FunctionCall { name, args, .. } => {
             let symbol = symbol_table.lookup_by_id(*name).ok_or(std::fmt::Error)?;
-            write!(f, "{}(", symbol.name())?;
+            write!(f, "{}(", symbol.name()?)?;
             let mut first = true;
             for arg in args.iter() {
                 if !first {

@@ -43,7 +43,10 @@ impl Type {
     }
 
     pub fn parse(type_name: StringId) -> Result<Type, SemanticAnalysisError> {
-        let type_name = resolve_string_id(type_name).expect("should be able to resolve type name");
+        let type_name =
+            resolve_string_id(type_name).ok_or_else(|| SemanticAnalysisError::InternalError {
+                message: "failed to resolve type name string id".to_string(),
+            })?;
         match type_name {
             "int" => Ok(Type::Int),
             "double" => Ok(Type::Double),

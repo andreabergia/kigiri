@@ -121,7 +121,9 @@ impl<'a> TypeResolver {
             symbol_table,
         } = mapped_signatures
             .get(&function.signature.name)
-            .expect("must be able to find signature since we just built it");
+            .ok_or_else(|| SemanticAnalysisError::InternalError {
+                message: "failed to find function signature that was just created".to_string(),
+            })?;
 
         let body = Self::analyze_block(allocator, function.body, symbol_table)?;
 
@@ -163,10 +165,14 @@ impl<'a> TypeResolver {
                         Self::analyze_expression(allocator, initializer.value, symbol_table)?;
 
                     let Some(variable_type) = resolved_type(value) else {
+                        let variable_name = resolve_string_id(initializer.variable)
+                            .ok_or_else(|| SemanticAnalysisError::InternalError {
+                                message: "failed to resolve let variable name string id"
+                                    .to_string(),
+                            })?
+                            .to_owned();
                         return Err(SemanticAnalysisError::CannotAssignVoidValue {
-                            name: resolve_string_id(initializer.variable)
-                                .expect("let variable name")
-                                .to_owned(),
+                            name: variable_name,
                         });
                     };
 
@@ -192,7 +198,9 @@ impl<'a> TypeResolver {
                 expression,
             } => {
                 let symbol_name = resolve_string_id(*name)
-                    .expect("should be able to find string")
+                    .ok_or_else(|| SemanticAnalysisError::InternalError {
+                        message: "failed to resolve assignment target string id".to_string(),
+                    })?
                     .to_owned();
 
                 let symbol = symbol_table.lookup_by_name(*name);
@@ -204,12 +212,15 @@ impl<'a> TypeResolver {
                     Some(symbol) => {
                         let value = Self::analyze_expression(allocator, expression, symbol_table)?;
 
+                        let target_name = resolve_string_id(symbol.name)
+                            .ok_or_else(|| SemanticAnalysisError::InternalError {
+                                message:
+                                    "failed to resolve assignment target symbol name string id"
+                                        .to_string(),
+                            })?
+                            .to_owned();
                         let expression_type = resolved_type(value).ok_or(
-                            SemanticAnalysisError::CannotAssignVoidValue {
-                                name: resolve_string_id(symbol.name)
-                                    .expect("assignment target")
-                                    .to_owned(),
-                            },
+                            SemanticAnalysisError::CannotAssignVoidValue { name: target_name },
                         )?;
 
                         match symbol.kind {
@@ -451,54 +462,67 @@ impl<'a> TypeResolver {
                             })),
                             // TODO: allow eventually assigning variables of function type
                             SymbolKind::Function { .. } => {
-                                Err(SemanticAnalysisError::SymbolNotFound {
-                                    name: resolve_string_id(*symbol_id)
-                                        .expect("should be able to find string")
-                                        .to_owned(),
-                                })
+                                let name = resolve_string_id(*symbol_id)
+                                    .ok_or_else(|| SemanticAnalysisError::InternalError {
+                                        message: "failed to resolve function symbol name string id"
+                                            .to_string(),
+                                    })?
+                                    .to_owned();
+                                Err(SemanticAnalysisError::SymbolNotFound { name })
                             }
                         }
                     }
-                    None => Err(SemanticAnalysisError::SymbolNotFound {
-                        name: resolve_string_id(*symbol_id)
-                            .expect("should be able to find string")
-                            .to_owned(),
-                    }),
+                    None => {
+                        let name = resolve_string_id(*symbol_id)
+                            .ok_or_else(|| SemanticAnalysisError::InternalError {
+                                message: "failed to resolve identifier symbol name string id"
+                                    .to_string(),
+                            })?
+                            .to_owned();
+                        Err(SemanticAnalysisError::SymbolNotFound { name })
+                    }
                 }
             }
 
             Expression::FunctionCall { name, args, .. } => {
                 let function_symbol = symbol_table.lookup_by_name(*name);
                 let Some(function_symbol) = function_symbol else {
-                    return Err(SemanticAnalysisError::FunctionNotFound {
-                        function_name: resolve_string_id(*name)
-                            .expect("should be able to find string")
-                            .to_owned(),
-                    });
+                    let function_name = resolve_string_id(*name)
+                        .ok_or_else(|| SemanticAnalysisError::InternalError {
+                            message: "failed to resolve function call name string id".to_string(),
+                        })?
+                        .to_owned();
+                    return Err(SemanticAnalysisError::FunctionNotFound { function_name });
                 };
                 let SymbolKind::Function { signature, .. } = function_symbol.kind else {
-                    return Err(SemanticAnalysisError::NotAFunction {
-                        name: resolve_string_id(*name)
-                            .expect("should be able to find string")
-                            .to_owned(),
-                    });
+                    let symbol_name = resolve_string_id(*name)
+                        .ok_or_else(|| SemanticAnalysisError::InternalError {
+                            message: "failed to resolve non-function symbol name string id"
+                                .to_string(),
+                        })?
+                        .to_owned();
+                    return Err(SemanticAnalysisError::NotAFunction { name: symbol_name });
                 };
 
                 let expected_arg_count = signature.arguments.len();
                 let actual_arg_count = args.len();
 
+                let function_name = resolve_string_id(*name)
+                    .ok_or_else(|| SemanticAnalysisError::InternalError {
+                        message:
+                            "failed to resolve function name for argument count check string id"
+                                .to_string(),
+                    })?
+                    .to_owned();
+
                 match actual_arg_count.cmp(&expected_arg_count) {
                     Ordering::Less => Err(SemanticAnalysisError::ArgumentCountMismatchTooFew {
-                        function_name: resolve_string_id(*name)
-                            .expect("should be able to find string")
-                            .to_owned(),
+                        function_name,
                         expected: expected_arg_count,
                         found: actual_arg_count,
                     }),
                     Ordering::Greater => Err(SemanticAnalysisError::ArgumentCountMismatchTooMany {
-                        function_name: resolve_string_id(*name)
-                            .expect("should be able to find string")
-                            .to_owned(),
+                        function_name,
                         expected: expected_arg_count,
                         found: actual_arg_count,
                     }),
@@ -517,20 +541,26 @@ impl<'a> TypeResolver {
                         {
                             let actual_type = resolved_type(typed_arg);
 
-                            let expected_type = expected_symbol
-                                .symbol_type()
-                                .expect("Function argument should have a type");
+                            let expected_type = expected_symbol.symbol_type().ok_or_else(|| {
+                                SemanticAnalysisError::InternalError {
+                                    message: "function argument missing type information"
+                                        .to_string(),
+                                }
+                            })?;
+
+                            let parameter_name = resolve_string_id(expected_symbol.name)
+                                .ok_or_else(|| SemanticAnalysisError::InternalError {
+                                    message: "failed to resolve parameter name string id"
+                                        .to_string(),
+                                })?
+                                .to_owned();
 
                             if let Some(actual_type) = actual_type {
                                 if actual_type != expected_type {
                                     return Err(SemanticAnalysisError::ArgumentTypeMismatch {
-                                        function_name: resolve_string_id(*name)
-                                            .expect("should be able to find string")
-                                            .to_owned(),
+                                        function_name,
                                         argument_index,
-                                        parameter_name: resolve_string_id(expected_symbol.name)
-                                            .expect("should be able to find string")
-                                            .to_owned(),
+                                        parameter_name,
                                         expected_type,
                                         actual_type: actual_type.to_string(),
                                     });
@@ -538,13 +568,9 @@ impl<'a> TypeResolver {
                             } else {
                                 // void type cannot be passed as argument
                                 return Err(SemanticAnalysisError::ArgumentTypeMismatch {
-                                    function_name: resolve_string_id(*name)
-                                        .expect("should be able to find string")
-                                        .to_owned(),
+                                    function_name,
                                     argument_index,
-                                    parameter_name: resolve_string_id(expected_symbol.name)
-                                        .expect("should be able to find string")
-                                        .to_owned(),
+                                    parameter_name,
                                     expected_type,
                                     actual_type: "void".to_string(),
                                 });

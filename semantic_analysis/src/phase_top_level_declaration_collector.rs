@@ -57,7 +57,7 @@ impl<'a> TopLevelDeclarationCollector {
         &'a FunctionDeclaration<'a, PhaseTopLevelDeclarationCollected<'a>>,
         SemanticAnalysisError,
     > {
-        let signature = Self::resolve_function_signature_for(function_signatures, function);
+        let signature = Self::resolve_function_signature_for(function_signatures, function)?;
 
         Ok(allocator.alloc(FunctionDeclaration {
             signature,
@@ -69,10 +69,16 @@ impl<'a> TopLevelDeclarationCollector {
     fn resolve_function_signature_for(
         function_signatures: &FunctionSignaturesByName<'a, PhaseTopLevelDeclarationCollected<'a>>,
         function: &FunctionDeclaration<PhaseParsed>,
-    ) -> &'a FunctionSignature<'a, PhaseTopLevelDeclarationCollected<'a>> {
+    ) -> Result<
+        &'a FunctionSignature<'a, PhaseTopLevelDeclarationCollected<'a>>,
+        SemanticAnalysisError,
+    > {
         function_signatures
             .get(&function.signature.name)
-            .expect("function signature must exist as we just put it there")
+            .cloned()
+            .ok_or_else(|| SemanticAnalysisError::InternalError {
+                message: "function signature must exist as we just put it there".to_string(),
+            })
     }
 
     fn map_block(

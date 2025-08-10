@@ -71,6 +71,8 @@ pub enum SemanticAnalysisError {
     IfConditionMustBeBool { actual_type: String },
     #[error("while condition must be of type bool, found {actual_type}")]
     WhileConditionMustBeBool { actual_type: String },
+    #[error("internal error: {message}")]
+    InternalError { message: String },
 }
 
 #[derive(Default)]
