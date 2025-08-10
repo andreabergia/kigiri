@@ -14,3 +14,8 @@ Main
 
 Misc
 - [ ] check can't use a variable in its declaration, i.e. `let x = x + 1`
+- [ ] short circuit booleans
+- [ ] break/continue in loops
+- [ ] for loop
+- [ ] for/else like in python?
+- [ ] loop (infinite)
