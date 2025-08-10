@@ -406,11 +406,15 @@ impl SymbolIdSequencer {
 static SYMBOL_ID_SEQUENCER: LazyLock<Mutex<SymbolIdSequencer>> =
     LazyLock::new(|| Mutex::new(SymbolIdSequencer::default()));
 
-fn next_symbol_id() -> SymbolId {
-    SYMBOL_ID_SEQUENCER
+fn next_symbol_id() -> Result<SymbolId, crate::semantic_analyzer::SemanticAnalysisError> {
+    Ok(SYMBOL_ID_SEQUENCER
         .lock()
-        .expect("should be able to lock the sequencer")
-        .next()
+        .map_err(
+            |_| crate::semantic_analyzer::SemanticAnalysisError::InternalError {
+                message: "failed to acquire lock for symbol ID sequencer".to_string(),
+            },
+        )?
+        .next())
 }
 
 impl From<VariableIndex> for usize {
@@ -471,13 +475,13 @@ impl<'a> SymbolTable<'a> {
         allocator: &'a AstAllocator,
         name: StringId,
         kind: SymbolKind<'a>,
-    ) -> SymbolAndId<'a> {
+    ) -> Result<SymbolAndId<'a>, crate::semantic_analyzer::SemanticAnalysisError> {
         if let SymbolKind::Variable { .. } = kind {
             let root = self.root();
             *root.num_variables.borrow_mut() += 1;
         }
 
-        let id = next_symbol_id();
+        let id = next_symbol_id()?;
         let symbol = allocator.alloc(Symbol { id, name, kind });
 
         // This allows for name shadowing!
@@ -485,7 +489,7 @@ impl<'a> SymbolTable<'a> {
         self.symbols_by_name.borrow_mut().insert(name, symbol);
         self.symbols_by_id.borrow_mut().insert(id, symbol);
 
-        SymbolAndId { id, symbol }
+        Ok(SymbolAndId { id, symbol })
     }
 
     pub fn lookup_by_name(&self, name: StringId) -> Option<&'a Symbol<'a>> {

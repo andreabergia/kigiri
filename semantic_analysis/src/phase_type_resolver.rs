@@ -44,7 +44,7 @@ impl<'a> TypeResolver {
                 SymbolKind::Function {
                     signature: mapped.signature,
                 },
-            );
+            )?;
 
             function_signatures.insert(mapped.signature.name, mapped.signature);
             mapped_signatures.insert(mapped.signature.name, mapped);
@@ -84,7 +84,7 @@ impl<'a> TypeResolver {
             .enumerate()
             .map(|(index, argument)| {
                 let arg_type = Type::parse(argument.argument_type);
-                arg_type.map(|argument_type| {
+                arg_type.and_then(|argument_type| {
                     symbol_table
                         .add_symbol(
                             allocator,
@@ -94,7 +94,7 @@ impl<'a> TypeResolver {
                                 argument_type,
                             },
                         )
-                        .symbol
+                        .map(|symbol_and_id| symbol_and_id.symbol)
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -184,7 +184,7 @@ impl<'a> TypeResolver {
                                 index: symbol_table.next_variable_index(),
                                 variable_type,
                             },
-                        )
+                        )?
                         .id;
                     typed_initializers.push(LetInitializer { variable, value });
                 }
@@ -263,7 +263,7 @@ impl<'a> TypeResolver {
                                             index: symbol_table.next_variable_index(),
                                             variable_type: argument_type,
                                         },
-                                    )
+                                    )?
                                     .id;
                                 statements.push(allocator.alloc(Statement::Let {
                                     initializers: allocator.new_bump_vec_from_iter([
