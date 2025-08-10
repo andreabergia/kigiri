@@ -15,7 +15,7 @@ fn jit_test(source: &str, test_callback: unsafe fn(ExecutionEngine) -> ()) {
         .expect("semantic analysis");
 
     let ir_allocator = IrAllocator::new();
-    let module = build_ir_module(&ir_allocator, typed_module);
+    let module = build_ir_module(&ir_allocator, typed_module).expect("codegen should succeed");
 
     let context = Context::create();
     let module = backend_llvm::ir_to_llvm(&context, module).expect("llvm ir generation");

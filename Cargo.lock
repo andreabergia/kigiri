@@ -58,6 +58,7 @@ dependencies = [
  "kigiri_memory",
  "parser",
  "semantic_analysis",
+ "thiserror 2.0.12",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
-use crate::{FunctionSignature, ir};
+use crate::{CodegenError, CodegenResult, FunctionSignature, ir};
 use ir::Variable;
 use kigiri_memory::BumpVec;
 use parser::{
@@ -46,11 +46,14 @@ impl<'i> FunctionIrBuilder<'i> {
         }
     }
 
-    fn generate(&self, function: &FunctionDeclaration<PhaseTypeResolved>) -> &'i Function<'i> {
-        let signature = self.generate_function_signature(function);
+    fn generate(
+        &self,
+        function: &FunctionDeclaration<PhaseTypeResolved>,
+    ) -> CodegenResult<&'i Function<'i>> {
+        let signature = self.generate_function_signature(function)?;
 
         let first_bb = self.first_bb;
-        let found_return = self.handle_block(function.body);
+        let found_return = self.handle_block(function.body)?;
         if found_return == FoundReturn::No {
             // If no return statement was found, we add an implicit return
             self.push_to_current_bb(self.ir_allocator.new_ret());
@@ -61,61 +64,84 @@ impl<'i> FunctionIrBuilder<'i> {
         for bb in self.basic_blocks.borrow().iter() {
             new_basic_blocks.push(*bb);
         }
-        self.ir_allocator
-            .function(signature, new_basic_blocks, first_bb.id)
+        Ok(self
+            .ir_allocator
+            .function(signature, new_basic_blocks, first_bb.id))
     }
 
     fn generate_function_signature(
         &self,
         function: &FunctionDeclaration<PhaseTypeResolved>,
-    ) -> &'i FunctionSignature<'i> {
-        self.ir_allocator.function_signature(
+    ) -> CodegenResult<&'i FunctionSignature<'i>> {
+        let arguments: Vec<_> = function
+            .signature
+            .arguments
+            .iter()
+            .map(|arg| {
+                let argument_type = if let SymbolKind::Argument { argument_type, .. } = arg.kind {
+                    argument_type
+                } else {
+                    return Err(CodegenError::InternalError {
+                        message: format!(
+                            "expected an argument symbol kind for function argument, found {:?}",
+                            arg.kind
+                        ),
+                    });
+                };
+                Ok(FunctionArgument {
+                    name: arg.name,
+                    argument_type,
+                })
+            })
+            .collect::<CodegenResult<Vec<_>>>()?;
+
+        Ok(self.ir_allocator.function_signature(
             function.signature.name,
             function.signature.return_type,
-            self.ir_allocator
-                .function_arguments(function.signature.arguments.iter().map(|arg| {
-                    let argument_type = if let SymbolKind::Argument { argument_type, .. } = arg.kind
-                    {
-                        argument_type
-                    } else {
-                        panic!("expected an argument symbol kind for function argument");
-                    };
-                    FunctionArgument {
-                        name: arg.name,
-                        argument_type,
-                    }
-                })),
-        )
+            self.ir_allocator.function_arguments(arguments),
+        ))
     }
-    fn handle_block(&self, block: &Block<PhaseTypeResolved>) -> FoundReturn {
+
+    fn handle_block(&self, block: &Block<PhaseTypeResolved>) -> CodegenResult<FoundReturn> {
         let mut found_return = FoundReturn::No;
         for statement in &block.statements {
-            if self.handle_statement(statement, block.symbol_table) == FoundReturn::Yes {
+            if self.handle_statement(statement, block.symbol_table)? == FoundReturn::Yes {
                 found_return = FoundReturn::Yes;
             }
         }
-        found_return
+        Ok(found_return)
     }
 
     fn handle_statement(
         &self,
         statement: &Statement<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
-    ) -> FoundReturn {
+    ) -> CodegenResult<FoundReturn> {
         match statement {
             Statement::Let { initializers } => {
                 for initializer in initializers {
-                    let symbol = symbol_table
-                        .lookup_by_id(initializer.variable)
-                        .expect("should find symbol in symbol table");
-                    let value = self.handle_expression(initializer.value, symbol_table);
+                    let symbol =
+                        symbol_table
+                            .lookup_by_id(initializer.variable)
+                            .ok_or_else(|| CodegenError::InternalError {
+                                message: format!(
+                                    "symbol ID {:?} not found in symbol table",
+                                    initializer.variable
+                                ),
+                            })?;
+                    let value = self.handle_expression(initializer.value, symbol_table)?;
 
                     let SymbolKind::Variable {
                         index,
                         variable_type,
                     } = symbol.kind
                     else {
-                        panic!("expected a variable symbol kind for let statement");
+                        return Err(CodegenError::InternalError {
+                            message: format!(
+                                "expected a variable symbol kind for let statement, found {:?}",
+                                symbol.kind
+                            ),
+                        });
                     };
                     let instruction =
                         self.ir_allocator
@@ -123,16 +149,18 @@ impl<'i> FunctionIrBuilder<'i> {
                     self.push_to_current_bb(instruction);
                     self.push_variable_to_current_bb(index, symbol, variable_type);
                 }
-                FoundReturn::No
+                Ok(FoundReturn::No)
             }
             Statement::Assignment {
                 target: symbol,
                 expression,
             } => {
-                let symbol = symbol_table
-                    .lookup_by_id(*symbol)
-                    .expect("should find symbol in symbol table");
-                let value = self.handle_expression(expression, symbol_table);
+                let symbol = symbol_table.lookup_by_id(*symbol).ok_or_else(|| {
+                    CodegenError::InternalError {
+                        message: format!("symbol ID {:?} not found in symbol table", symbol),
+                    }
+                })?;
+                let value = self.handle_expression(expression, symbol_table)?;
 
                 let (variable_index, variable_type) = if let SymbolKind::Variable {
                     index,
@@ -141,26 +169,31 @@ impl<'i> FunctionIrBuilder<'i> {
                 {
                     (index, variable_type)
                 } else {
-                    panic!("expected a variable symbol kind for let statement");
+                    return Err(CodegenError::InternalError {
+                        message: format!(
+                            "expected a variable symbol kind for assignment, found {:?}",
+                            symbol.kind
+                        ),
+                    });
                 };
                 let instruction =
                     self.ir_allocator
                         .new_store(symbol.name, variable_type, variable_index, value);
                 self.push_to_current_bb(instruction);
-                FoundReturn::No
+                Ok(FoundReturn::No)
             }
             Statement::Return { expression } => {
                 if let Some(value) = expression {
-                    let instruction = self.handle_expression(value, symbol_table);
-                    self.push_to_current_bb(self.ir_allocator.new_ret_expr(instruction));
+                    let instruction = self.handle_expression(value, symbol_table)?;
+                    self.push_to_current_bb(self.ir_allocator.new_ret_expr(instruction)?);
                 } else {
                     self.push_to_current_bb(self.ir_allocator.new_ret())
                 }
-                FoundReturn::Yes
+                Ok(FoundReturn::Yes)
             }
             Statement::Expression { expression } => {
-                self.handle_expression(expression, symbol_table);
-                FoundReturn::No
+                self.handle_expression(expression, symbol_table)?;
+                Ok(FoundReturn::No)
             }
             Statement::NestedBlock { .. } => todo!(),
             Statement::If(if_statement) => self.handle_if_statement(if_statement, symbol_table),
@@ -174,14 +207,16 @@ impl<'i> FunctionIrBuilder<'i> {
         &self,
         expression: &Expression<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
-    ) -> &'i Instruction {
+    ) -> CodegenResult<&'i Instruction> {
         match expression {
             Expression::Identifier {
                 name: symbol_id, ..
             } => {
-                let symbol = symbol_table
-                    .lookup_by_id(*symbol_id)
-                    .expect("should find identifier in symbol table");
+                let symbol = symbol_table.lookup_by_id(*symbol_id).ok_or_else(|| {
+                    CodegenError::InternalError {
+                        message: format!("symbol ID {:?} not found in symbol table", symbol_id),
+                    }
+                })?;
 
                 let instruction = match symbol.kind {
                     SymbolKind::Function { .. } => todo!(),
@@ -200,23 +235,23 @@ impl<'i> FunctionIrBuilder<'i> {
                 };
 
                 self.push_to_current_bb(instruction);
-                instruction
+                Ok(instruction)
             }
             Expression::Literal { value, .. } => {
                 let instruction = self.ir_allocator.new_const(value.clone());
                 self.push_to_current_bb(instruction);
-                instruction
+                Ok(instruction)
             }
             Expression::Unary {
                 operator, operand, ..
             } => {
-                let operand_instruction = self.handle_expression(operand, symbol_table);
+                let operand_instruction = self.handle_expression(operand, symbol_table)?;
 
                 let instruction = self
                     .ir_allocator
-                    .new_unary(operator.clone(), operand_instruction);
+                    .new_unary(operator.clone(), operand_instruction)?;
                 self.push_to_current_bb(instruction);
-                instruction
+                Ok(instruction)
             }
             Expression::Binary {
                 result_type,
@@ -225,8 +260,8 @@ impl<'i> FunctionIrBuilder<'i> {
                 left,
                 right,
             } => {
-                let left_instruction = self.handle_expression(left, symbol_table);
-                let right_instruction = self.handle_expression(right, symbol_table);
+                let left_instruction = self.handle_expression(left, symbol_table)?;
+                let right_instruction = self.handle_expression(right, symbol_table)?;
 
                 let instruction = self.ir_allocator.new_binary(
                     operator.clone(),
@@ -234,9 +269,9 @@ impl<'i> FunctionIrBuilder<'i> {
                     operand_type,
                     left_instruction,
                     right_instruction,
-                );
+                )?;
                 self.push_to_current_bb(instruction);
-                instruction
+                Ok(instruction)
             }
             Expression::FunctionCall {
                 name,
@@ -244,14 +279,16 @@ impl<'i> FunctionIrBuilder<'i> {
                 return_type,
             } => {
                 // Look up the function symbol to get the function name
-                let function_symbol = symbol_table
-                    .lookup_by_id(*name)
-                    .expect("should find function in symbol table");
+                let function_symbol = symbol_table.lookup_by_id(*name).ok_or_else(|| {
+                    CodegenError::InternalError {
+                        message: format!("function symbol ID {:?} not found in symbol table", name),
+                    }
+                })?;
 
                 // Generate IR for each argument
                 let mut argument_instructions = Vec::new();
                 for arg in args.iter() {
-                    let arg_instruction = self.handle_expression(arg, symbol_table);
+                    let arg_instruction = self.handle_expression(arg, symbol_table)?;
                     argument_instructions.push(arg_instruction);
                 }
 
@@ -263,7 +300,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 );
 
                 self.push_to_current_bb(instruction);
-                instruction
+                Ok(instruction)
             }
         }
     }
@@ -272,15 +309,15 @@ impl<'i> FunctionIrBuilder<'i> {
         &self,
         if_statement: &IfStatement<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
-    ) -> FoundReturn {
+    ) -> CodegenResult<FoundReturn> {
         let merge_block = self.create_basic_block_deferred();
-        let result = self.handle_if_logic(if_statement, symbol_table, merge_block);
+        let result = self.handle_if_logic(if_statement, symbol_table, merge_block)?;
 
         // Merge block at the end
         self.add_basic_block(merge_block);
         self.switch_to_basic_block(merge_block);
 
-        result
+        Ok(result)
     }
 
     fn handle_if_else_block(
@@ -288,7 +325,7 @@ impl<'i> FunctionIrBuilder<'i> {
         else_block: &IfElseBlock<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
         merge_block: &'i BasicBlock<'i>,
-    ) -> FoundReturn {
+    ) -> CodegenResult<FoundReturn> {
         match else_block {
             IfElseBlock::Block(block) => self.handle_then_else_block(block, merge_block.id),
             IfElseBlock::If(nested_if) => {
@@ -302,7 +339,7 @@ impl<'i> FunctionIrBuilder<'i> {
         if_statement: &IfStatement<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
         merge_block: &'i BasicBlock<'i>,
-    ) -> FoundReturn {
+    ) -> CodegenResult<FoundReturn> {
         // Handle "then"
         let then_block = self.create_basic_block();
         let else_bb = if if_statement.else_block.is_some() {
@@ -312,7 +349,7 @@ impl<'i> FunctionIrBuilder<'i> {
         };
 
         // Branch depending on the condition
-        let condition_instruction = self.handle_expression(if_statement.condition, symbol_table);
+        let condition_instruction = self.handle_expression(if_statement.condition, symbol_table)?;
         let branch_instruction = if let Some(else_bb) = else_bb {
             self.ir_allocator
                 .new_branch(condition_instruction, then_block.id, else_bb.id)
@@ -324,7 +361,8 @@ impl<'i> FunctionIrBuilder<'i> {
 
         // Generate then block
         self.switch_to_basic_block(then_block);
-        let then_has_return = self.handle_then_else_block(if_statement.then_block, merge_block.id);
+        let then_has_return =
+            self.handle_then_else_block(if_statement.then_block, merge_block.id)?;
 
         // Generate else block if present
         let mut else_has_return = FoundReturn::No;
@@ -332,19 +370,19 @@ impl<'i> FunctionIrBuilder<'i> {
             if let Some(else_block_ast) = if_statement.else_block {
                 self.switch_to_basic_block(else_bb);
                 else_has_return =
-                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block);
+                    self.handle_if_else_block(else_block_ast, symbol_table, merge_block)?;
             }
         }
 
         // Return whether both branches have returns
-        then_has_return.and(else_has_return)
+        Ok(then_has_return.and(else_has_return))
     }
 
     fn handle_while_statement(
         &self,
         while_statement: &WhileStatement<PhaseTypeResolved>,
         symbol_table: &SymbolTable,
-    ) -> FoundReturn {
+    ) -> CodegenResult<FoundReturn> {
         let condition_block = self.create_basic_block();
         let body_block = self.create_basic_block();
         let merge_block = self.create_basic_block_deferred();
@@ -353,7 +391,8 @@ impl<'i> FunctionIrBuilder<'i> {
 
         // Condition block
         self.switch_to_basic_block(condition_block);
-        let condition_instruction = self.handle_expression(while_statement.condition, symbol_table);
+        let condition_instruction =
+            self.handle_expression(while_statement.condition, symbol_table)?;
         let branch_instruction =
             self.ir_allocator
                 .new_branch(condition_instruction, body_block.id, merge_block.id);
@@ -361,7 +400,7 @@ impl<'i> FunctionIrBuilder<'i> {
 
         // Body block
         self.switch_to_basic_block(body_block);
-        let body_has_return = self.handle_block(while_statement.body);
+        let body_has_return = self.handle_block(while_statement.body)?;
         if body_has_return == FoundReturn::No {
             self.push_to_current_bb(self.ir_allocator.new_jump(condition_block.id));
         }
@@ -370,7 +409,7 @@ impl<'i> FunctionIrBuilder<'i> {
         self.add_basic_block(merge_block);
         self.switch_to_basic_block(merge_block);
 
-        FoundReturn::No // While loops don't guarantee returns
+        Ok(FoundReturn::No) // While loops don't guarantee returns
     }
 
     /// Generates statements for the block and a jump to the merge block if no return is found
@@ -378,13 +417,13 @@ impl<'i> FunctionIrBuilder<'i> {
         &self,
         block: &Block<PhaseTypeResolved>,
         merge_block_id: BlockId,
-    ) -> FoundReturn {
-        let found_return = self.handle_block(block);
+    ) -> CodegenResult<FoundReturn> {
+        let found_return = self.handle_block(block)?;
         if found_return == FoundReturn::No {
             let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
             self.push_to_current_bb(jump_instruction);
         }
-        found_return
+        Ok(found_return)
     }
 
     fn create_basic_block(&self) -> &'i BasicBlock<'i> {
@@ -434,13 +473,13 @@ impl<'i> FunctionIrBuilder<'i> {
 pub fn build_ir_module<'i>(
     ir_allocator: &'i IrAllocator,
     module: &parser::Module<PhaseTypeResolved>,
-) -> &'i Module<'i> {
+) -> CodegenResult<&'i Module<'i>> {
     let mut functions = ir_allocator.functions();
     for function in &module.functions {
         let fn_builder = FunctionIrBuilder::new(ir_allocator);
-        functions.push(fn_builder.generate(function));
+        functions.push(fn_builder.generate(function)?);
     }
-    ir_allocator.module(module.name, functions)
+    Ok(ir_allocator.module(module.name, functions))
 }
 
 #[cfg(test)]
@@ -458,7 +497,7 @@ mod tests {
             .analyze_module(ast_module)
             .expect("should have passed semantic analysis");
 
-        build_ir_module(ir_allocator, typed_module)
+        build_ir_module(ir_allocator, typed_module).expect("codegen should succeed")
     }
 
     macro_rules! test_module_ir {

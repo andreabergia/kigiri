@@ -1,3 +1,4 @@
+use crate::{CodegenError, CodegenResult};
 use kigiri_memory::{BumpArena, BumpVec, StringId, resolve_string_id};
 use parser::{BinaryOperator, BlockId, LiteralValue, UnaryOperator};
 use semantic_analysis::{ArgumentIndex, Type, VariableIndex};
@@ -153,7 +154,7 @@ impl Display for Module<'_> {
         writeln!(
             f,
             "module {}",
-            resolve_string_id(self.name).expect("should find module name")
+            resolve_string_id(self.name).ok_or(std::fmt::Error)?
         )?;
         writeln!(f)?;
         for function in &self.functions {
@@ -168,13 +169,13 @@ impl Display for Function<'_> {
         writeln!(
             f,
             "fn {}(",
-            resolve_string_id(self.signature.name).expect("function name")
+            resolve_string_id(self.signature.name).ok_or(std::fmt::Error)?
         )?;
         for arg in self.signature.arguments.iter() {
             writeln!(
                 f,
                 "  {}: {},",
-                resolve_string_id(arg.name).expect("argument name"),
+                resolve_string_id(arg.name).ok_or(std::fmt::Error)?,
                 arg.argument_type,
             )?;
         }
@@ -205,7 +206,7 @@ impl Display for BasicBlock<'_> {
             writeln!(
                 f,
                 "  var {}: {}",
-                resolve_string_id(var.name).expect("variable name"),
+                resolve_string_id(var.name).ok_or(std::fmt::Error)?,
                 var.variable_type
             )?;
         }
@@ -258,21 +259,21 @@ impl Display for InstructionPayload {
                 write!(
                     f,
                     "loadvar {}",
-                    resolve_string_id(*name).expect("should find variable name")
+                    resolve_string_id(*name).ok_or(std::fmt::Error)?
                 )
             }
             InstructionPayload::LoadArg { name, .. } => {
                 write!(
                     f,
                     "loadarg {}",
-                    resolve_string_id(*name).expect("should find argument name")
+                    resolve_string_id(*name).ok_or(std::fmt::Error)?
                 )
             }
             InstructionPayload::StoreVar { name, value, .. } => {
                 write!(
                     f,
                     "storevar {} = @{}",
-                    resolve_string_id(*name).expect("should find variable name"),
+                    resolve_string_id(*name).ok_or(std::fmt::Error)?,
                     value
                 )
             }
@@ -282,7 +283,7 @@ impl Display for InstructionPayload {
                 write!(
                     f,
                     "let {} = @{}",
-                    resolve_string_id(*name).expect("should find symbol name"),
+                    resolve_string_id(*name).ok_or(std::fmt::Error)?,
                     initializer
                 )
             }
@@ -294,7 +295,7 @@ impl Display for InstructionPayload {
                 write!(
                     f,
                     "call {}(",
-                    resolve_string_id(*function_name).expect("should find function name")
+                    resolve_string_id(*function_name).ok_or(std::fmt::Error)?
                 )?;
                 for (i, arg) in arguments.iter().enumerate() {
                     if i > 0 {
@@ -375,29 +376,35 @@ impl IrAllocator {
         self.new_instruction(InstructionPayload::Ret)
     }
 
-    pub fn new_ret_expr(&self, expression: &Instruction) -> &Instruction {
-        let operand_type = expression
-            .instruction_type()
-            .expect("cannot have a ret expression with a void operand");
-        self.new_instruction(InstructionPayload::RetExpr {
+    pub fn new_ret_expr(&self, expression: &Instruction) -> CodegenResult<&Instruction> {
+        let operand_type =
+            expression
+                .instruction_type()
+                .ok_or_else(|| CodegenError::InternalError {
+                    message: "cannot have a ret expression with a void operand".to_string(),
+                })?;
+        Ok(self.new_instruction(InstructionPayload::RetExpr {
             operand_type,
             expression: expression.id,
-        })
+        }))
     }
 
     pub fn new_unary<'s>(
         &'s self,
         operator: UnaryOperator,
         operand: &'s Instruction,
-    ) -> &'s Instruction {
-        let operand_type = operand
-            .instruction_type()
-            .expect("cannot have an unary expression with a void operand");
-        self.new_instruction(InstructionPayload::Unary {
+    ) -> CodegenResult<&'s Instruction> {
+        let operand_type =
+            operand
+                .instruction_type()
+                .ok_or_else(|| CodegenError::InternalError {
+                    message: "cannot have a unary expression with a void operand".to_string(),
+                })?;
+        Ok(self.new_instruction(InstructionPayload::Unary {
             result_type: operand_type,
             operator,
             operand: operand.id,
-        })
+        }))
     }
 
     pub fn new_binary<'s>(
@@ -407,19 +414,34 @@ impl IrAllocator {
         operand_type: &Type,
         left: &'s Instruction,
         right: &'s Instruction,
-    ) -> &'s Instruction {
+    ) -> CodegenResult<&'s Instruction> {
         let left_type = left
             .instruction_type()
-            .expect("cannot have a binary instruction with a void operand");
-        assert_eq!(Some(left_type), right.instruction_type());
+            .ok_or_else(|| CodegenError::InternalError {
+                message: "cannot have a binary instruction with a void left operand".to_string(),
+            })?;
+        let right_type = right
+            .instruction_type()
+            .ok_or_else(|| CodegenError::InternalError {
+                message: "cannot have a binary instruction with a void right operand".to_string(),
+            })?;
 
-        self.new_instruction(InstructionPayload::Binary {
+        if left_type != right_type {
+            return Err(CodegenError::InternalError {
+                message: format!(
+                    "binary operand type mismatch: left {:?}, right {:?}",
+                    left_type, right_type
+                ),
+            });
+        }
+
+        Ok(self.new_instruction(InstructionPayload::Binary {
             result_type: *result_type,
             operator,
             operand_type: *operand_type,
             left: left.id,
             right: right.id,
-        })
+        }))
     }
 
     pub fn new_load_var(
@@ -585,7 +607,10 @@ mod tests {
         let const_0 = ir_allocator.new_const(LiteralValue::Integer(1));
         assert_eq!(
             "00001 i ret @0",
-            ir_allocator.new_ret_expr(const_0).to_string()
+            ir_allocator
+                .new_ret_expr(const_0)
+                .expect("should succeed")
+                .to_string()
         )
     }
 
@@ -606,6 +631,7 @@ mod tests {
             "00001 i neg @0",
             ir_allocator
                 .new_unary(UnaryOperator::Neg, const_0)
+                .expect("should succeed")
                 .to_string()
         )
     }
@@ -625,6 +651,7 @@ mod tests {
                     const_0,
                     const_1
                 )
+                .expect("should succeed")
                 .to_string()
         )
     }

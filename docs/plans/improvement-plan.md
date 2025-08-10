@@ -39,12 +39,18 @@ improvement plan.
     - ✅ Added custom `ParseError` enum with `thiserror`
     - ✅ Replaced all 32 panic-prone `unwrap()`/`expect()` calls in production code
     - ✅ Maintained meaningful error messages with context
-- [x] **Replace remaining `unwrap()` calls in other modules (production code only)** **PARTIALLY COMPLETED**
+- [x] **Replace remaining `unwrap()` calls in other modules (production code only)** **MOSTLY COMPLETE**
     - [x] **Semantic analysis module error handling** ✅ **COMPLETE**
         - ✅ Replaced `expect()` in `next_symbol_id()` with proper error handling
         - ✅ Updated all callers to handle `Result` types properly
         - ✅ No `panic!` calls remain in production code (2 `panic!` calls are in test code, which is acceptable)
-    - [ ] Codegen module error handling
+    - [x] **Codegen module error handling** ✅ **COMPLETE**
+        - ✅ Created `CodegenError::InternalError` enum with `thiserror`
+        - ✅ Replaced all 15 `expect()` and `panic!()` calls in production code
+        - ✅ Updated `build_ir_module` and all IR creation methods to return `Result`
+        - ✅ Added proper error propagation throughout codegen pipeline
+        - ✅ Updated all callers in backend_llvm and tests
+        - ✅ All 186 tests continue to pass
     - [ ] Backend LLVM module error handling
 - [x] **Remove `#![allow(unused)]` attributes** ✅
     - Clean up dead code and unused imports
@@ -131,17 +137,19 @@ improvement plan.
     - ✅ Parser completely refactored with robust error handling
     - ✅ All 32 panic-prone calls replaced with proper `Result` types
     - ✅ Added `thiserror`-based error types with structured messages
-- [x] **Replace remaining `unwrap()` calls in other modules (production code only)** **PARTIALLY COMPLETED**
+- [x] **Replace remaining `unwrap()` calls in other modules (production code only)** **MOSTLY COMPLETE**
     - [x] Semantic analysis module **COMPLETE** - Zero panic-prone calls in production code
-    - [ ] Complete remaining codegen and backend modules
+    - [x] Codegen module **COMPLETE** - Zero panic-prone calls in production code
+    - [ ] Complete remaining backend LLVM module
 - [ ] Address urgent TODOs in semantic analysis and backend
 
 ### Phase 2: Error Handling Polish (Weeks 3-4) **IN PROGRESS**
 
-- ✅ **Complete error handling refactoring (Parser module)**
-    - ✅ Custom `ParseError` types with `thiserror`
+- ✅ **Complete error handling refactoring (Parser & Codegen modules)**
+    - ✅ Custom `ParseError` and `CodegenError` types with `thiserror`
     - ✅ Proper `Result` propagation throughout
-    - [ ] Extend to semantic analysis and codegen modules
+    - ✅ Extended to semantic analysis and codegen modules
+    - [ ] Complete backend LLVM module
 - [ ] **Enhance error reporting with source locations**
     - [ ] Add line/column tracking to parser errors
     - [ ] Include code snippets in error messages
@@ -166,8 +174,8 @@ improvement plan.
 
 ## Success Metrics
 
-- **Code Quality**: ✅ **Parser & Semantic Analysis modules**: Zero `unwrap()` calls in production code completed
-- **Error Handling**: ✅ **Parser module**: Robust error handling with structured types
+- **Code Quality**: ✅ **Parser, Semantic Analysis & Codegen modules**: Zero `unwrap()` calls in production code completed
+- **Error Handling**: ✅ **Parser & Codegen modules**: Robust error handling with structured types
 - **Performance**: Measurable LLVM optimization improvements
 - **Development**: Clean `cargo clippy` with strict lints enabled
 - **Maintainability**: All TODOs resolved or tracked as issues
@@ -176,7 +184,7 @@ improvement plan.
 
 ### New Dependencies (Minimal Additions)
 
-- ✅ `thiserror` - Custom error types (already added to parser)
+- ✅ `thiserror` - Custom error types (already added to parser and codegen)
 - `criterion` - Performance benchmarking
 - `anyhow` - Enhanced error context (optional)
 - `tracing` - Structured logging (if needed)

@@ -951,7 +951,7 @@ mod tests {
     fn handle_module<'i>(ir_allocator: &'i IrAllocator, source: &str) -> &'i codegen::Module<'i> {
         let semantic_analyzer = SemanticAnalyzer::default();
         let module = make_analyzed_ast(&semantic_analyzer, source);
-        let module = build_ir_module(ir_allocator, module);
+        let module = build_ir_module(ir_allocator, module).expect("codegen should succeed");
 
         eprintln!("Module IR:\n{}", module);
         stderr().flush().unwrap();
