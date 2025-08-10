@@ -16,17 +16,17 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
-#[error("Code generation error: {message}")]
-pub struct CodeGenError {
-    message: String,
+pub enum CodeGenError {
+    #[error("LLVM builder error: {0}")]
+    Builder(#[from] BuilderError),
+    #[error("Internal error: {message}")]
+    InternalError { message: String },
 }
 
-impl From<BuilderError> for CodeGenError {
-    fn from(value: BuilderError) -> Self {
-        Self {
-            message: value.to_string(),
-        }
-    }
+fn safe_resolve_string_id(id: StringId) -> Result<&'static str, CodeGenError> {
+    resolve_string_id(id).ok_or_else(|| CodeGenError::InternalError {
+        message: format!("Invalid string ID: {:?}", id),
+    })
 }
 
 struct LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
@@ -87,7 +87,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
         // Allocate variables in index order
         for var in all_variables {
-            let name = resolve_string_id(var.name).expect("variable name");
+            let name = safe_resolve_string_id(var.name)?;
             let value = match var.variable_type {
                 Type::Int => self.builder.build_alloca(self.context.i64_type(), name)?,
                 Type::Bool => self.builder.build_alloca(self.context.bool_type(), name)?,
@@ -102,30 +102,43 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         self.llvm_values.borrow_mut()[id.as_usize()] = Some(value);
     }
 
-    fn get_int_value(&self, id: InstructionId) -> IntValue<'c> {
-        self.get_value(id).into_int_value()
+    fn get_int_value(&self, id: InstructionId) -> Result<IntValue<'c>, CodeGenError> {
+        Ok(self.get_value(id)?.into_int_value())
     }
 
-    fn get_bool_value(&self, id: InstructionId) -> IntValue<'c> {
-        self.get_value(id).into_int_value()
+    fn get_bool_value(&self, id: InstructionId) -> Result<IntValue<'c>, CodeGenError> {
+        Ok(self.get_value(id)?.into_int_value())
     }
 
-    fn get_float_value(&self, id: InstructionId) -> FloatValue<'c> {
-        self.get_value(id).into_float_value()
+    fn get_float_value(&self, id: InstructionId) -> Result<FloatValue<'c>, CodeGenError> {
+        Ok(self.get_value(id)?.into_float_value())
     }
 
-    fn get_value(&self, id: InstructionId) -> BasicValueEnum<'c> {
-        self.llvm_values
-            .borrow()
+    fn get_value(&self, id: InstructionId) -> Result<BasicValueEnum<'c>, CodeGenError> {
+        let values = self.llvm_values.borrow();
+        let value = values
             .get(id.as_usize())
-            .expect("vector should be initialized with the correct length")
-            .expect("value should be present")
+            .and_then(|opt| opt.as_ref())
+            .ok_or_else(|| CodeGenError::InternalError {
+                message: format!("Instruction ID {} has no associated value", id.as_usize()),
+            })?;
+        Ok(*value)
+    }
+
+    fn get_variable(&self, index: VariableIndex) -> Result<PointerValue<'c>, CodeGenError> {
+        self.variables
+            .borrow()
+            .get(usize::from(index))
+            .copied()
+            .ok_or_else(|| CodeGenError::InternalError {
+                message: format!("Variable index {} out of bounds", usize::from(index)),
+            })
     }
 
     fn declare(&self, llvm_module: &Module<'c>) -> Result<FunctionValue<'c>, CodeGenError> {
         let fn_type = self.make_fun_type();
         let fun = llvm_module.add_function(
-            resolve_string_id(self.function.signature.name).expect("function name"),
+            safe_resolve_string_id(self.function.signature.name)?,
             fn_type,
             None,
         );
@@ -154,7 +167,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             .llvm_blocks
             .borrow()
             .get(&entry_block_id)
-            .expect("entry block should exist");
+            .ok_or_else(|| CodeGenError::InternalError {
+                message: format!("Entry block {} not found", entry_block_id.0),
+            })?;
         self.builder.position_at_end(entry_bb);
         self.alloca_variables()?;
 
@@ -164,11 +179,11 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 continue;
             }
 
-            let bb = *self
-                .llvm_blocks
-                .borrow()
-                .get(&ir_block.id)
-                .expect("basic block should exist");
+            let bb = *self.llvm_blocks.borrow().get(&ir_block.id).ok_or_else(|| {
+                CodeGenError::InternalError {
+                    message: format!("Basic block {} not found", ir_block.id.0),
+                }
+            })?;
             self.builder.position_at_end(bb);
 
             for instruction in ir_block.instructions.borrow().iter() {
@@ -257,7 +272,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         }
 
         if !fun.verify(true) {
-            panic!("LLVM says we have built an invalid function; this is a bug :-(");
+            return Err(CodeGenError::InternalError {
+                message: "LLVM function verification failed".to_string(),
+            });
         }
         Ok(())
     }
@@ -268,12 +285,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operand_type: &Type,
         variable_index: VariableIndex,
     ) -> Result<(), CodeGenError> {
-        let variable_index: usize = variable_index.into();
-        let var_pointer = *self
-            .variables
-            .borrow()
-            .get(variable_index)
-            .expect("variable index should be valid");
+        let var_pointer = self.get_variable(variable_index)?;
 
         match operand_type {
             Type::Int => {
@@ -317,9 +329,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operand_type: &Type,
         argument_index: ArgumentIndex,
     ) -> Result<(), CodeGenError> {
+        let arg_idx: u32 = argument_index.into();
         let value = fun
-            .get_nth_param(argument_index.into())
-            .expect("valid argument number");
+            .get_nth_param(arg_idx)
+            .ok_or_else(|| CodeGenError::InternalError {
+                message: format!("Function argument {} not found", arg_idx),
+            })?;
         match operand_type {
             Type::Int => {
                 self.store_value(instruction.id, value);
@@ -340,25 +355,20 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         variable_index: VariableIndex,
         value: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let variable_index: usize = variable_index.into();
-        let var_pointer = *self
-            .variables
-            .borrow()
-            .get(variable_index)
-            .expect("variable index should be valid");
+        let var_pointer = self.get_variable(variable_index)?;
 
         match operand_type {
             Type::Int => {
                 self.builder
-                    .build_store(var_pointer, self.get_int_value(value))?;
+                    .build_store(var_pointer, self.get_int_value(value)?)?;
             }
             Type::Bool => {
                 self.builder
-                    .build_store(var_pointer, self.get_bool_value(value))?;
+                    .build_store(var_pointer, self.get_bool_value(value)?)?;
             }
             Type::Double => {
                 self.builder
-                    .build_store(var_pointer, self.get_float_value(value))?;
+                    .build_store(var_pointer, self.get_float_value(value)?)?;
             }
         };
         Ok(())
@@ -370,17 +380,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operand_type: &Type,
         initializer: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let variable_index: usize = variable_index.into();
-        let var_pointer = *self
-            .variables
-            .borrow()
-            .get(variable_index)
-            .expect("variable index should be valid");
+        let var_pointer = self.get_variable(variable_index)?;
 
         let initializer_value: BasicValueEnum = match operand_type {
-            Type::Int => self.get_int_value(initializer).into(),
-            Type::Bool => self.get_bool_value(initializer).into(),
-            Type::Double => self.get_float_value(initializer).into(),
+            Type::Int => self.get_int_value(initializer)?.into(),
+            Type::Bool => self.get_bool_value(initializer)?.into(),
+            Type::Double => self.get_float_value(initializer)?.into(),
         };
 
         self.builder.build_store(var_pointer, initializer_value)?;
@@ -412,8 +417,12 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
     fn setup_fun_arg(&self, fun: FunctionValue<'c>) -> Result<(), CodeGenError> {
         for (i, arg) in self.function.signature.arguments.iter().enumerate() {
-            let arg_value = fun.get_nth_param(i as u32).expect("should have argument");
-            arg_value.set_name(resolve_string_id(arg.name).expect("function argument name"));
+            let arg_value =
+                fun.get_nth_param(i as u32)
+                    .ok_or_else(|| CodeGenError::InternalError {
+                        message: format!("Function argument {} not found", i),
+                    })?;
+            arg_value.set_name(safe_resolve_string_id(arg.name)?);
         }
         Ok(())
     }
@@ -447,8 +456,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = self.get_bool_value(left);
-        let right = self.get_bool_value(right);
+        let left = self.get_bool_value(left)?;
+        let right = self.get_bool_value(right)?;
         let result = match operator {
             BinaryOperator::Add
             | BinaryOperator::Sub
@@ -495,8 +504,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = self.get_int_value(left);
-        let right = self.get_int_value(right);
+        let left = self.get_int_value(left)?;
+        let right = self.get_int_value(right)?;
         let result = match operator {
             BinaryOperator::Add => {
                 self.builder
@@ -596,8 +605,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let left = self.get_float_value(left);
-        let right = self.get_float_value(right);
+        let left = self.get_float_value(left)?;
+        let right = self.get_float_value(right)?;
 
         match operator {
             BinaryOperator::Add => {
@@ -685,7 +694,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = self.get_bool_value(operand);
+        let operand = self.get_bool_value(operand)?;
         let result = match operator {
             UnaryOperator::Neg | UnaryOperator::BitwiseNot => {
                 unreachable!()
@@ -703,7 +712,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = self.get_int_value(operand);
+        let operand = self.get_int_value(operand)?;
         let result = match operator {
             UnaryOperator::Neg => self
                 .builder
@@ -732,7 +741,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        let operand = self.get_float_value(operand);
+        let operand = self.get_float_value(operand)?;
         let result = match operator {
             UnaryOperator::Neg => self
                 .builder
@@ -774,15 +783,15 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     ) -> Result<(), CodeGenError> {
         match operand_type {
             Type::Int => {
-                let operand = self.get_int_value(expression);
+                let operand = self.get_int_value(expression)?;
                 self.builder.build_return(Some(&operand))?;
             }
             Type::Bool => {
-                let operand = self.get_bool_value(expression);
+                let operand = self.get_bool_value(expression)?;
                 self.builder.build_return(Some(&operand))?;
             }
             Type::Double => {
-                let operand = self.get_float_value(expression);
+                let operand = self.get_float_value(expression)?;
                 self.builder.build_return(Some(&operand))?;
             }
         }
@@ -798,19 +807,19 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         arguments: &[InstructionId],
     ) -> Result<(), CodeGenError> {
         // Get the function name
-        let function_name_str = resolve_string_id(*function_name).expect("function name");
+        let function_name_str = safe_resolve_string_id(*function_name)?;
 
         // Look up the function in the LLVM module
-        let function = llvm_module
-            .get_function(function_name_str)
-            .ok_or_else(|| CodeGenError {
+        let function = llvm_module.get_function(function_name_str).ok_or_else(|| {
+            CodeGenError::InternalError {
                 message: format!("Function '{}' not found in module", function_name_str),
-            })?;
+            }
+        })?;
 
         // Prepare argument values
         let mut argument_values = Vec::new();
         for &arg_id in arguments {
-            argument_values.push(self.get_value(arg_id).into());
+            argument_values.push(self.get_value(arg_id)?.into());
         }
 
         // Call the function
@@ -822,13 +831,11 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         match return_type {
             Some(_) => {
                 // Function returns a value, store it
-                let return_value =
-                    call_site
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| CodeGenError {
-                            message: "Expected function to return a value".to_string(),
-                        })?;
+                let return_value = call_site.try_as_basic_value().left().ok_or_else(|| {
+                    CodeGenError::InternalError {
+                        message: "Expected function to return a value".to_string(),
+                    }
+                })?;
                 self.store_value(id, return_value);
             }
             None => {
@@ -844,7 +851,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             .llvm_blocks
             .borrow()
             .get(&target_block)
-            .expect("target block should exist");
+            .ok_or_else(|| CodeGenError::InternalError {
+                message: format!("Target block {} not found", target_block.0),
+            })?;
         self.builder.build_unconditional_branch(target_bb)?;
         Ok(())
     }
@@ -855,17 +864,17 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         then_block: BlockId,
         else_block: BlockId,
     ) -> Result<(), CodeGenError> {
-        let condition_value = self.get_bool_value(condition);
-        let then_bb = *self
-            .llvm_blocks
-            .borrow()
-            .get(&then_block)
-            .expect("then block should exist");
-        let else_bb = *self
-            .llvm_blocks
-            .borrow()
-            .get(&else_block)
-            .expect("else block should exist");
+        let condition_value = self.get_bool_value(condition)?;
+        let then_bb = *self.llvm_blocks.borrow().get(&then_block).ok_or_else(|| {
+            CodeGenError::InternalError {
+                message: format!("Then block {} not found", then_block.0),
+            }
+        })?;
+        let else_bb = *self.llvm_blocks.borrow().get(&else_block).ok_or_else(|| {
+            CodeGenError::InternalError {
+                message: format!("Else block {} not found", else_block.0),
+            }
+        })?;
 
         self.builder
             .build_conditional_branch(condition_value, then_bb, else_bb)?;
@@ -899,7 +908,7 @@ impl<'c, 'm, 'm2> LlvmGenerator<'c, 'm, 'm2> {
     fn generate(&self) -> Result<Module<'c>, CodeGenError> {
         let llvm_module = self
             .context
-            .create_module(resolve_string_id(self.ir_module.name).expect("module name"));
+            .create_module(safe_resolve_string_id(self.ir_module.name)?);
 
         // Pass 1: Declare all functions
         let mut declared_functions = Vec::new();
