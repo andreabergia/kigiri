@@ -351,9 +351,11 @@ fn parse_statement<'a>(
         }
         Rule::ifStatement => parse_if_statement(ast_allocator, pair),
         Rule::whileStatement => parse_while_statement(ast_allocator, pair),
+        Rule::breakStatement => Ok(ast_allocator.statement_break()),
+        Rule::continueStatement => Ok(ast_allocator.statement_continue()),
         rule => Err(ParseError::InternalError {
             message: format!(
-                "expected letStatement, assignmentStatement, returnStatement, expression, ifStatement, or whileStatement, but found {:?}",
+                "expected letStatement, assignmentStatement, returnStatement, expression, ifStatement, whileStatement, breakStatement, or continueStatement, but found {:?}",
                 rule
             ),
         }),
@@ -750,6 +752,52 @@ x = (- x 1i);
 }"
     );
 
+    test_block!(
+        statement_break_simple,
+        r"{
+    break;
+}",
+        r"{ #0
+break;
+}"
+    );
+
+    test_block!(
+        statement_continue_simple,
+        r"{
+    continue;
+}",
+        r"{ #0
+continue;
+}"
+    );
+
+    test_block!(
+        statement_break_continue_in_while,
+        r"{
+    while x > 0 {
+        if x == 5 {
+            break;
+        }
+        if x % 2 == 0 {
+            continue;
+        }
+        x = x - 1;
+    }
+}",
+        r"{ #0
+while (> x 0i) { #1
+if (== x 5i) { #2
+break;
+}
+if (== (% x 2i) 0i) { #3
+continue;
+}
+x = (- x 1i);
+}
+}"
+    );
+
     #[test]
     fn module_fn_with_return_type() {
         let ast_allocator = ParsedAstAllocator::default();
@@ -828,6 +876,47 @@ fn b(
 }
 }
 "
+        );
+    }
+
+    #[test]
+    fn break_continue_ast() {
+        let ast_allocator = ParsedAstAllocator::default();
+        let module = parse(
+            &ast_allocator,
+            "test_break_continue",
+            r"fn test_while() {
+                while x > 0 {
+                    if x == 5 {
+                        break;
+                    }
+                    if x % 2 == 0 {
+                        continue;
+                    }
+                    x = x - 1;
+                }
+            }",
+        )
+        .expect("parse should succeed");
+
+        assert_eq!(
+            module.to_string(),
+            r#"module test_break_continue
+
+fn test_while(
+) -> void
+{ #0
+while (> x 0i) { #1
+if (== x 5i) { #2
+break;
+}
+if (== (% x 2i) 0i) { #3
+continue;
+}
+x = (- x 1i);
+}
+}
+"#
         );
     }
 }

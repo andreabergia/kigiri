@@ -376,6 +376,7 @@ impl<'a> TypeResolver {
 
                 statements.push(allocator.alloc(Statement::While(typed_while_statement)));
             }
+            Statement::Break | Statement::Continue => todo!(),
         };
         Ok(())
     }

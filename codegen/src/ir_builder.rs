@@ -200,6 +200,7 @@ impl<'i> FunctionIrBuilder<'i> {
             Statement::While(while_statement) => {
                 self.handle_while_statement(while_statement, symbol_table)
             }
+            Statement::Break | Statement::Continue => todo!(),
         }
     }
 

@@ -15,13 +15,15 @@ typeName = _{ identifier }
 
 block = { "{" ~ (statement | block)* ~ "}" }
 
-statement = { whileStatement | ifStatement | (letStatement | assignmentStatement | returnStatement | expression) ~ ";" }
+statement = { whileStatement | ifStatement | (letStatement | assignmentStatement | returnStatement | breakStatement | continueStatement | expression) ~ ";" }
 letStatement = { "let" ~ letStatementInitializer ~ ("," ~ letStatementInitializer )* }
 letStatementInitializer = { identifier ~ "=" ~ expression? }
 assignmentStatement = { identifier ~ "=" ~ expression }
 returnStatement = { "return" ~ expression? }
 ifStatement = { "if" ~ expression ~ block ~ ("else" ~ (ifStatement | block))? }
 whileStatement = { "while" ~ expression ~ block }
+breakStatement = { "break" }
+continueStatement = { "continue" }
 
 expression = { prefix? ~ factor ~ (infix ~ prefix? ~ factor )* }
 // Note: the order here is important, since some rules are a prefix of others. In particular, exp needs to come

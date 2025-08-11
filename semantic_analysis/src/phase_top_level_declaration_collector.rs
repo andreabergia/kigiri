@@ -158,6 +158,7 @@ impl<'a> TopLevelDeclarationCollector {
                 });
                 Statement::While(mapped_while_statement)
             }
+            Statement::Break | Statement::Continue => todo!(),
         }))
     }
 

@@ -8,3 +8,6 @@ kigiri_memory = { path = "../kigiri_memory" }
 pest = { workspace = true }
 pest_derive = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

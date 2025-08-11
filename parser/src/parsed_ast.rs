@@ -305,4 +305,12 @@ impl ParsedAstAllocator {
         let while_statement = self.allocator.alloc(WhileStatement { condition, body });
         self.allocator.alloc(Statement::While(while_statement))
     }
+
+    pub fn statement_break(&self) -> &Statement<PhaseParsed> {
+        self.allocator.alloc(Statement::Break)
+    }
+
+    pub fn statement_continue(&self) -> &Statement<PhaseParsed> {
+        self.allocator.alloc(Statement::Continue)
+    }
 }

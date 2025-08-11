@@ -71,6 +71,8 @@ pub enum Statement<'a, Phase: CompilationPhase> {
     },
     If(&'a IfStatement<'a, Phase>),
     While(&'a WhileStatement<'a, Phase>),
+    Break,
+    Continue,
 }
 
 #[derive(Debug, PartialEq)]
@@ -279,6 +281,12 @@ impl Display for Statement<'_, PhaseParsed<'_>> {
             }
             Statement::While(while_statement) => {
                 write!(f, "{}", while_statement)
+            }
+            Statement::Break => {
+                write!(f, "break;")
+            }
+            Statement::Continue => {
+                write!(f, "continue;")
             }
         }
     }
