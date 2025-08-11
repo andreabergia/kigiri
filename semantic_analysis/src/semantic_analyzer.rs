@@ -469,6 +469,13 @@ fn main(
         "symbol not found: \"a\""
     );
     test_ko!(
+        cannot_use_variable_just_declared_in_rhs,
+        r"fn test() {
+  let x = x + 1;
+}",
+        "symbol not found: \"x\""
+    );
+    test_ko!(
         function_not_found,
         r#"fn main() -> int {
   return f();
