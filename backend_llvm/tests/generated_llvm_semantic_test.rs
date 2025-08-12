@@ -335,3 +335,36 @@ fn multiply_by_addition(a: int, b: int) -> int {
         assert_eq!(fun.call(2, 7), 14);
     })
 }
+
+#[test]
+fn test_break_continue() {
+    let source = r"
+fn count_bits(a: int) -> int {
+    let n = 0;
+    let t = a;
+    while true {
+        if t == 0 {
+            break;
+        }
+        if (t & 1) == 1 {
+            n = n + 1;
+        }
+        t = t >> 1;
+    }
+    return n;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn(i64) -> i64;
+        let fun: JitFunction<F> = jit_engine
+            .get_function("count_bits")
+            .expect("find function");
+
+        assert_eq!(fun.call(0), 0);
+        assert_eq!(fun.call(1), 1);
+        assert_eq!(fun.call(2), 1);
+        assert_eq!(fun.call(3), 2);
+        assert_eq!(fun.call(4), 1);
+        assert_eq!(fun.call(5), 2);
+        assert_eq!(fun.call(7), 3);
+    })
+}

@@ -1462,4 +1462,103 @@ mod tests {
         }
         "#);
     }
+
+    #[test]
+    fn test_break_in_while_loop() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test() {
+                while true {
+                    break;
+                }
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define void @test() {
+        bb0:
+          br label %bb1
+
+        bb1:                                              ; preds = %bb0
+          br i1 true, label %bb2, label %bb3
+
+        bb2:                                              ; preds = %bb1
+          br label %bb3
+
+        bb3:                                              ; preds = %bb2, %bb1
+          ret void
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_continue_in_while_loop() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test() {
+                while true {
+                    continue;
+                }
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define void @test() {
+        bb0:
+          br label %bb1
+
+        bb1:                                              ; preds = %bb2, %bb0
+          br i1 true, label %bb2, label %bb3
+
+        bb2:                                              ; preds = %bb1
+          br label %bb1
+
+        bb3:                                              ; preds = %bb1
+          ret void
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_nested_loops_with_break_continue() {
+        let llvm_ir = compile_function_to_llvm(
+            r"fn test() {
+                while true {
+                    while true {
+                        break;
+                    }
+                    continue;
+                }
+            }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define void @test() {
+        bb0:
+          br label %bb1
+
+        bb1:                                              ; preds = %bb6, %bb0
+          br i1 true, label %bb2, label %bb3
+
+        bb2:                                              ; preds = %bb1
+          br label %bb4
+
+        bb4:                                              ; preds = %bb2
+          br i1 true, label %bb5, label %bb6
+
+        bb5:                                              ; preds = %bb4
+          br label %bb6
+
+        bb6:                                              ; preds = %bb5, %bb4
+          br label %bb1
+
+        bb3:                                              ; preds = %bb1
+          ret void
+        }
+        "#);
+    }
 }

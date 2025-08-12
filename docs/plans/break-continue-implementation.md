@@ -94,6 +94,13 @@
    - Complete compilation pipeline working: Parser → Semantic Analysis → IR Generation → LLVM Backend
    - Runtime behavior verified through existing LLVM backend infrastructure
 
+3. **✅ LLVM Backend Test Coverage** (backend_llvm/src/ir_to_llvm.rs:1466-1601):
+   - Added simple break/continue tests to verify LLVM code generation
+   - `test_break_in_while_loop` - Tests `while true { break; }` generates correct unconditional branch to exit
+   - `test_continue_in_while_loop` - Tests `while true { continue; }` generates correct branch back to condition
+   - `test_nested_loops_with_break_continue` - Tests nested loops with break in inner and continue in outer
+   - All tests generate clean, minimal LLVM IR demonstrating correct jump targeting
+
 ## Key Implementation Notes
 
 - **Industry Standard Approach**: Uses basic Jump instructions following the same pattern as LLVM IR, Clang, Rust, Go, and other major compilers
@@ -127,10 +134,12 @@ The break/continue implementation is now **fully complete** and working across t
 - **Clean architecture** with minimal code changes leveraging existing infrastructure
 
 ### ✅ **Test Coverage**:
-- Simple break/continue in while loops
-- Nested loops with proper loop-level targeting  
-- Error cases for break/continue outside loop context
-- Integration with if statements and complex expressions
-- End-to-end compilation pipeline verification
+- **Parser Level**: Break/continue statement parsing and AST generation
+- **Semantic Analysis**: Loop context validation and error handling for invalid usage
+- **IR Generation**: Jump instruction generation with correct loop targeting
+- **LLVM Backend**: Clean LLVM IR generation with proper basic block structure
+- **Nested Loops**: Proper targeting of innermost enclosing loop
+- **Error Cases**: Break/continue outside loop context with clear error messages
+- **End-to-end compilation**: Complete pipeline from source to executable LLVM IR
 
 **The break/continue feature is production-ready and follows established compiler design patterns.** 🎉

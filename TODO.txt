@@ -14,8 +14,9 @@ Main
 
 Misc
 - [ ] short circuit booleans
-- [ ] break/continue in loops
 - [ ] for loop
 - [ ] for/else like in python?
 - [ ] loop (infinite)
 - [ ] warn/err about unreachable code
+- [ ] fix assignment of parameter inside loop
+- [X] break/continue in loops
