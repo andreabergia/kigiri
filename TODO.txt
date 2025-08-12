@@ -1,8 +1,14 @@
 Language as a whole
 - [ ] cast
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
-- [ ] verify functions have a return on all paths, with a coherent type
 - [ ] keep track of mutable/immutable variables
+- [ ] verify functions have a return on all paths, with a coherent type
+- [ ] short circuit booleans
+- [ ] for loop
+- [ ] for/else like in python?
+- [ ] loop (infinite)
+- [ ] warn/err about unreachable code
+- [ ] fix assignment of parameter inside loop
 
 Semantic analysis
 
@@ -11,12 +17,3 @@ LLVM backend
 Main
 - [ ] create a main crate with clap and able to generate binary, or bytecode
 - [ ] optimizations
-
-Misc
-- [ ] short circuit booleans
-- [ ] for loop
-- [ ] for/else like in python?
-- [ ] loop (infinite)
-- [ ] warn/err about unreachable code
-- [ ] fix assignment of parameter inside loop
-- [X] break/continue in loops
