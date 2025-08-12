@@ -18,3 +18,4 @@ Misc
 - [ ] for loop
 - [ ] for/else like in python?
 - [ ] loop (infinite)
+- [ ] warn/err about unreachable code

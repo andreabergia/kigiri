@@ -9,17 +9,24 @@ use parser::{
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
 use std::cell::RefCell;
 
+struct BreakContinueTarget {
+    break_target: BlockId,
+    continue_target: BlockId,
+}
+
 struct FunctionIrBuilder<'i> {
     ir_allocator: &'i IrAllocator,
     pub(crate) first_bb: &'i BasicBlock<'i>,
     current_bb: RefCell<&'i BasicBlock<'i>>,
     basic_blocks: RefCell<BumpVec<'i, &'i BasicBlock<'i>>>,
+    break_continue_target: RefCell<Option<BreakContinueTarget>>,
 }
 
 #[derive(Debug, PartialEq)]
 enum FoundReturn {
     Yes,
     No,
+    BreakOrContinue,
 }
 
 impl FoundReturn {
@@ -28,6 +35,10 @@ impl FoundReturn {
             (FoundReturn::Yes, FoundReturn::Yes) => FoundReturn::Yes,
             _ => FoundReturn::No,
         }
+    }
+
+    fn terminates_control_flow(&self) -> bool {
+        matches!(self, FoundReturn::Yes | FoundReturn::BreakOrContinue)
     }
 }
 
@@ -43,6 +54,7 @@ impl<'i> FunctionIrBuilder<'i> {
             first_bb: basic_block,
             current_bb: RefCell::new(basic_block),
             basic_blocks: RefCell::new(basic_blocks),
+            break_continue_target: RefCell::new(None),
         }
     }
 
@@ -103,13 +115,13 @@ impl<'i> FunctionIrBuilder<'i> {
     }
 
     fn handle_block(&self, block: &Block<PhaseTypeResolved>) -> CodegenResult<FoundReturn> {
-        let mut found_return = FoundReturn::No;
         for statement in &block.statements {
-            if self.handle_statement(statement, block.symbol_table)? == FoundReturn::Yes {
-                found_return = FoundReturn::Yes;
+            let statement_result = self.handle_statement(statement, block.symbol_table)?;
+            if statement_result.terminates_control_flow() {
+                return Ok(statement_result);
             }
         }
-        Ok(found_return)
+        Ok(FoundReturn::No)
     }
 
     fn handle_statement(
@@ -200,7 +212,28 @@ impl<'i> FunctionIrBuilder<'i> {
             Statement::While(while_statement) => {
                 self.handle_while_statement(while_statement, symbol_table)
             }
-            Statement::Break | Statement::Continue => todo!(),
+            Statement::Break => {
+                let loop_targets = self.break_continue_target.borrow();
+                let targets = loop_targets
+                    .as_ref()
+                    .ok_or_else(|| CodegenError::InternalError {
+                        message: "break statement outside of loop context".to_string(),
+                    })?;
+                let jump_instruction = self.ir_allocator.new_jump(targets.break_target);
+                self.push_to_current_bb(jump_instruction);
+                Ok(FoundReturn::BreakOrContinue)
+            }
+            Statement::Continue => {
+                let loop_targets = self.break_continue_target.borrow();
+                let targets = loop_targets
+                    .as_ref()
+                    .ok_or_else(|| CodegenError::InternalError {
+                        message: "continue statement outside of loop context".to_string(),
+                    })?;
+                let jump_instruction = self.ir_allocator.new_jump(targets.continue_target);
+                self.push_to_current_bb(jump_instruction);
+                Ok(FoundReturn::BreakOrContinue)
+            }
         }
     }
 
@@ -388,6 +421,14 @@ impl<'i> FunctionIrBuilder<'i> {
         let body_block = self.create_basic_block();
         let merge_block = self.create_basic_block_deferred();
 
+        // Set up loop targets for break/continue statements
+        let old_loop_targets = self
+            .break_continue_target
+            .replace(Some(BreakContinueTarget {
+                break_target: merge_block.id,
+                continue_target: condition_block.id,
+            }));
+
         self.push_to_current_bb(self.ir_allocator.new_jump(condition_block.id));
 
         // Condition block
@@ -402,13 +443,14 @@ impl<'i> FunctionIrBuilder<'i> {
         // Body block
         self.switch_to_basic_block(body_block);
         let body_has_return = self.handle_block(while_statement.body)?;
-        if body_has_return == FoundReturn::No {
+        if !body_has_return.terminates_control_flow() {
             self.push_to_current_bb(self.ir_allocator.new_jump(condition_block.id));
         }
 
         // Merge block
         self.add_basic_block(merge_block);
         self.switch_to_basic_block(merge_block);
+        self.break_continue_target.replace(old_loop_targets);
 
         Ok(FoundReturn::No) // While loops don't guarantee returns
     }
@@ -420,7 +462,7 @@ impl<'i> FunctionIrBuilder<'i> {
         merge_block_id: BlockId,
     ) -> CodegenResult<FoundReturn> {
         let found_return = self.handle_block(block)?;
-        if found_return == FoundReturn::No {
+        if !found_return.terminates_control_flow() {
             let jump_instruction = self.ir_allocator.new_jump(merge_block_id);
             self.push_to_current_bb(jump_instruction);
         }
@@ -1092,6 +1134,165 @@ fn test(
   { #3
     00022 i loadvar sum
     00023 i ret @22
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        break_in_while_loop,
+        r"fn test() -> int {
+    let x = 0;
+    while (x < 10) {
+        if (x == 5) {
+            break;
+        }
+        x = x + 1;
+    }
+    return x;
+}",
+        r"module test
+
+fn test(
+) -> i {
+  entry_block: #0
+  { #0
+    var x: int
+    00000 i const 0i
+    00001 i let x = @0
+    00002 v jmp #1
+  }
+  { #1
+    00003 i loadvar x
+    00004 i const 10i
+    00005 b lt @3, @4
+    00006 v br @5, #2, #3
+  }
+  { #2
+    00007 i loadvar x
+    00008 i const 5i
+    00009 b eq @7, @8
+    00010 v br @9, #5, #4
+  }
+  { #5
+    00011 v jmp #3
+  }
+  { #4
+    00012 i loadvar x
+    00013 i const 1i
+    00014 i add @12, @13
+    00015 i storevar x = @14
+    00016 v jmp #1
+  }
+  { #3
+    00017 i loadvar x
+    00018 i ret @17
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        continue_in_while_loop,
+        r"fn test() -> int {
+    let x = 0;
+    let count = 0;
+    while (x < 10) {
+        x = x + 1;
+        if (x % 2 == 0) {
+            continue;
+        }
+        count = count + 1;
+    }
+    return count;
+}",
+        r"module test
+
+fn test(
+) -> i {
+  entry_block: #0
+  { #0
+    var x: int
+    var count: int
+    00000 i const 0i
+    00001 i let x = @0
+    00002 i const 0i
+    00003 i let count = @2
+    00004 v jmp #1
+  }
+  { #1
+    00005 i loadvar x
+    00006 i const 10i
+    00007 b lt @5, @6
+    00008 v br @7, #2, #3
+  }
+  { #2
+    00009 i loadvar x
+    00010 i const 1i
+    00011 i add @9, @10
+    00012 i storevar x = @11
+    00013 i loadvar x
+    00014 i const 2i
+    00015 i rem @13, @14
+    00016 i const 0i
+    00017 b eq @15, @16
+    00018 v br @17, #5, #4
+  }
+  { #5
+    00019 v jmp #1
+  }
+  { #4
+    00020 i loadvar count
+    00021 i const 1i
+    00022 i add @20, @21
+    00023 i storevar count = @22
+    00024 v jmp #1
+  }
+  { #3
+    00025 i loadvar count
+    00026 i ret @25
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        nested_loops_with_break_continue,
+        r"fn test() {
+    while true {
+        while true {
+            break;
+        }
+        continue;
+    }
+}",
+        r"module test
+
+fn test(
+) -> void {
+  entry_block: #0
+  { #0
+    00000 v jmp #1
+  }
+  { #1
+    00001 b const true
+    00002 v br @1, #2, #3
+  }
+  { #2
+    00003 v jmp #4
+  }
+  { #4
+    00004 b const true
+    00005 v br @4, #5, #6
+  }
+  { #5
+    00006 v jmp #6
+  }
+  { #6
+    00007 v jmp #1
+  }
+  { #3
+    00008 v ret
   }
 }
 "
