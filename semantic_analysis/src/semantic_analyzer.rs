@@ -71,6 +71,10 @@ pub enum SemanticAnalysisError {
     IfConditionMustBeBool { actual_type: String },
     #[error("while condition must be of type bool, found {actual_type}")]
     WhileConditionMustBeBool { actual_type: String },
+    #[error("break statement outside of loop")]
+    BreakOutsideLoop,
+    #[error("continue statement outside of loop")]
+    ContinueOutsideLoop,
     #[error("internal error: {message}")]
     InternalError { message: String },
 }
@@ -795,6 +799,112 @@ fn test(
   }
 }",
         "while condition must be of type bool, found int"
+    );
+
+    // Break and continue statement tests
+    test_ok!(
+        break_in_while_loop,
+        r"fn test() {
+  while true {
+    break;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  while true { #1
+    break;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        continue_in_while_loop,
+        r"fn test() {
+  while true {
+    continue;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  while true { #1
+    continue;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        break_and_continue_in_nested_blocks,
+        r"fn test() {
+  while true {
+    if true {
+      break;
+    } else {
+      continue;
+    }
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  while true { #1
+    if true { #2
+      break;
+    }
+    else { #3
+      continue;
+    }
+  }
+}
+
+"
+    );
+
+    test_ko!(
+        break_outside_loop,
+        r"fn test() {
+  break;
+}",
+        "break statement outside of loop"
+    );
+
+    test_ko!(
+        continue_outside_loop,
+        r"fn test() {
+  continue;
+}",
+        "continue statement outside of loop"
+    );
+
+    test_ko!(
+        break_in_if_outside_loop,
+        r"fn test() {
+  if true {
+    break;
+  }
+}",
+        "break statement outside of loop"
+    );
+
+    test_ko!(
+        continue_in_if_outside_loop,
+        r"fn test() {
+  if true {
+    continue;
+  }
+}",
+        "continue statement outside of loop"
     );
 
     // TODO: all return match expected type? here or in separate pass?

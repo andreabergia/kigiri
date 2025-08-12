@@ -125,7 +125,7 @@ impl<'a> TypeResolver {
                 message: "failed to find function signature that was just created".to_string(),
             })?;
 
-        let body = Self::analyze_block(allocator, function.body, symbol_table)?;
+        let body = Self::analyze_block(allocator, function.body, symbol_table, false)?;
 
         Ok(allocator.alloc(FunctionDeclaration {
             signature,
@@ -138,10 +138,17 @@ impl<'a> TypeResolver {
         allocator: &'a AstAllocator,
         block: &Block<PhaseTopLevelDeclarationCollected>,
         parent_symbol_table: &'a SymbolTable<'a>,
+        in_loop: bool,
     ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut statements = allocator.new_bump_vec_with_capacity(block.statements.len());
         for statement in &block.statements {
-            Self::analyze_statement(allocator, statement, &mut statements, parent_symbol_table)?;
+            Self::analyze_statement(
+                allocator,
+                statement,
+                &mut statements,
+                parent_symbol_table,
+                in_loop,
+            )?;
         }
         Ok(allocator.alloc(Block {
             id: block.id,
@@ -155,6 +162,7 @@ impl<'a> TypeResolver {
         statement: &Statement<PhaseTopLevelDeclarationCollected>,
         statements: &mut BumpVec<'a, &'a Statement<'a, PhaseTypeResolved<'a>>>,
         symbol_table: &'a SymbolTable<'a>,
+        in_loop: bool,
     ) -> Result<(), SemanticAnalysisError> {
         match statement {
             Statement::Let { initializers } => {
@@ -293,7 +301,8 @@ impl<'a> TypeResolver {
             }
             Statement::NestedBlock { block } => {
                 let nested_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_block = Self::analyze_block(allocator, block, nested_symbol_table)?;
+                let typed_block =
+                    Self::analyze_block(allocator, block, nested_symbol_table, in_loop)?;
                 statements.push(allocator.alloc(Statement::NestedBlock { block: typed_block }));
             }
             Statement::If(if_statement) => {
@@ -320,8 +329,12 @@ impl<'a> TypeResolver {
 
                 // Type check the then block
                 let then_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_then_block =
-                    Self::analyze_block(allocator, if_statement.then_block, then_symbol_table)?;
+                let typed_then_block = Self::analyze_block(
+                    allocator,
+                    if_statement.then_block,
+                    then_symbol_table,
+                    in_loop,
+                )?;
 
                 // Type check the else block if present
                 let typed_else_block = if let Some(else_block) = if_statement.else_block {
@@ -329,6 +342,7 @@ impl<'a> TypeResolver {
                         allocator,
                         else_block,
                         symbol_table,
+                        in_loop,
                     )?)
                 } else {
                     None
@@ -364,10 +378,10 @@ impl<'a> TypeResolver {
                     }
                 }
 
-                // Type check the body block
+                // Type check the body block - note that we're now in a loop
                 let body_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
                 let typed_body =
-                    Self::analyze_block(allocator, while_statement.body, body_symbol_table)?;
+                    Self::analyze_block(allocator, while_statement.body, body_symbol_table, true)?;
 
                 let typed_while_statement = allocator.alloc(WhileStatement {
                     condition: typed_condition,
@@ -376,7 +390,18 @@ impl<'a> TypeResolver {
 
                 statements.push(allocator.alloc(Statement::While(typed_while_statement)));
             }
-            Statement::Break | Statement::Continue => todo!(),
+            Statement::Break => {
+                if !in_loop {
+                    return Err(SemanticAnalysisError::BreakOutsideLoop);
+                }
+                statements.push(allocator.alloc(Statement::Break));
+            }
+            Statement::Continue => {
+                if !in_loop {
+                    return Err(SemanticAnalysisError::ContinueOutsideLoop);
+                }
+                statements.push(allocator.alloc(Statement::Continue));
+            }
         };
         Ok(())
     }
@@ -385,11 +410,13 @@ impl<'a> TypeResolver {
         allocator: &'a AstAllocator,
         else_block: &IfElseBlock<PhaseTopLevelDeclarationCollected>,
         symbol_table: &'a SymbolTable<'a>,
+        in_loop: bool,
     ) -> Result<&'a IfElseBlock<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         match else_block {
             IfElseBlock::Block(block) => {
                 let else_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_block = Self::analyze_block(allocator, block, else_symbol_table)?;
+                let typed_block =
+                    Self::analyze_block(allocator, block, else_symbol_table, in_loop)?;
                 Ok(allocator.alloc(IfElseBlock::Block(typed_block)))
             }
             IfElseBlock::If(if_statement) => {
@@ -415,12 +442,13 @@ impl<'a> TypeResolver {
                 }
 
                 let analyzed_then_block =
-                    Self::analyze_block(allocator, if_statement.then_block, symbol_table)?;
+                    Self::analyze_block(allocator, if_statement.then_block, symbol_table, in_loop)?;
                 let analyzed_else_block = if let Some(else_block) = if_statement.else_block {
                     Some(Self::analyze_if_else_block(
                         allocator,
                         else_block,
                         symbol_table,
+                        in_loop,
                     )?)
                 } else {
                     None

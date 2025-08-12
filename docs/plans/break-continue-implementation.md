@@ -31,28 +31,33 @@
 
 **Result**: Parser now successfully parses `break;` and `continue;` statements into appropriate AST nodes.
 
-### 🔄 Phase 2: Semantic Analysis Changes (READY)
-**Current Status**: Project compiles with `todo!()` placeholders in place
+### ✅ Phase 2: Semantic Analysis Changes (COMPLETED)
 
-1. **Replace todo!() placeholders with proper implementation**:
-   - `semantic_analysis/src/ast_typed.rs:230` - Implement Break/Continue cases
-   - `semantic_analysis/src/phase_top_level_declaration_collector.rs:106` - Implement Break/Continue cases  
-   - `semantic_analysis/src/phase_type_resolver.rs:159` - Implement Break/Continue cases
+1. **✅ Replaced todo!() placeholders with proper implementation**:
+   - `semantic_analysis/src/ast_typed.rs:285-290` - Fixed Display implementation for Break/Continue
+   - `semantic_analysis/src/phase_top_level_declaration_collector.rs:161-162` - Pass through Break/Continue statements
+   - `semantic_analysis/src/phase_type_resolver.rs:393-404` - Validate break/continue within loop context
 
-2. **Loop context tracking** (semantic_analysis/src/phase_type_resolver.rs):
-   - Add `LoopContext` struct to track current loop state
-   - Modify `analyze_statement` to push/pop loop context during while analysis
-   - Add validation for break/continue only within loops
+2. **✅ Loop context tracking** (semantic_analysis/src/phase_type_resolver.rs):
+   - Added `in_loop: bool` parameter to `analyze_block()`, `analyze_statement()`, and `analyze_if_else_block()` methods
+   - Function bodies start with `in_loop: false` (line 128)
+   - While statement analysis passes `in_loop: true` when analyzing body blocks (line 411)
+   - Loop context propagated through nested blocks (line 328) and if/else statements (lines 363, 373, 444, 488, 494)
 
-3. **Error handling** (semantic_analysis/src/semantic_analyzer.rs):
-   - Add `BreakOutsideLoop` and `ContinueOutsideLoop` error variants
+3. **✅ Error handling** (semantic_analysis/src/semantic_analyzer.rs:74-77):
+   - Added `BreakOutsideLoop` and `ContinueOutsideLoop` error variants with proper error messages
 
-4. **Testing Phase 2**:
-   - Unit tests for semantic validation (break/continue inside/outside loops)
-   - Error message tests for invalid usage
-   - Integration tests combining parser + semantic analysis
+4. **✅ Testing Phase 2** (semantic_analysis/src/semantic_analyzer.rs:804-906):
+   - Added comprehensive test cases for break/continue validation:
+     - `break_in_while_loop` - Valid break inside while loop
+     - `continue_in_while_loop` - Valid continue inside while loop  
+     - `break_and_continue_in_nested_blocks` - Valid usage in nested if/else within while
+     - `break_outside_loop` - Error case for break outside loop
+     - `continue_outside_loop` - Error case for continue outside loop
+     - `break_in_if_outside_loop` - Error case for break in if statement outside loop
+     - `continue_in_if_outside_loop` - Error case for continue in if statement outside loop
 
-### 📋 Phase 3: IR Generation Changes (PLANNED)  
+### 🔄 Phase 3: IR Generation Changes (READY)  
 1. **Replace todo!() placeholders** (codegen/src/ir_builder.rs):
    - Implement Break/Continue cases in statement handling
 
@@ -99,10 +104,17 @@
 ## Progress Summary
 
 - **✅ Phase 1 (Parser)**: Complete - Successfully parses break/continue statements
-- **🔄 Phase 2 (Semantic Analysis)**: Ready to start - Replace `todo!()` placeholders  
-- **📋 Phase 3 (IR Generation)**: Waiting for Phase 2 completion
+- **✅ Phase 2 (Semantic Analysis)**: Complete - Loop context tracking and validation implemented
+- **🔄 Phase 3 (IR Generation)**: Ready to start - Replace `todo!()` placeholders in codegen
 - **📋 Phase 4 (LLVM Backend)**: Waiting for Phase 3 completion
 
 ## Current Status
 
-The project compiles successfully with `todo!()` placeholders handling the new Break/Continue AST variants across all compilation phases. Phase 2 (Semantic Analysis) is ready to be implemented by replacing these placeholders with proper logic.
+Phase 2 (Semantic Analysis) has been completed successfully. The implementation uses a clean approach:
+
+- **Loop context tracking**: Added `in_loop: bool` parameter to core analysis methods, avoiding complex state management
+- **Simple propagation**: Function bodies start with `in_loop: false`, while loop bodies use `in_loop: true`
+- **Semantic validation**: Break and continue statements validated at lines 393-404 with clear error handling
+- **Comprehensive testing**: 7 new test cases covering valid and invalid usage scenarios
+
+The semantic analysis correctly validates break/continue statements and passes all tests. The implementation is simpler than originally planned, avoiding the need for dedicated context tracking structures. Phase 3 (IR Generation) is ready to begin.
