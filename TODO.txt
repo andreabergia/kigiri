@@ -7,6 +7,11 @@ Language as a whole
 - [ ] for/else like in python?
 - [ ] warn/err about unreachable code
 - [ ] fix assignment of parameter inside loop
+- [ ] struct
+- [ ] array
+- [ ] comptime
+- [ ] generics
+- [ ] import, exports, etc
 - [x] loop (infinite)
 - [x] short circuit booleans
 
