@@ -1097,14 +1097,23 @@ mod tests {
         define i1 @use_var() {
         bb0:
           %x = alloca i1, align 1
+          %"$temp0" = alloca i1, align 1
           %y = alloca i1, align 1
           store i1 false, ptr %x, align 1
-          store i1 true, ptr %y, align 1
-          %load_4 = load i1, ptr %y, align 1
-          %load_5 = load i1, ptr %x, align 1
-          %not_6 = xor i1 %load_5, true
-          %and_7 = and i1 %load_4, %not_6
-          ret i1 %and_7
+          store i1 true, ptr %"$temp0", align 1
+          %load_4 = load i1, ptr %"$temp0", align 1
+          store i1 %load_4, ptr %x, align 1
+          br i1 %load_4, label %bb1, label %bb2
+
+        bb1:                                              ; preds = %bb0
+          %load_7 = load i1, ptr %x, align 1
+          %not_8 = xor i1 %load_7, true
+          store i1 %not_8, ptr %x, align 1
+          br label %bb2
+
+        bb2:                                              ; preds = %bb1, %bb0
+          %load_11 = load i1, ptr %x, align 1
+          ret i1 %load_11
         }
         "#);
     }

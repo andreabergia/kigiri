@@ -1,10 +1,10 @@
 use crate::ir::{BasicBlock, Function, FunctionArgument, Instruction, IrAllocator, Module};
 use crate::{CodegenError, CodegenResult, FunctionSignature, ir};
 use ir::Variable;
-use kigiri_memory::BumpVec;
+use kigiri_memory::{BumpVec, intern_string};
 use parser::{
-    Block, BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement, Statement,
-    WhileStatement,
+    BinaryOperator, Block, BlockId, Expression, FunctionDeclaration, IfElseBlock, IfStatement,
+    Statement, WhileStatement,
 };
 use semantic_analysis::{PhaseTypeResolved, Symbol, SymbolKind, SymbolTable, Type, VariableIndex};
 use std::cell::RefCell;
@@ -20,6 +20,7 @@ struct FunctionIrBuilder<'i> {
     current_bb: RefCell<&'i BasicBlock<'i>>,
     basic_blocks: RefCell<BumpVec<'i, &'i BasicBlock<'i>>>,
     break_continue_target: RefCell<Option<BreakContinueTarget>>,
+    temp_variable_counter: RefCell<usize>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -55,6 +56,7 @@ impl<'i> FunctionIrBuilder<'i> {
             current_bb: RefCell::new(basic_block),
             basic_blocks: RefCell::new(basic_blocks),
             break_continue_target: RefCell::new(None),
+            temp_variable_counter: RefCell::new(0),
         }
     }
 
@@ -295,18 +297,119 @@ impl<'i> FunctionIrBuilder<'i> {
                 left,
                 right,
             } => {
-                let left_instruction = self.handle_expression(left, symbol_table)?;
-                let right_instruction = self.handle_expression(right, symbol_table)?;
+                match operator {
+                    BinaryOperator::And => {
+                        // Short-circuit AND: if left is false, result is false without evaluating right
 
-                let instruction = self.ir_allocator.new_binary(
-                    operator.clone(),
-                    result_type,
-                    operand_type,
-                    left_instruction,
-                    right_instruction,
-                )?;
-                self.push_to_current_bb(instruction);
-                Ok(instruction)
+                        // Evaluate left operand
+                        let temp_var = self.create_temp_variable(Type::Bool)?;
+                        let left_instruction = self.handle_expression(left, symbol_table)?;
+                        let store_left = self.ir_allocator.new_store(
+                            temp_var.name,
+                            temp_var.variable_type,
+                            temp_var.index,
+                            left_instruction,
+                        );
+                        self.push_to_current_bb(store_left);
+
+                        // Branch on left result: if true, evaluate right; if false, skip to end
+                        let right_block = self.create_basic_block();
+                        let end_block = self.create_basic_block();
+                        let branch = self.ir_allocator.new_branch(
+                            left_instruction,
+                            right_block.id,
+                            end_block.id,
+                        );
+                        self.push_to_current_bb(branch);
+
+                        // Right evaluation block
+                        self.switch_to_basic_block(right_block);
+                        let right_instruction = self.handle_expression(right, symbol_table)?;
+                        let store_right = self.ir_allocator.new_store(
+                            temp_var.name,
+                            temp_var.variable_type,
+                            temp_var.index,
+                            right_instruction,
+                        );
+                        self.push_to_current_bb(store_right);
+                        let jump_to_end = self.ir_allocator.new_jump(end_block.id);
+                        self.push_to_current_bb(jump_to_end);
+
+                        // End block - load final result
+                        self.switch_to_basic_block(end_block);
+                        let load_result = self.ir_allocator.new_load_var(
+                            temp_var.name,
+                            temp_var.variable_type,
+                            temp_var.index,
+                        );
+                        self.push_to_current_bb(load_result);
+
+                        Ok(load_result)
+                    }
+                    BinaryOperator::Or => {
+                        // Short-circuit OR: if left is true, result is true without evaluating right
+
+                        // Evaluate left operand
+                        let temp_var = self.create_temp_variable(Type::Bool)?;
+                        let left_instruction = self.handle_expression(left, symbol_table)?;
+                        let store_left = self.ir_allocator.new_store(
+                            temp_var.name,
+                            temp_var.variable_type,
+                            temp_var.index,
+                            left_instruction,
+                        );
+                        self.push_to_current_bb(store_left);
+
+                        // Branch on left result: if true, skip to end; if false, evaluate right
+                        let right_block = self.create_basic_block();
+                        let end_block = self.create_basic_block();
+                        let branch = self.ir_allocator.new_branch(
+                            left_instruction,
+                            end_block.id,
+                            right_block.id,
+                        );
+                        self.push_to_current_bb(branch);
+
+                        // Right evaluation block
+                        self.switch_to_basic_block(right_block);
+                        let right_instruction = self.handle_expression(right, symbol_table)?;
+                        let store_right = self.ir_allocator.new_store(
+                            temp_var.name,
+                            temp_var.variable_type,
+                            temp_var.index,
+                            right_instruction,
+                        );
+                        self.push_to_current_bb(store_right);
+                        let jump_to_end = self.ir_allocator.new_jump(end_block.id);
+                        self.push_to_current_bb(jump_to_end);
+
+                        // End block - load final result
+                        self.switch_to_basic_block(end_block);
+                        let load_result = self.ir_allocator.new_load_var(
+                            temp_var.name,
+                            temp_var.variable_type,
+                            temp_var.index,
+                        );
+                        self.push_to_current_bb(load_result);
+
+                        Ok(load_result)
+                    }
+                    _ => {
+                        // Handle other binary operators normally
+                        let left_instruction = self.handle_expression(left, symbol_table)?;
+                        let right_instruction = self.handle_expression(right, symbol_table)?;
+
+                        let instruction = self.ir_allocator.new_binary(
+                            operator.clone(),
+                            result_type,
+                            operand_type,
+                            left_instruction,
+                            right_instruction,
+                        )?;
+                        self.push_to_current_bb(instruction);
+                        Ok(instruction)
+                    }
+                }
             }
             Expression::FunctionCall {
                 name,
@@ -501,6 +604,25 @@ impl<'i> FunctionIrBuilder<'i> {
             self.push_to_current_bb(jump_instruction);
         }
         Ok(found_return)
+    }
+
+    fn create_temp_variable(&self, var_type: Type) -> CodegenResult<Variable> {
+        let index = *self.temp_variable_counter.borrow();
+        *self.temp_variable_counter.borrow_mut() = index + 1;
+
+        let variable = Variable {
+            index: VariableIndex::from(index),
+            name: intern_string(&format!("$temp{}", index)),
+            variable_type: var_type,
+        };
+
+        self.current_bb
+            .borrow()
+            .variables
+            .borrow_mut()
+            .push(variable);
+
+        Ok(variable)
     }
 
     fn create_basic_block(&self) -> &'i BasicBlock<'i> {
@@ -1403,6 +1525,68 @@ fn test(
   }
   { #2
     00002 v ret
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        short_circuit_and,
+        r"fn test(a: bool, b: bool) -> bool {
+    return a && b;
+}",
+        r"module test
+
+fn test(
+  a: bool,
+  b: bool,
+) -> b {
+  entry_block: #0
+  { #0
+    var $temp0: bool
+    00000 b loadarg a
+    00001 b storevar $temp0 = @0
+    00002 v br @0, #1, #2
+  }
+  { #1
+    00003 b loadarg b
+    00004 b storevar $temp0 = @3
+    00005 v jmp #2
+  }
+  { #2
+    00006 b loadvar $temp0
+    00007 b ret @6
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        short_circuit_or,
+        r"fn test(a: bool, b: bool) -> bool {
+    return a || b;
+}",
+        r"module test
+
+fn test(
+  a: bool,
+  b: bool,
+) -> b {
+  entry_block: #0
+  { #0
+    var $temp0: bool
+    00000 b loadarg a
+    00001 b storevar $temp0 = @0
+    00002 v br @0, #2, #1
+  }
+  { #1
+    00003 b loadarg b
+    00004 b storevar $temp0 = @3
+    00005 v jmp #2
+  }
+  { #2
+    00006 b loadvar $temp0
+    00007 b ret @6
   }
 }
 "

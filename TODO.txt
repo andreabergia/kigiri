@@ -3,12 +3,12 @@ Language as a whole
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
 - [ ] keep track of mutable/immutable variables
 - [ ] verify functions have a return on all paths, with a coherent type
-- [ ] short circuit booleans
 - [ ] for loop
 - [ ] for/else like in python?
 - [ ] warn/err about unreachable code
 - [ ] fix assignment of parameter inside loop
 - [x] loop (infinite)
+- [x] short circuit booleans
 
 Semantic analysis
 
