@@ -308,6 +308,20 @@ fn parse_while_statement<'a>(
     Ok(ast_allocator.statement_while(condition, body))
 }
 
+fn parse_loop_statement<'a>(
+    ast_allocator: &'a ParsedAstAllocator,
+    rule: Pair<'_, Rule>,
+) -> ParseResult<&'a Statement<'a, PhaseParsed<'a>>> {
+    let mut inner = rule.into_inner();
+    let body = parse_block(
+        ast_allocator,
+        inner.next().ok_or_else(|| ParseError::InternalError {
+            message: "expected loop body in loop statement".to_owned(),
+        })?,
+    )?;
+    Ok(ast_allocator.statement_loop(body))
+}
+
 fn parse_statement<'a>(
     ast_allocator: &'a ParsedAstAllocator,
     rule: Pair<'_, Rule>,
@@ -351,11 +365,12 @@ fn parse_statement<'a>(
         }
         Rule::ifStatement => parse_if_statement(ast_allocator, pair),
         Rule::whileStatement => parse_while_statement(ast_allocator, pair),
+        Rule::loopStatement => parse_loop_statement(ast_allocator, pair),
         Rule::breakStatement => Ok(ast_allocator.statement_break()),
         Rule::continueStatement => Ok(ast_allocator.statement_continue()),
         rule => Err(ParseError::InternalError {
             message: format!(
-                "expected letStatement, assignmentStatement, returnStatement, expression, ifStatement, whileStatement, breakStatement, or continueStatement, but found {:?}",
+                "expected letStatement, assignmentStatement, returnStatement, expression, ifStatement, whileStatement, loopStatement, breakStatement, or continueStatement, but found {:?}",
                 rule
             ),
         }),
@@ -794,6 +809,20 @@ if (== (% x 2i) 0i) { #3
 continue;
 }
 x = (- x 1i);
+}
+}"
+    );
+
+    test_block!(
+        statement_loop,
+        r"{
+    loop {
+        x = x + 1;
+    }
+}",
+        r"{ #0
+loop { #1
+x = (+ x 1i);
 }
 }"
     );

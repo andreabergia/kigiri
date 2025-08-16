@@ -368,3 +368,25 @@ fn count_bits(a: int) -> int {
         assert_eq!(fun.call(7), 3);
     })
 }
+
+#[test]
+fn test_loop_with_break() {
+    let source = r"
+fn count_to_ten() -> int {
+    let counter = 0;
+    loop {
+        if counter >= 10 {
+            break;
+        }
+        counter = counter + 1;
+    }
+    return counter;
+}";
+    jit_test(source, |jit_engine| unsafe {
+        type F = unsafe extern "C" fn() -> i64;
+        let fun: JitFunction<F> = jit_engine
+            .get_function("count_to_ten")
+            .expect("find function");
+        assert_eq!(fun.call(), 10);
+    })
+}

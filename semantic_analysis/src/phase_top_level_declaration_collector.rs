@@ -158,6 +158,10 @@ impl<'a> TopLevelDeclarationCollector {
                 });
                 Statement::While(mapped_while_statement)
             }
+            Statement::Loop { body } => {
+                let mapped_body = Self::map_block(allocator, body)?;
+                Statement::Loop { body: mapped_body }
+            }
             Statement::Break => Statement::Break,
             Statement::Continue => Statement::Continue,
         }))

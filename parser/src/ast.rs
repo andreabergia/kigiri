@@ -71,6 +71,9 @@ pub enum Statement<'a, Phase: CompilationPhase> {
     },
     If(&'a IfStatement<'a, Phase>),
     While(&'a WhileStatement<'a, Phase>),
+    Loop {
+        body: &'a Block<'a, Phase>,
+    },
     Break,
     Continue,
 }
@@ -281,6 +284,9 @@ impl Display for Statement<'_, PhaseParsed<'_>> {
             }
             Statement::While(while_statement) => {
                 write!(f, "{}", while_statement)
+            }
+            Statement::Loop { body } => {
+                write!(f, "loop {}", body)
             }
             Statement::Break => {
                 write!(f, "break;")
@@ -563,6 +569,27 @@ x;
 { #0
 }
 "
+        );
+    }
+
+    #[test]
+    fn format_loop_statement() {
+        let ast_allocator = ParsedAstAllocator::default();
+
+        let block_id = ast_allocator.next_block_id();
+        let x = ast_allocator.identifier("x");
+        let statement = ast_allocator.statement_expression(x);
+        let mut statements = ast_allocator.statements();
+        statements.push(statement);
+        let block = ast_allocator.block_from_statements(block_id, statements);
+
+        let loop_statement = Statement::Loop { body: block };
+
+        assert_eq!(
+            loop_statement.to_string(),
+            r"loop { #0
+x;
+}"
         );
     }
 }

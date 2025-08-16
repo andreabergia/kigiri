@@ -306,6 +306,16 @@ impl ParsedAstAllocator {
         self.allocator.alloc(Statement::While(while_statement))
     }
 
+    pub fn statement_loop<'s, 'b>(
+        &'s self,
+        body: &'b Block<'b, PhaseParsed<'s>>,
+    ) -> &'s Statement<'s, PhaseParsed<'s>>
+    where
+        'b: 's,
+    {
+        self.allocator.alloc(Statement::Loop { body })
+    }
+
     pub fn statement_break(&self) -> &Statement<PhaseParsed> {
         self.allocator.alloc(Statement::Break)
     }

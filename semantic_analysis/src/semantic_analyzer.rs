@@ -907,5 +907,119 @@ fn test(
         "continue statement outside of loop"
     );
 
+    // Loop statement tests
+    test_ok!(
+        loop_statement_simple,
+        r"fn test() {
+  loop {
+    return;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  loop { #1
+    return;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        break_in_loop_statement,
+        r"fn test() {
+  loop {
+    break;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  loop { #1
+    break;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        continue_in_loop_statement,
+        r"fn test() {
+  loop {
+    continue;
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  loop { #1
+    continue;
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        break_and_continue_in_loop_with_condition,
+        r"fn test() {
+  loop {
+    if true {
+      break;
+    } else {
+      continue;
+    }
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  loop { #1
+    if true { #2
+      break;
+    }
+    else { #3
+      continue;
+    }
+  }
+}
+
+"
+    );
+
+    test_ok!(
+        nested_loop_statements,
+        r"fn test() {
+  loop {
+    loop {
+      break;
+    }
+  }
+}",
+        r"module test
+
+fn test(
+) -> void
+{ #0
+  loop { #1
+    loop { #2
+      break;
+    }
+  }
+}
+
+"
+    );
+
     // TODO: all return match expected type? here or in separate pass?
 }

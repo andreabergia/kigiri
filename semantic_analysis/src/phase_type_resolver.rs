@@ -137,23 +137,17 @@ impl<'a> TypeResolver {
     fn analyze_block(
         allocator: &'a AstAllocator,
         block: &Block<PhaseTopLevelDeclarationCollected>,
-        parent_symbol_table: &'a SymbolTable<'a>,
+        symbol_table: &'a SymbolTable<'a>,
         in_loop: bool,
     ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         let mut statements = allocator.new_bump_vec_with_capacity(block.statements.len());
         for statement in &block.statements {
-            Self::analyze_statement(
-                allocator,
-                statement,
-                &mut statements,
-                parent_symbol_table,
-                in_loop,
-            )?;
+            Self::analyze_statement(allocator, statement, &mut statements, symbol_table, in_loop)?;
         }
         Ok(allocator.alloc(Block {
             id: block.id,
             statements,
-            symbol_table: parent_symbol_table,
+            symbol_table,
         }))
     }
 
@@ -389,6 +383,12 @@ impl<'a> TypeResolver {
                 });
 
                 statements.push(allocator.alloc(Statement::While(typed_while_statement)));
+            }
+            Statement::Loop { body } => {
+                let body_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
+                let typed_body = Self::analyze_block(allocator, body, body_symbol_table, true)?;
+
+                statements.push(allocator.alloc(Statement::Loop { body: typed_body }));
             }
             Statement::Break => {
                 if !in_loop {

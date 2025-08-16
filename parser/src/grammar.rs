@@ -115,6 +115,11 @@ mod tests {
         assert_can_be_parsed_as("a = 1;", Rule::statement);
         assert_can_be_parsed_as("return 42;", Rule::statement);
         assert_can_be_parsed_as("1 + 2;", Rule::statement);
+        assert_can_be_parsed_as("while true { }", Rule::statement);
+        assert_can_be_parsed_as("loop { }", Rule::statement);
+        assert_can_be_parsed_as("if x > 0 { }", Rule::statement);
+        assert_can_be_parsed_as("break;", Rule::statement);
+        assert_can_be_parsed_as("continue;", Rule::statement);
     }
 
     #[test]
@@ -124,6 +129,26 @@ mod tests {
         assert_can_be_parsed_as("if x > 0 { } else { }", Rule::ifStatement);
         assert_can_be_parsed_as("if x > 0 { } else if y < 0 { }", Rule::ifStatement);
         assert_can_be_parsed_as("if x > 0 { } else if y < 0 { } else { }", Rule::ifStatement);
+    }
+
+    #[test]
+    fn grammar_can_parse_while_statement() {
+        assert_can_be_parsed_as("while true { }", Rule::whileStatement);
+        assert_can_be_parsed_as("while x > 0 { }", Rule::whileStatement);
+        assert_can_be_parsed_as("while x < 10 { x = x + 1; }", Rule::whileStatement);
+    }
+
+    #[test]
+    fn grammar_can_parse_loop_statement() {
+        assert_can_be_parsed_as("loop { }", Rule::loopStatement);
+        assert_can_be_parsed_as("loop { x = x + 1; }", Rule::loopStatement);
+        assert_can_be_parsed_as("loop { if x > 10 { break; } }", Rule::loopStatement);
+    }
+
+    #[test]
+    fn grammar_can_parse_break_continue_statements() {
+        assert_can_be_parsed_as("break", Rule::breakStatement);
+        assert_can_be_parsed_as("continue", Rule::continueStatement);
     }
 
     #[test]

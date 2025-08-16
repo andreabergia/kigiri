@@ -282,6 +282,10 @@ fn fmt_statement(
             write!(f, " ")?;
             fmt_block(f, while_statement.body, context.indented())
         }
+        Statement::Loop { body } => {
+            write!(f, "{}  loop ", context.indent)?;
+            fmt_block(f, body, context.indented())
+        }
         Statement::Break => {
             writeln!(f, "{}  break;", context.indent)
         }

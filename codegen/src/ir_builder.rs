@@ -223,6 +223,7 @@ impl<'i> FunctionIrBuilder<'i> {
                 self.push_to_current_bb(jump_instruction);
                 Ok(FoundReturn::BreakOrContinue)
             }
+            Statement::Loop { body } => self.handle_loop_statement(body, symbol_table),
             Statement::Continue => {
                 let loop_targets = self.break_continue_target.borrow();
                 let targets = loop_targets
@@ -453,6 +454,39 @@ impl<'i> FunctionIrBuilder<'i> {
         self.break_continue_target.replace(old_loop_targets);
 
         Ok(FoundReturn::No) // While loops don't guarantee returns
+    }
+
+    fn handle_loop_statement(
+        &self,
+        body: &Block<PhaseTypeResolved>,
+        _symbol_table: &SymbolTable,
+    ) -> CodegenResult<FoundReturn> {
+        let loop_block = self.create_basic_block();
+        let merge_block = self.create_basic_block_deferred();
+
+        // Set up loop targets for break/continue statements
+        let old_loop_targets = self
+            .break_continue_target
+            .replace(Some(BreakContinueTarget {
+                break_target: merge_block.id,
+                continue_target: loop_block.id,
+            }));
+
+        self.push_to_current_bb(self.ir_allocator.new_jump(loop_block.id));
+
+        // Loop body block
+        self.switch_to_basic_block(loop_block);
+        let body_has_return = self.handle_block(body)?;
+        if !body_has_return.terminates_control_flow() {
+            self.push_to_current_bb(self.ir_allocator.new_jump(loop_block.id));
+        }
+
+        // Merge block
+        self.add_basic_block(merge_block);
+        self.switch_to_basic_block(merge_block);
+        self.break_continue_target.replace(old_loop_targets);
+
+        Ok(FoundReturn::No) // Loop statements don't guarantee returns (they can have breaks)
     }
 
     /// Generates statements for the block and a jump to the merge block if no return is found
@@ -1293,6 +1327,82 @@ fn test(
   }
   { #3
     00008 v ret
+  }
+}
+"
+    );
+
+    // Loop statement tests
+    test_module_ir!(
+        loop_simple,
+        r"fn test() {
+    loop {
+        return;
+    }
+}",
+        r"module test
+
+fn test(
+) -> void {
+  entry_block: #0
+  { #0
+    00000 v jmp #1
+  }
+  { #1
+    00001 v ret
+  }
+  { #2
+    00002 v ret
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        break_in_loop,
+        r"fn test() {
+    loop {
+        break;
+    }
+}",
+        r"module test
+
+fn test(
+) -> void {
+  entry_block: #0
+  { #0
+    00000 v jmp #1
+  }
+  { #1
+    00001 v jmp #2
+  }
+  { #2
+    00002 v ret
+  }
+}
+"
+    );
+
+    test_module_ir!(
+        continue_in_loop,
+        r"fn test() {
+    loop {
+        continue;
+    }
+}",
+        r"module test
+
+fn test(
+) -> void {
+  entry_block: #0
+  { #0
+    00000 v jmp #1
+  }
+  { #1
+    00001 v jmp #1
+  }
+  { #2
+    00002 v ret
   }
 }
 "
