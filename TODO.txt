@@ -12,6 +12,7 @@ Language as a whole
 - [ ] comptime
 - [ ] generics
 - [ ] import, exports, etc
+- [ ] += and friends
 - [x] loop (infinite)
 - [x] short circuit booleans
 
