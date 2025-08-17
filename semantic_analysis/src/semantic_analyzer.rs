@@ -1,3 +1,4 @@
+use crate::phase_return_path_analyzer::ReturnPathAnalyzer;
 use crate::phase_top_level_declaration_collector::TopLevelDeclarationCollector;
 use crate::phase_type_resolver::TypeResolver;
 use crate::{PhaseTypeResolved, SymbolTable, Type};
@@ -77,6 +78,8 @@ pub enum SemanticAnalysisError {
     ContinueOutsideLoop,
     #[error("internal error: {message}")]
     InternalError { message: String },
+    #[error("function \"{function_name}\" does not return a value on all paths")]
+    NotAllPathsReturnAValue { function_name: String },
 }
 
 #[derive(Default)]
@@ -90,7 +93,9 @@ impl SemanticAnalyzer {
         module: &Module<PhaseParsed>,
     ) -> Result<&Module<PhaseTypeResolved>, SemanticAnalysisError> {
         let module = TopLevelDeclarationCollector::analyze_module(&self.allocator, module)?;
-        TypeResolver::analyze_module(&self.allocator, module)
+        let module = TypeResolver::analyze_module(&self.allocator, module)?;
+        ReturnPathAnalyzer::analyze_module(module)?;
+        Ok(module)
     }
 
     pub fn root_symbol_table(&self) -> &SymbolTable {
@@ -121,6 +126,19 @@ mod tests {
                     ),
                     $expected_typed_ast
                 );
+            }
+        };
+        ($name: ident, $source: expr) => {
+            #[test]
+            fn $name() {
+                let ast_allocator = parser::ParsedAstAllocator::default();
+                let module =
+                    parser::parse(&ast_allocator, "test", $source).expect("parse should succeed");
+
+                let analyzer = SemanticAnalyzer::default();
+                analyzer
+                    .analyze_module(module)
+                    .expect("should have passed semantic analysis");
             }
         };
     }
@@ -1021,5 +1039,94 @@ fn test(
 "
     );
 
-    // TODO: all return match expected type? here or in separate pass?
+    test_ko!(
+        not_all_paths_return_expr,
+        r#"
+fn f(x: int) -> int {
+    f(x - 1);
+}"#,
+        r#"function "f" does not return a value on all paths"#
+    );
+
+    test_ko!(
+        not_all_paths_return_if,
+        r#"
+fn f(x: int) -> int {
+    if x > 0 {
+        return 1;
+    }
+}"#,
+        r#"function "f" does not return a value on all paths"#
+    );
+
+    test_ok!(
+        all_paths_return_if_else,
+        r#"
+fn f(x: int) -> int {
+    if x > 0 {
+        return 1;
+    } else {
+        return -1;
+    }
+}"#
+    );
+
+    test_ok!(
+        all_paths_return_if_else_if,
+        r#"
+fn f(x: int) -> int {
+    if x > 0 {
+        return 1;
+    } else if x < 0 {
+        return -1;
+    } else {
+        return 0;
+    }
+}"#
+    );
+
+    test_ok!(
+        infinite_loop_is_ok,
+        r#"
+fn f() -> int {
+    loop {}
+}"#
+    );
+
+    test_ko!(
+        while_is_not_ok,
+        r#"
+fn f(x: int) -> int {
+    while x > 0 {
+        x = x - 1;
+    }
+}"#,
+        r#"function "f" does not return a value on all paths"#
+    );
+
+    test_ko!(
+        infinite_loop_with_break_is_not_ok,
+        r#"
+fn f(x: int) -> int {
+    loop {
+        break;
+    }
+    loop {
+        if x > 0 {
+            continue;
+        } else if x < 0 {
+            f(x + 1);
+        } else {
+            continue;
+        }
+        while true { }
+        loop { }
+        f(x - 1);
+        {
+            break;
+        }
+    }
+}"#,
+        r#"function "f" does not return a value on all paths"#
+    );
 }

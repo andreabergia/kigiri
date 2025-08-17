@@ -2,7 +2,6 @@ Language as a whole
 - [ ] cast
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
 - [ ] keep track of mutable/immutable variables
-- [ ] verify functions have a return on all paths, with a coherent type
 - [ ] for loop
 - [ ] for/else like in python?
 - [ ] warn/err about unreachable code
@@ -15,6 +14,7 @@ Language as a whole
 - [ ] += and friends
 - [x] loop (infinite)
 - [x] short circuit booleans
+- [x] verify functions have a return on all paths, with a coherent type
 
 Semantic analysis
 
