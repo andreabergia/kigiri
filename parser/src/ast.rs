@@ -141,8 +141,12 @@ pub enum BinaryOperator {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LiteralValue {
-    Integer(i64),
-    Double(f64),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
     Boolean(bool),
 }
 
@@ -406,8 +410,12 @@ impl Display for BinaryOperator {
 impl Display for LiteralValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            LiteralValue::Integer(value) => write!(f, "{}i", value),
-            LiteralValue::Double(value) => write!(f, "{}d", value),
+            LiteralValue::I8(value) => write!(f, "{}i8", value),
+            LiteralValue::I16(value) => write!(f, "{}i16", value),
+            LiteralValue::I32(value) => write!(f, "{}i32", value),
+            LiteralValue::I64(value) => write!(f, "{}i64", value),
+            LiteralValue::F32(value) => write!(f, "{}f32", value),
+            LiteralValue::F64(value) => write!(f, "{}f64", value),
             LiteralValue::Boolean(value) => write!(f, "{}", value),
         }
     }
@@ -501,12 +509,12 @@ mod tests {
     #[test]
     fn can_allocate_via_ast() {
         let ast_allocator = ParsedAstAllocator::default();
-        let id = ast_allocator.literal_int(1);
+        let id = ast_allocator.literal_i32(1);
         assert_eq!(
             id,
             &Expression::Literal {
                 resolved_type: (),
-                value: LiteralValue::Integer(1)
+                value: LiteralValue::I32(1)
             }
         );
     }
@@ -516,15 +524,18 @@ mod tests {
         let ast_allocator = ParsedAstAllocator::default();
 
         let x = ast_allocator.identifier("x");
-        let one = ast_allocator.literal_int(1);
+        let one = ast_allocator.literal_i32(1);
         let sum = ast_allocator.binary(BinaryOperator::Add, x, one);
-        let two = ast_allocator.literal_double(2.1);
+        let two = ast_allocator.literal_f64(2.1);
         let neg = ast_allocator.unary(UnaryOperator::Neg, two);
         let mul = ast_allocator.binary(BinaryOperator::Mul, sum, neg);
-        let lt = ast_allocator.binary(BinaryOperator::Lt, mul, ast_allocator.literal_double(4.2));
+        let lt = ast_allocator.binary(BinaryOperator::Lt, mul, ast_allocator.literal_f64(4.2));
         let true_lit = ast_allocator.literal_bool(true);
         let or = ast_allocator.binary(BinaryOperator::Or, lt, true_lit);
-        assert_eq!(or.to_string(), "(|| (< (* (+ x 1i) (- 2.1d)) 4.2d) true)");
+        assert_eq!(
+            or.to_string(),
+            "(|| (< (* (+ x 1i32) (- 2.1f64)) 4.2f64) true)"
+        );
     }
 
     #[test]

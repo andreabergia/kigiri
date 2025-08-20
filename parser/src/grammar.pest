@@ -57,17 +57,26 @@ factor   =  _{ number | "(" ~ expression ~ ")" | bool | functionCall | identifie
 functionCall =   { identifier ~ "(" ~ functionCallArguments ~ ")" }
 functionCallArguments = { (expression ~ ("," ~ expression)*)? }
 
-number = {doubleNumber | hexNumber | intNumber}
+number = {floatNumber | hexNumber | intNumber}
+
 intNumber = @{
-    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ intSuffix?
 }
+intSuffix = @{
+    "i8" | "i16" | "i32" | "i64"
+}
+
 hexNumber = @{
-    "0" ~ "x" ~ ASCII_HEX_DIGIT+
+    "0" ~ "x" ~ ASCII_HEX_DIGIT+ ~ intSuffix?
 }
-doubleNumber = @{
-    ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT* ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)? |
-    ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)? |
-    ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)
+
+floatNumber = @{
+    (ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT* ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)? |
+     ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)? |
+     ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)) ~ floatSuffix?
+}
+floatSuffix = @{
+    "f32" | "f64"
 }
 bool = {"true" | "false"}
 

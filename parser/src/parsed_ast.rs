@@ -38,17 +38,45 @@ impl ParsedAstAllocator {
         })
     }
 
-    pub fn literal_int(&self, value: i64) -> &Expression<PhaseParsed> {
+    pub fn literal_i8(&self, value: i8) -> &Expression<PhaseParsed> {
         self.allocator.alloc(Expression::Literal {
             resolved_type: (),
-            value: LiteralValue::Integer(value),
+            value: LiteralValue::I8(value),
         })
     }
 
-    pub fn literal_double(&self, value: f64) -> &Expression<PhaseParsed> {
+    pub fn literal_i16(&self, value: i16) -> &Expression<PhaseParsed> {
         self.allocator.alloc(Expression::Literal {
             resolved_type: (),
-            value: LiteralValue::Double(value),
+            value: LiteralValue::I16(value),
+        })
+    }
+
+    pub fn literal_i32(&self, value: i32) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::I32(value),
+        })
+    }
+
+    pub fn literal_i64(&self, value: i64) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::I64(value),
+        })
+    }
+
+    pub fn literal_f32(&self, value: f32) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::F32(value),
+        })
+    }
+
+    pub fn literal_f64(&self, value: f64) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::F64(value),
         })
     }
 

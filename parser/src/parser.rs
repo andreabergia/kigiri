@@ -51,37 +51,151 @@ fn parse_expression<'a>(
                     let text = pair.as_str();
                     match pair.as_rule() {
                         Rule::intNumber => {
-                            let value = i64::from_str(text).map_err(|source| {
-                                ParseError::IntegerParseError {
-                                    text: text.to_owned(),
-                                    source,
+                            let (num_text, suffix) = if text.ends_with("i8") {
+                                (text.strip_suffix("i8").unwrap(), "i8")
+                            } else if text.ends_with("i16") {
+                                (text.strip_suffix("i16").unwrap(), "i16")
+                            } else if text.ends_with("i32") {
+                                (text.strip_suffix("i32").unwrap(), "i32")
+                            } else if text.ends_with("i64") {
+                                (text.strip_suffix("i64").unwrap(), "i64")
+                            } else {
+                                (text, "i32") // default to i32 if no suffix
+                            };
+
+                            match suffix {
+                                "i8" => {
+                                    let value = i8::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_i8(value))
                                 }
-                            })?;
-                            Ok(ast_allocator.literal_int(value))
+                                "i16" => {
+                                    let value = i16::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_i16(value))
+                                }
+                                "i32" => {
+                                    let value = i32::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_i32(value))
+                                }
+                                "i64" => {
+                                    let value = i64::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_i64(value))
+                                }
+                                _ => unreachable!(),
+                            }
                         }
                         Rule::hexNumber => {
                             let lowercase_text = text.to_ascii_lowercase();
-                            let hex_text = lowercase_text.trim_start_matches("0x");
-                            let value = i64::from_str_radix(hex_text, 16).map_err(|source| {
-                                ParseError::IntegerParseError {
-                                    text: text.to_owned(),
-                                    source,
+                            let (hex_part, suffix) = if lowercase_text.ends_with("i8") {
+                                (lowercase_text.strip_suffix("i8").unwrap(), "i8")
+                            } else if lowercase_text.ends_with("i16") {
+                                (lowercase_text.strip_suffix("i16").unwrap(), "i16")
+                            } else if lowercase_text.ends_with("i32") {
+                                (lowercase_text.strip_suffix("i32").unwrap(), "i32")
+                            } else if lowercase_text.ends_with("i64") {
+                                (lowercase_text.strip_suffix("i64").unwrap(), "i64")
+                            } else {
+                                (lowercase_text.as_str(), "i32") // default to i32 if no suffix
+                            };
+                            let hex_text = hex_part.trim_start_matches("0x");
+
+                            match suffix {
+                                "i8" => {
+                                    let value =
+                                        i8::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_i8(value))
                                 }
-                            })?;
-                            Ok(ast_allocator.literal_int(value))
+                                "i16" => {
+                                    let value =
+                                        i16::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_i16(value))
+                                }
+                                "i32" => {
+                                    let value =
+                                        i32::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_i32(value))
+                                }
+                                "i64" => {
+                                    let value =
+                                        i64::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_i64(value))
+                                }
+                                _ => unreachable!(),
+                            }
                         }
-                        Rule::doubleNumber => {
-                            let value = f64::from_str(text).map_err(|source| {
-                                ParseError::FloatParseError {
-                                    text: text.to_string(),
-                                    source,
+                        Rule::floatNumber => {
+                            let (num_text, suffix) = if text.ends_with("f32") {
+                                (text.strip_suffix("f32").unwrap(), "f32")
+                            } else if text.ends_with("f64") {
+                                (text.strip_suffix("f64").unwrap(), "f64")
+                            } else {
+                                (text, "f64") // default to f64 if no suffix
+                            };
+
+                            match suffix {
+                                "f32" => {
+                                    let value = f32::from_str(num_text).map_err(|source| {
+                                        ParseError::FloatParseError {
+                                            text: text.to_string(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_f32(value))
                                 }
-                            })?;
-                            Ok(ast_allocator.literal_double(value))
+                                "f64" => {
+                                    let value = f64::from_str(num_text).map_err(|source| {
+                                        ParseError::FloatParseError {
+                                            text: text.to_string(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_f64(value))
+                                }
+                                _ => unreachable!(),
+                            }
                         }
                         rule => Err(ParseError::InternalError {
                             message: format!(
-                                "expected an intNumber, hexNumber, or doubleNumber, but got {:?}",
+                                "expected an intNumber, hexNumber, or floatNumber, but got {:?}",
                                 rule
                             ),
                         }),
@@ -532,12 +646,12 @@ mod tests {
     fn parse_as_expression<'a>(
         ast_allocator: &'a ParsedAstAllocator,
         text: &str,
-    ) -> &'a Expression<'a, PhaseParsed<'a>> {
+    ) -> Result<&'a Expression<'a, PhaseParsed<'a>>, ParseError> {
         let pair = Grammar::parse(Rule::expression, text)
             .expect("expression")
             .next()
             .expect("expression pair");
-        parse_expression(ast_allocator, pair).expect("parse expression")
+        parse_expression(ast_allocator, pair)
     }
 
     fn parse_as_block<'a>(
@@ -561,7 +675,28 @@ mod tests {
             fn $name() {
                 let ast_allocator = ParsedAstAllocator::default();
                 let expression = parse_as_expression(&ast_allocator, $source);
-                assert_eq!(expression.to_string(), $ast);
+                assert_eq!(
+                    expression
+                        .expect("should be able to parse expression")
+                        .to_string(),
+                    $ast
+                );
+            }
+        };
+    }
+
+    macro_rules! test_expression_ko {
+        ($name: ident, $source: expr, $error: expr) => {
+            #[test]
+            fn $name() {
+                let ast_allocator = ParsedAstAllocator::default();
+                let expression = parse_as_expression(&ast_allocator, $source);
+                assert_eq!(
+                    expression
+                        .expect_err("should not have been able to parser")
+                        .to_string(),
+                    $error
+                );
             }
         };
     }
@@ -577,16 +712,37 @@ mod tests {
         };
     }
 
-    test_expression!(literal_int_1, "1", "1i");
-    test_expression!(literal_int_2, "3217832", "3217832i");
-    test_expression!(literal_int_3, "0xA1", "161i");
+    test_expression!(literal_int_1, "1", "1i32");
+    test_expression!(literal_int_2, "3217832", "3217832i32");
+    test_expression!(literal_int_3, "0xA1", "161i32");
+    test_expression!(literal_int_4, "2i8", "2i8");
+    test_expression!(literal_int_5, "2i16", "2i16");
+    test_expression!(literal_int_6, "2i32", "2i32");
+    test_expression!(literal_int_7, "2i64", "2i64");
 
-    test_expression!(literal_float_1, "0.", "0d");
-    test_expression!(literal_float_2, "3.14", "3.14d");
-    test_expression!(literal_float_3, "1.1e+2", "110d");
-    test_expression!(literal_float_4, "10e-1", "1d");
-    test_expression!(literal_float_5, ".1e1", "1d");
-    test_expression!(literal_float_6, "1e4", "10000d");
+    test_expression_ko!(invalid_i8, "1000i8", "Failed to parse integer: 1000i8");
+    test_expression_ko!(
+        invalid_i16,
+        "100000i16",
+        "Failed to parse integer: 100000i16"
+    );
+    test_expression_ko!(
+        invalid_i132,
+        "21474832367i32",
+        "Failed to parse integer: 21474832367i32"
+    );
+    test_expression_ko!(
+        invalid_i164,
+        "12345678901223456176167123i64",
+        "Failed to parse integer: 12345678901223456176167123i64"
+    );
+
+    test_expression!(literal_float_1, "0.", "0f64");
+    test_expression!(literal_float_2, "3.14", "3.14f64");
+    test_expression!(literal_float_3, "1.1e+2", "110f64");
+    test_expression!(literal_float_4, "10e-1", "1f64");
+    test_expression!(literal_float_5, ".1e1", "1f64");
+    test_expression!(literal_float_6, "1e4", "10000f64");
 
     test_expression!(identifier_1, "i", "i");
     test_expression!(identifier_2, "a_b", "a_b");
@@ -597,38 +753,38 @@ mod tests {
     test_expression!(bool_1, "true", "true");
     test_expression!(bool_2, "false", "false");
 
-    test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i (* 2i 3i))");
-    test_expression!(precedence_02, "1 - 2 / 3", "(- 1i (/ 2i 3i))");
-    test_expression!(precedence_03, "1 + 2 % 3", "(+ 1i (% 2i 3i))");
-    test_expression!(precedence_04, "1 * 2 ** 3", "(* 1i (** 2i 3i))");
-    test_expression!(precedence_05, "1 == 2 + 3", "(== 1i (+ 2i 3i))");
-    test_expression!(precedence_06, "1 != 2 + 3", "(!= 1i (+ 2i 3i))");
-    test_expression!(precedence_07, "1 < 2 + 3", "(< 1i (+ 2i 3i))");
-    test_expression!(precedence_08, "1 <= 2 + 3", "(<= 1i (+ 2i 3i))");
-    test_expression!(precedence_09, "1 > 2 + 3", "(> 1i (+ 2i 3i))");
-    test_expression!(precedence_10, "1 >= 2 + 3", "(>= 1i (+ 2i 3i))");
-    test_expression!(precedence_11, "1 && 2 == 3", "(&& 1i (== 2i 3i))");
-    test_expression!(precedence_12, "1 || 2 && 3", "(|| 1i (&& 2i 3i))");
-    test_expression!(precedence_13, "1 & 2 + 3", "(& 1i (+ 2i 3i))");
-    test_expression!(precedence_14, "1 + 2 | 3", "(| (+ 1i 2i) 3i)");
-    test_expression!(precedence_15, "1 ^ 2 == 3", "(^ 1i (== 2i 3i))");
-    test_expression!(precedence_16, "1 | 2 && 3", "(&& (| 1i 2i) 3i)");
-    test_expression!(precedence_17, "1 + 2 << 3", "(<< (+ 1i 2i) 3i)");
-    test_expression!(precedence_18, "1 == 2 >> 3", "(== 1i (>> 2i 3i))");
-    test_expression!(precedence_19, "1 == 2 > 3", "(== 1i (> 2i 3i))");
-    test_expression!(precedence_20, "1 != 2 <= 3", "(!= 1i (<= 2i 3i))");
-    test_expression!(precedence_21, "1 + - 2", "(+ 1i (- 2i))");
-    test_expression!(precedence_22, "1 + ~ 2", "(+ 1i (~ 2i))");
-    test_expression!(precedence_23, "1 && ! 2", "(&& 1i (! 2i))");
+    test_expression!(precedence_01, "1 + 2 * 3", "(+ 1i32 (* 2i32 3i32))");
+    test_expression!(precedence_02, "1 - 2 / 3", "(- 1i32 (/ 2i32 3i32))");
+    test_expression!(precedence_03, "1 + 2 % 3", "(+ 1i32 (% 2i32 3i32))");
+    test_expression!(precedence_04, "1 * 2 ** 3", "(* 1i32 (** 2i32 3i32))");
+    test_expression!(precedence_05, "1 == 2 + 3", "(== 1i32 (+ 2i32 3i32))");
+    test_expression!(precedence_06, "1 != 2 + 3", "(!= 1i32 (+ 2i32 3i32))");
+    test_expression!(precedence_07, "1 < 2 + 3", "(< 1i32 (+ 2i32 3i32))");
+    test_expression!(precedence_08, "1 <= 2 + 3", "(<= 1i32 (+ 2i32 3i32))");
+    test_expression!(precedence_09, "1 > 2 + 3", "(> 1i32 (+ 2i32 3i32))");
+    test_expression!(precedence_10, "1 >= 2 + 3", "(>= 1i32 (+ 2i32 3i32))");
+    test_expression!(precedence_11, "1 && 2 == 3", "(&& 1i32 (== 2i32 3i32))");
+    test_expression!(precedence_12, "1 || 2 && 3", "(|| 1i32 (&& 2i32 3i32))");
+    test_expression!(precedence_13, "1 & 2 + 3", "(& 1i32 (+ 2i32 3i32))");
+    test_expression!(precedence_14, "1 + 2 | 3", "(| (+ 1i32 2i32) 3i32)");
+    test_expression!(precedence_15, "1 ^ 2 == 3", "(^ 1i32 (== 2i32 3i32))");
+    test_expression!(precedence_16, "1 | 2 && 3", "(&& (| 1i32 2i32) 3i32)");
+    test_expression!(precedence_17, "1 + 2 << 3", "(<< (+ 1i32 2i32) 3i32)");
+    test_expression!(precedence_18, "1 == 2 >> 3", "(== 1i32 (>> 2i32 3i32))");
+    test_expression!(precedence_19, "1 == 2 > 3", "(== 1i32 (> 2i32 3i32))");
+    test_expression!(precedence_20, "1 != 2 <= 3", "(!= 1i32 (<= 2i32 3i32))");
+    test_expression!(precedence_21, "1 + - 2", "(+ 1i32 (- 2i32))");
+    test_expression!(precedence_22, "1 + ~ 2", "(+ 1i32 (~ 2i32))");
+    test_expression!(precedence_23, "1 && ! 2", "(&& 1i32 (! 2i32))");
 
-    test_expression!(parenthesis, "(1 + 2) * 3", "(* (+ 1i 2i) 3i)");
+    test_expression!(parenthesis, "(1 + 2) * 3", "(* (+ 1i32 2i32) 3i32)");
 
     test_expression!(function_call_no_args, "foo()", "foo()");
-    test_expression!(function_call_one_arg, "foo(1)", "foo(1i)");
+    test_expression!(function_call_one_arg, "foo(1)", "foo(1i32)");
     test_expression!(
         function_call_multiple_args,
         "foo(1, 2, 3)",
-        "foo(1i, 2i, 3i)"
+        "foo(1i32, 2i32, 3i32)"
     );
 
     test_block!(
@@ -637,7 +793,7 @@ mod tests {
    1;
 }",
         r"{ #0
-1i;
+1i32;
 }"
     );
     test_block!(
@@ -646,7 +802,7 @@ mod tests {
    return 1;
 }",
         r"{ #0
-return 1i;
+return 1i32;
 }"
     );
     test_block!(
@@ -664,7 +820,7 @@ return;
    let a = 1;
 }",
         r"{ #0
-let a = 1i;
+let a = 1i32;
 }"
     );
     test_block!(
@@ -673,7 +829,7 @@ let a = 1i;
    let a = 1, b = false;
 }",
         r"{ #0
-let a = 1i, b = false;
+let a = 1i32, b = false;
 }"
     );
     test_block!(
@@ -682,7 +838,7 @@ let a = 1i, b = false;
    a = 1;
 }",
         r"{ #0
-a = 1i;
+a = 1i32;
 }"
     );
     test_block!(
@@ -694,7 +850,7 @@ a = 1i;
     }",
         r"{ #0
 { #1
-a = 1i;
+a = 1i32;
 }
 }"
     );
@@ -708,7 +864,7 @@ a = 1i;
 }",
         r"{ #0
 if true { #1
-x = 1i;
+x = 1i32;
 }
 }"
     );
@@ -723,10 +879,10 @@ x = 1i;
     }
 }",
         r"{ #0
-if (> x 0i) { #1
-y = 1i;
+if (> x 0i32) { #1
+y = 1i32;
 } else { #2
-y = 0i;
+y = 0i32;
 }
 }"
     );
@@ -743,12 +899,12 @@ y = 0i;
     }
 }",
         r"{ #0
-if (> x 0i) { #1
-y = 1i;
-} else if (< x 0i) { #2
-y = (- 1i);
+if (> x 0i32) { #1
+y = 1i32;
+} else if (< x 0i32) { #2
+y = (- 1i32);
 } else { #3
-y = 0i;
+y = 0i32;
 }
 }"
     );
@@ -761,8 +917,8 @@ y = 0i;
     }
 }",
         r"{ #0
-while (> x 0i) { #1
-x = (- x 1i);
+while (> x 0i32) { #1
+x = (- x 1i32);
 }
 }"
     );
@@ -801,14 +957,14 @@ continue;
     }
 }",
         r"{ #0
-while (> x 0i) { #1
-if (== x 5i) { #2
+while (> x 0i32) { #1
+if (== x 5i32) { #2
 break;
 }
-if (== (% x 2i) 0i) { #3
+if (== (% x 2i32) 0i32) { #3
 continue;
 }
-x = (- x 1i);
+x = (- x 1i32);
 }
 }"
     );
@@ -822,7 +978,7 @@ x = (- x 1i);
 }",
         r"{ #0
 loop { #1
-x = (+ x 1i);
+x = (+ x 1i32);
 }
 }"
     );
@@ -935,14 +1091,14 @@ fn b(
 fn test_while(
 ) -> void
 { #0
-while (> x 0i) { #1
-if (== x 5i) { #2
+while (> x 0i32) { #1
+if (== x 5i32) { #2
 break;
 }
-if (== (% x 2i) 0i) { #3
+if (== (% x 2i32) 0i32) { #3
 continue;
 }
-x = (- x 1i);
+x = (- x 1i32);
 }
 }
 "#
