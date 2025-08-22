@@ -329,14 +329,14 @@ fn add(a: int, b: int) -> int {
         assert_eq!(
             *args[0],
             Expression::Literal {
-                value: parser::LiteralValue::Integer(1),
+                value: parser::LiteralValue::I32(1),
                 resolved_type: (),
             }
         );
         assert_eq!(
             *args[1],
             Expression::Literal {
-                value: parser::LiteralValue::Integer(2),
+                value: parser::LiteralValue::I32(2),
                 resolved_type: (),
             }
         );

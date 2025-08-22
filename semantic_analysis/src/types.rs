@@ -6,16 +6,24 @@ use std::fmt::Formatter;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Type {
-    Int,
-    Double,
+    I8,
+    I16,
+    I32,
+    I64,
+    F32,
+    F64,
     Bool,
 }
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Int => write!(f, "int"),
-            Type::Double => write!(f, "double"),
+            Type::I8 => write!(f, "i8"),
+            Type::I16 => write!(f, "i16"),
+            Type::I32 => write!(f, "i32"),
+            Type::I64 => write!(f, "i64"),
+            Type::F32 => write!(f, "f32"),
+            Type::F64 => write!(f, "f64"),
             Type::Bool => write!(f, "bool"),
         }
     }
@@ -24,16 +32,24 @@ impl Display for Type {
 impl Type {
     pub fn to_string_short(&self) -> &'static str {
         match self {
-            Type::Int => "i",
-            Type::Double => "d",
+            Type::I8 => "i8",
+            Type::I16 => "i16",
+            Type::I32 => "i32",
+            Type::I64 => "i64",
+            Type::F32 => "f32",
+            Type::F64 => "f64",
             Type::Bool => "b",
         }
     }
 
     pub fn of_literal(literal: &LiteralValue) -> Self {
         match literal {
-            LiteralValue::Integer(_) => Type::Int,
-            LiteralValue::Double(_) => Type::Double,
+            LiteralValue::I8(_) => Type::I8,
+            LiteralValue::I16(_) => Type::I16,
+            LiteralValue::I32(_) => Type::I32,
+            LiteralValue::I64(_) => Type::I64,
+            LiteralValue::F32(_) => Type::F32,
+            LiteralValue::F64(_) => Type::F64,
             LiteralValue::Boolean(_) => Type::Bool,
         }
     }
@@ -48,12 +64,28 @@ impl Type {
                 message: "failed to resolve type name string id".to_string(),
             })?;
         match type_name {
-            "int" => Ok(Type::Int),
-            "double" => Ok(Type::Double),
+            "i8" => Ok(Type::I8),
+            "i16" => Ok(Type::I16),
+            "i32" => Ok(Type::I32),
+            "i64" => Ok(Type::I64),
+            "f32" => Ok(Type::F32),
+            "f64" => Ok(Type::F64),
             "bool" => Ok(Type::Bool),
             _ => Err(SemanticAnalysisError::TypeNotFound {
                 type_name: type_name.to_string(),
             }),
         }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        matches!(self, Type::I8 | Type::I16 | Type::I32 | Type::I64)
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, Type::F32 | Type::F64)
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        self.is_integer() || self.is_float()
     }
 }

@@ -551,16 +551,16 @@ mod tests {
     #[test]
     fn display_contains_type_after_operator() {
         let typed_expression: Expression<PhaseTypeResolved> = Expression::Binary {
-            result_type: Type::Int,
+            result_type: Type::I32,
             operator: BinaryOperator::Add,
-            operand_type: Type::Int,
+            operand_type: Type::I32,
             left: &Expression::Literal {
-                resolved_type: Some(Type::Int),
-                value: LiteralValue::Integer(1),
+                resolved_type: Some(Type::I32),
+                value: LiteralValue::I32(1),
             },
             right: &Expression::Literal {
-                resolved_type: Some(Type::Int),
-                value: LiteralValue::Integer(2),
+                resolved_type: Some(Type::I32),
+                value: LiteralValue::I32(2),
             },
         };
 
@@ -569,7 +569,7 @@ mod tests {
 
         assert_eq!(
             to_string_with_symbol_table(&typed_expression, symbol_table),
-            "(+i 1i 2i)"
+            "(+i32 1i32 2i32)"
         );
     }
 
@@ -580,7 +580,7 @@ mod tests {
         assert_eq!(
             TypeResolvedBlock::display(block),
             r"{ #1
-  return 1i;
+  return 1i32;
 }
 "
         );
@@ -593,8 +593,8 @@ mod tests {
             statements: allocator.new_bump_vec_from_iter(vec![allocator.alloc(
                 Statement::Return {
                     expression: Some(allocator.alloc(Expression::Literal {
-                        resolved_type: Some(Type::Int),
-                        value: LiteralValue::Integer(1),
+                        resolved_type: Some(Type::I32),
+                        value: LiteralValue::I32(1),
                     })),
                 },
             )]),
@@ -623,7 +623,7 @@ mod tests {
             TypeResolvedBlock::display(&outer),
             r"{ #2
   { #1
-    return 1i;
+    return 1i32;
   }
 }
 "

@@ -698,9 +698,9 @@ impl<'a> TypeResolver {
 
     fn unary_op_is_allowed(operator: UnaryOperator, operand_type: Type) -> bool {
         match operator {
-            UnaryOperator::Neg => operand_type == Type::Int || operand_type == Type::Double,
+            UnaryOperator::Neg => operand_type.is_numeric(),
             UnaryOperator::Not => operand_type == Type::Bool,
-            UnaryOperator::BitwiseNot => operand_type == Type::Int,
+            UnaryOperator::BitwiseNot => operand_type.is_integer(),
         }
     }
 
@@ -710,13 +710,11 @@ impl<'a> TypeResolver {
             | BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
-            | BinaryOperator::Exp => {
-                left_type == right_type && (left_type == Type::Int || left_type == Type::Double)
-            }
-            BinaryOperator::Rem => left_type == right_type && left_type == Type::Int,
+            | BinaryOperator::Exp => left_type == right_type && left_type.is_numeric(),
+            BinaryOperator::Rem => left_type == right_type && left_type.is_integer(),
             BinaryOperator::Eq | BinaryOperator::Neq => true,
             BinaryOperator::Lt | BinaryOperator::Lte | BinaryOperator::Gt | BinaryOperator::Gte => {
-                left_type == right_type && (left_type == Type::Int || left_type == Type::Double)
+                left_type == right_type && left_type.is_numeric()
             }
             BinaryOperator::And | BinaryOperator::Or => {
                 left_type == right_type && left_type == Type::Bool
@@ -725,7 +723,7 @@ impl<'a> TypeResolver {
             | BinaryOperator::BitwiseOr
             | BinaryOperator::BitwiseXor
             | BinaryOperator::BitwiseShl
-            | BinaryOperator::BitwiseShr => left_type == right_type && left_type == Type::Int,
+            | BinaryOperator::BitwiseShr => left_type == right_type && left_type.is_integer(),
         }
     }
 

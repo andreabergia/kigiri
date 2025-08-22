@@ -170,7 +170,7 @@ mod tests {
         let module = parser::parse(
             &ast_allocator,
             "test",
-            "fn inc(x: int) -> int { return 1 + x; }",
+            "fn inc(x: i32) -> i32 { return 1i32 + x; }",
         )
         .expect("parse should succeed");
 
@@ -188,12 +188,12 @@ mod tests {
             .expect("should have found argument x");
         assert_eq!(
             SymbolKind::Argument {
-                argument_type: Type::Int,
+                argument_type: Type::I32,
                 index: ArgumentIndex::from(0)
             },
             symbol.kind
         );
-        assert_eq!(Some(Type::Int), symbol.symbol_type());
+        assert_eq!(Some(Type::I32), symbol.symbol_type());
     }
 
     test_ok!(
@@ -235,16 +235,16 @@ fn tests() {
 fn tests(
 ) -> void
 { #0
-  1i;
-  1.2d;
+  1i32;
+  1.2f64;
   true;
-  (-i 3i);
-  (-d 3.14d);
+  (-i32 3i32);
+  (-f64 3.14f64);
   (!b false);
-  (+i 1i 2i);
-  (<<i 3i 2i);
-  (*d 1d 2d);
-  (>b 1i 2i);
+  (+i32 1i32 2i32);
+  (<<i32 3i32 2i32);
+  (*f64 1f64 2f64);
+  (>b 1i32 2i32);
   (&&b true false);
 }
 
@@ -252,7 +252,7 @@ fn tests(
     );
     test_ok!(
         can_declare_and_use_variables,
-        r"fn sum(x: int, y: int, z: int) -> int {
+        r"fn sum(x: i32, y: i32, z: i32) -> i32 {
   let sum = x + y;
   sum = sum + z;
   return sum;
@@ -260,13 +260,13 @@ fn tests(
         r"module test
 
 fn sum(
-  x: int,
-  y: int,
-  z: int,
-) -> int
+  x: i32,
+  y: i32,
+  z: i32,
+) -> i32
 { #0
-  let sum: int = (+i x y);
-  sum = (+i sum z);
+  let sum: i32 = (+i32 x y);
+  sum = (+i32 sum z);
   return sum;
 }
 
@@ -275,16 +275,16 @@ fn sum(
     test_ok!(
         let_multiple_etherogeneous,
         r"fn test() -> bool {
-  let a = 42, b = true, c = 3.14;
-  return !b && a > 0 && c < 1.0;
+  let a = 42i64, b = true, c = 3.14;
+  return !b && a > 0i64 && c < 1.0;
 }",
         r"module test
 
 fn test(
 ) -> bool
 { #0
-  let a: int = 42i, b: bool = true, c: double = 3.14d;
-  return (&&b (&&b (!b b) (>b a 0i)) (<b c 1d));
+  let a: i64 = 42i64, b: bool = true, c: f64 = 3.14f64;
+  return (&&b (&&b (!b b) (>b a 0i64)) (<b c 1f64));
 }
 
 "
@@ -292,7 +292,7 @@ fn test(
     test_ok!(
         can_shadow_variables,
         r"fn test() -> bool {
-  let a = 1;
+  let a = 1i16;
   let a = true;
   return a;
 }",
@@ -301,7 +301,7 @@ fn test(
 fn test(
 ) -> bool
 { #0
-  let a: int = 1i;
+  let a: i16 = 1i16;
   let a: bool = true;
   return a;
 }
@@ -311,7 +311,7 @@ fn test(
     test_ok!(
         nested_blocks,
         r"fn test() -> bool {
-  let a = 1;
+  let a = 1i8;
   {
     return a;
   }
@@ -321,7 +321,7 @@ fn test(
 fn test(
 ) -> bool
 { #0
-  let a: int = 1i;
+  let a: i8 = 1i8;
   { #1
     return a;
   }
@@ -332,33 +332,33 @@ fn test(
 
     test_ok!(
         can_use_function_argument_in_expression,
-        r"fn inc(x: int) -> int {
+        r"fn inc(x: i32) -> i32 {
   return 1 + x;
 }",
         r"module test
 
 fn inc(
-  x: int,
-) -> int
+  x: i32,
+) -> i32
 { #0
-  return (+i 1i x);
+  return (+i32 1i32 x);
 }
 
 "
     );
     test_ok!(
         can_assign_to_function_argument,
-        r"fn inc(x: int) -> int {
+        r"fn inc(x: i32) -> i32 {
   x = x + 1;
   return x;
 }",
         r"module test
 
 fn inc(
-  x: int,
-) -> int
+  x: i32,
+) -> i32
 { #0
-  let x: int = (+i x 1i);
+  let x: i32 = (+i32 x 1i32);
   return x;
 }
 
@@ -367,18 +367,18 @@ fn inc(
     test_ok!(
         function_call_no_args,
         r#"
-fn f() -> int { return 42; }
-fn main() -> int { return f(); }"#,
+fn f() -> i8 { return 42i8; }
+fn main() -> i8 { return f(); }"#,
         r#"module test
 
 fn f(
-) -> int
+) -> i8
 { #0
-  return 42i;
+  return 42i8;
 }
 
 fn main(
-) -> int
+) -> i8
 { #0
   return f();
 }
@@ -388,21 +388,21 @@ fn main(
     test_ok!(
         function_call_with_args,
         r#"
-fn inc(x: int) -> int { return x + 1; }
-fn main() -> int { return inc(41); }"#,
+fn inc(x: i16) -> i16 { return x + 1i16; }
+fn main() -> i16 { return inc(41i16); }"#,
         r#"module test
 
 fn inc(
-  x: int,
-) -> int
+  x: i16,
+) -> i16
 { #0
-  return (+i x 1i);
+  return (+i16 x 1i16);
 }
 
 fn main(
-) -> int
+) -> i16
 { #0
-  return inc(41i);
+  return inc(41i16);
 }
 
 "#
@@ -436,17 +436,17 @@ fn main(
     test_ko!(
         invalid_types_not_int,
         "fn test() { ! 1; }",
-        "cannot apply operator \"!\" to type int"
+        "cannot apply operator \"!\" to type i32"
     );
     test_ko!(
         invalid_types_not_double,
         "fn test() { ! 3.14; }",
-        "cannot apply operator \"!\" to type double"
+        "cannot apply operator \"!\" to type f64"
     );
     test_ko!(
         invalid_types_bitwise_not_double,
         "fn test() { ~ 3.14; }",
-        "cannot apply operator \"~\" to type double"
+        "cannot apply operator \"~\" to type f64"
     );
     test_ko!(
         invalid_types_bitwise_not_bool,
@@ -456,7 +456,7 @@ fn main(
     test_ko!(
         invalid_types_binary_mismatch,
         "fn test() { 1 + 3.14; }",
-        "cannot apply operator \"+\" to types int and double"
+        "cannot apply operator \"+\" to types i32 and f64"
     );
 
     test_ko!(
@@ -480,7 +480,7 @@ fn main(
   let a = 42;
   a = false;
 }",
-        "invalid assignment to \"a\": symbol has type int, but expression has type bool"
+        "invalid assignment to \"a\": symbol has type i32, but expression has type bool"
     );
     test_ko!(
         variables_declared_in_nested_block_cannot_be_accessed_in_outer,
@@ -499,14 +499,14 @@ fn main(
     );
     test_ko!(
         function_not_found,
-        r#"fn main() -> int {
+        r#"fn main() -> i32 {
   return f();
 }"#,
         r#"function "f" not found"#
     );
     test_ko!(
         calling_a_non_function_symbol,
-        r#"fn main() -> int {
+        r#"fn main() -> i32 {
   let f = 42;
   return f();
 }"#,
@@ -515,8 +515,8 @@ fn main(
     test_ko!(
         calling_a_shadowed_function,
         r#"
-fn f() -> int { return 42; }
-fn main() -> int {
+fn f() -> i32 { return 42; }
+fn main() -> i32 {
   let f = 42;
   return f();
 }"#,
@@ -543,7 +543,7 @@ fn main() {
     test_ko!(
         argument_to_function_call_number_mismatch_too_few,
         r"
-fn f(x: int) {}
+fn f(x: i32) {}
 fn main() { f(); }",
         "not enough arguments in call to \"f\": expected 1, found 0"
     );
@@ -559,15 +559,15 @@ fn main() { f(1); }",
         r"
 fn f(x: bool) {}
 fn main() { f(42); }",
-        "argument type mismatch in call to \"f\": argument 0 (x) expected bool, found int"
+        "argument type mismatch in call to \"f\": argument 0 (x) expected bool, found i32"
     );
     test_ko!(
         argument_type_mismatch_void_to_int,
         r"
 fn empty() {}
-fn f(x: int) {}
+fn f(x: i32) {}
 fn main() { f(empty()); }",
-        "argument type mismatch in call to \"f\": argument 0 (x) expected int, found void"
+        "argument type mismatch in call to \"f\": argument 0 (x) expected i32, found void"
     );
 
     // If statement tests
@@ -606,10 +606,10 @@ fn test(
 ) -> void
 { #0
   if false { #1
-    let x: int = 1i;
+    let x: i32 = 1i32;
   }
   else { #2
-    let y: int = 2i;
+    let y: i32 = 2i32;
   }
 }
 
@@ -633,13 +633,13 @@ fn test(
 ) -> void
 { #0
   if false { #1
-    let x: int = 1i;
+    let x: i32 = 1i32;
   }
   else   if true { #2
-    let y: int = 2i;
+    let y: i32 = 2i32;
   }
   else { #3
-    let z: int = 3i;
+    let z: i32 = 3i32;
   }
 }
 
@@ -648,18 +648,18 @@ fn test(
 
     test_ok!(
         if_statement_with_expression_condition,
-        r"fn test(x: int) {
-  if x > 0 {
+        r"fn test(x: i16) {
+  if x > 0i16 {
     return;
   }
 }",
         r"module test
 
 fn test(
-  x: int,
+  x: i16,
 ) -> void
 { #0
-  if (>b x 0i) { #1
+  if (>b x 0i16) { #1
     return;
   }
 }
@@ -682,9 +682,9 @@ fn test(
 fn test(
 ) -> void
 { #0
-  let x: int = 1i;
+  let x: i32 = 1i32;
   if true { #1
-    let x: int = 2i;
+    let x: i32 = 2i32;
     x;
   }
   x;
@@ -698,7 +698,7 @@ fn test(
         r"fn test() {
   if true {
     if false {
-      let x = 1;
+      let x = 1i16;
     }
   }
 }",
@@ -709,7 +709,7 @@ fn test(
 { #0
   if true { #1
     if false { #2
-      let x: int = 1i;
+      let x: i16 = 1i16;
     }
   }
 }
@@ -724,7 +724,7 @@ fn test(
     return;
   }
 }",
-        "if condition must be of type bool, found int"
+        "if condition must be of type bool, found i32"
     );
 
     test_ko!(
@@ -734,7 +734,7 @@ fn test(
     return;
   }
 }",
-        "if condition must be of type bool, found double"
+        "if condition must be of type bool, found f64"
     );
 
     test_ko!(
@@ -757,13 +757,13 @@ fn test() {
     return;
   }
 }",
-        "if condition must be of type bool, found int"
+        "if condition must be of type bool, found i32"
     );
 
     test_ok!(
         variable_can_be_declared_in_ifs,
         r"
-fn test(condition: bool) -> int {
+fn test(condition: bool) -> i32 {
     let r = 1;
     if condition {
         let x = 2;
@@ -775,12 +775,12 @@ fn test(condition: bool) -> int {
 
 fn test(
   condition: bool,
-) -> int
+) -> i32
 { #0
-  let r: int = 1i;
+  let r: i32 = 1i32;
   if condition { #1
-    let x: int = 2i;
-    return (+i x r);
+    let x: i32 = 2i32;
+    return (+i32 x r);
   }
   return r;
 }
@@ -816,7 +816,7 @@ fn test(
     return;
   }
 }",
-        "while condition must be of type bool, found int"
+        "while condition must be of type bool, found i32"
     );
 
     // Break and continue statement tests
@@ -1042,7 +1042,7 @@ fn test(
     test_ko!(
         not_all_paths_return_expr,
         r#"
-fn f(x: int) -> int {
+fn f(x: i32) -> i32 {
     f(x - 1);
 }"#,
         r#"function "f" does not return a value on all paths"#
@@ -1051,7 +1051,7 @@ fn f(x: int) -> int {
     test_ko!(
         not_all_paths_return_if,
         r#"
-fn f(x: int) -> int {
+fn f(x: i32) -> i32 {
     if x > 0 {
         return 1;
     }
@@ -1062,7 +1062,7 @@ fn f(x: int) -> int {
     test_ok!(
         all_paths_return_if_else,
         r#"
-fn f(x: int) -> int {
+fn f(x: i32) -> i32 {
     if x > 0 {
         return 1;
     } else {
@@ -1074,7 +1074,7 @@ fn f(x: int) -> int {
     test_ok!(
         all_paths_return_if_else_if,
         r#"
-fn f(x: int) -> int {
+fn f(x: i32) -> i32 {
     if x > 0 {
         return 1;
     } else if x < 0 {
@@ -1088,7 +1088,7 @@ fn f(x: int) -> int {
     test_ok!(
         infinite_loop_is_ok,
         r#"
-fn f() -> int {
+fn f() -> i32 {
     loop {}
 }"#
     );
@@ -1096,7 +1096,7 @@ fn f() -> int {
     test_ko!(
         while_is_not_ok,
         r#"
-fn f(x: int) -> int {
+fn f(x: i32) -> i32 {
     while x > 0 {
         x = x - 1;
     }
@@ -1107,7 +1107,7 @@ fn f(x: int) -> int {
     test_ko!(
         infinite_loop_with_break_is_not_ok,
         r#"
-fn f(x: int) -> int {
+fn f(x: i32) -> i32 {
     loop {
         break;
     }
