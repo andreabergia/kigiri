@@ -3,7 +3,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::types::FunctionType;
+use inkwell::types::{BasicMetadataTypeEnum, FloatType, FunctionType, IntType};
 use inkwell::values::{
     BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
 };
@@ -88,11 +88,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         // Allocate variables in index order
         for var in all_variables {
             let name = safe_resolve_string_id(var.name)?;
-            let value = match var.variable_type {
-                Type::Int => self.builder.build_alloca(self.context.i64_type(), name)?,
-                Type::Bool => self.builder.build_alloca(self.context.bool_type(), name)?,
-                Type::Double => self.builder.build_alloca(self.context.f64_type(), name)?,
-            };
+            let value = self.alloca_for_type(&var.variable_type, name)?;
             self.variables.borrow_mut().push(value);
         }
         Ok(())
@@ -123,6 +119,45 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 message: format!("Instruction ID {} has no associated value", id.as_usize()),
             })?;
         Ok(*value)
+    }
+
+    fn alloca_for_type(&self, type_: &Type, name: &str) -> Result<PointerValue<'c>, BuilderError> {
+        if type_.is_integer() || *type_ == Type::Bool {
+            self.builder.build_alloca(self.llvm_int_type(type_), name)
+        } else {
+            self.builder.build_alloca(self.llvm_float_type(type_), name)
+        }
+    }
+
+    fn llvm_int_type(&self, type_: &Type) -> IntType<'c> {
+        match type_ {
+            Type::I8 => self.context.i8_type(),
+            Type::I16 => self.context.i16_type(),
+            Type::I32 => self.context.i32_type(),
+            Type::I64 => self.context.i64_type(),
+            Type::Bool => self.context.bool_type(),
+            _ => panic!("cannot get llvm_int_type for {}", type_),
+        }
+    }
+
+    fn llvm_float_type(&self, type_: &Type) -> FloatType<'c> {
+        match type_ {
+            Type::F32 => self.context.f32_type(),
+            Type::F64 => self.context.f64_type(),
+            _ => panic!("cannot get llvm_float_type for {}", type_),
+        }
+    }
+
+    fn llvm_type(&self, type_: &Type) -> BasicMetadataTypeEnum<'c> {
+        match type_ {
+            Type::I8 => self.context.i8_type().into(),
+            Type::I16 => self.context.i16_type().into(),
+            Type::I32 => self.context.i32_type().into(),
+            Type::I64 => self.context.i64_type().into(),
+            Type::Bool => self.context.bool_type().into(),
+            Type::F32 => self.context.f32_type().into(),
+            Type::F64 => self.context.f64_type().into(),
+        }
     }
 
     fn get_variable(&self, index: VariableIndex) -> Result<PointerValue<'c>, CodeGenError> {
@@ -223,12 +258,8 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     } => {
                         self.handle_load_var(instruction, operand_type, *variable_index)?;
                     }
-                    InstructionPayload::LoadArg {
-                        operand_type,
-                        argument_index,
-                        ..
-                    } => {
-                        self.handle_load_arg(fun, instruction, operand_type, *argument_index)?;
+                    InstructionPayload::LoadArg { argument_index, .. } => {
+                        self.handle_load_arg(fun, instruction, *argument_index)?;
                     }
                     InstructionPayload::StoreVar {
                         operand_type,
@@ -287,38 +318,20 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     ) -> Result<(), CodeGenError> {
         let var_pointer = self.get_variable(variable_index)?;
 
-        match operand_type {
-            Type::Int => {
-                self.store_value(
-                    instruction.id,
-                    self.builder.build_load(
-                        self.context.i64_type(),
-                        var_pointer,
-                        &Self::name("load", instruction.id),
-                    )?,
-                );
-            }
-            Type::Bool => {
-                self.store_value(
-                    instruction.id,
-                    self.builder.build_load(
-                        self.context.bool_type(),
-                        var_pointer,
-                        &Self::name("load", instruction.id),
-                    )?,
-                );
-            }
-            Type::Double => {
-                self.store_value(
-                    instruction.id,
-                    self.builder.build_load(
-                        self.context.f64_type(),
-                        var_pointer,
-                        &Self::name("load", instruction.id),
-                    )?,
-                );
-            }
+        let loaded_value = if operand_type.is_integer() || *operand_type == Type::Bool {
+            self.builder.build_load(
+                self.llvm_int_type(operand_type),
+                var_pointer,
+                &Self::name("load", instruction.id),
+            )?
+        } else {
+            self.builder.build_load(
+                self.llvm_float_type(operand_type),
+                var_pointer,
+                &Self::name("load", instruction.id),
+            )?
         };
+        self.store_value(instruction.id, loaded_value);
         Ok(())
     }
 
@@ -326,7 +339,6 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         &self,
         fun: FunctionValue<'c>,
         instruction: &Instruction,
-        operand_type: &Type,
         argument_index: ArgumentIndex,
     ) -> Result<(), CodeGenError> {
         let arg_idx: u32 = argument_index.into();
@@ -335,17 +347,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             .ok_or_else(|| CodeGenError::InternalError {
                 message: format!("Function argument {} not found", arg_idx),
             })?;
-        match operand_type {
-            Type::Int => {
-                self.store_value(instruction.id, value);
-            }
-            Type::Bool => {
-                self.store_value(instruction.id, value);
-            }
-            Type::Double => {
-                self.store_value(instruction.id, value);
-            }
-        };
+        self.store_value(instruction.id, value);
         Ok(())
     }
 
@@ -358,7 +360,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         let var_pointer = self.get_variable(variable_index)?;
 
         match operand_type {
-            Type::Int => {
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
                 self.builder
                     .build_store(var_pointer, self.get_int_value(value)?)?;
             }
@@ -366,7 +368,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 self.builder
                     .build_store(var_pointer, self.get_bool_value(value)?)?;
             }
-            Type::Double => {
+            Type::F32 | Type::F64 => {
                 self.builder
                     .build_store(var_pointer, self.get_float_value(value)?)?;
             }
@@ -383,9 +385,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         let var_pointer = self.get_variable(variable_index)?;
 
         let initializer_value: BasicValueEnum = match operand_type {
-            Type::Int => self.get_int_value(initializer)?.into(),
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => self.get_int_value(initializer)?.into(),
             Type::Bool => self.get_bool_value(initializer)?.into(),
-            Type::Double => self.get_float_value(initializer)?.into(),
+            Type::F32 | Type::F64 => self.get_float_value(initializer)?.into(),
         };
 
         self.builder.build_store(var_pointer, initializer_value)?;
@@ -398,20 +400,18 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
             .signature
             .arguments
             .iter()
-            .map(|arg| match arg.argument_type {
-                Type::Int => self.context.i64_type().into(),
-                Type::Bool => self.context.bool_type().into(),
-                Type::Double => self.context.f64_type().into(),
-            })
+            .map(|arg| self.llvm_type(&arg.argument_type))
             .collect::<Vec<_>>();
 
         match &self.function.signature.return_type {
             None => self.context.void_type().fn_type(&arguments, false),
-            Some(t) => match t {
-                Type::Int => self.context.i64_type().fn_type(&arguments, false),
-                Type::Bool => self.context.bool_type().fn_type(&arguments, false),
-                Type::Double => self.context.f64_type().fn_type(&arguments, false),
-            },
+            Some(t) => {
+                if t.is_integer() || *t == Type::Bool {
+                    self.llvm_int_type(t).fn_type(&arguments, false)
+                } else {
+                    self.llvm_float_type(t).fn_type(&arguments, false)
+                }
+            }
         }
     }
 
@@ -436,13 +436,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
         match operand_type {
-            Type::Int => {
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
                 self.handle_binary_int_operands(id, operator, left, right)?;
             }
             Type::Bool => {
                 self.handle_binary_bool_operands(id, operator, left, right)?;
             }
-            Type::Double => {
+            Type::F32 | Type::F64 => {
                 self.handle_binary_float_operands(id, operator, left, right)?;
             }
         }
@@ -675,13 +675,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
         match operand_type {
-            Type::Int => {
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
                 self.handle_unary_int_operand(id, operator, operand)?;
             }
             Type::Bool => {
                 self.handle_unary_bool_operand(id, operator, operand)?;
             }
-            Type::Double => {
+            Type::F32 | Type::F64 => {
                 self.handle_unary_float_operand(id, operator, operand)?;
             }
         }
@@ -727,7 +727,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 )?
             }
             UnaryOperator::Not => {
-                unreachable!("unexpected not operator with int type")
+                unreachable!("unexpected not operator with i32 type")
             }
         };
 
@@ -757,20 +757,40 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
     fn handle_constant(&self, id: InstructionId, constant: &LiteralValue) {
         let value = match constant {
-            LiteralValue::Integer(value) => self
+            LiteralValue::I8(value) => self
+                .context
+                .i8_type()
+                .const_int(*value as u64, false)
+                .as_basic_value_enum(),
+            LiteralValue::I16(value) => self
+                .context
+                .i16_type()
+                .const_int(*value as u64, false)
+                .as_basic_value_enum(),
+            LiteralValue::I32(value) => self
+                .context
+                .i32_type()
+                .const_int(*value as u64, false)
+                .as_basic_value_enum(),
+            LiteralValue::I64(value) => self
                 .context
                 .i64_type()
                 .const_int(*value as u64, false)
+                .as_basic_value_enum(),
+            LiteralValue::F32(value) => self
+                .context
+                .f32_type()
+                .const_float(*value as f64)
+                .as_basic_value_enum(),
+            LiteralValue::F64(value) => self
+                .context
+                .f64_type()
+                .const_float(*value)
                 .as_basic_value_enum(),
             LiteralValue::Boolean(value) => self
                 .context
                 .bool_type()
                 .const_int(if *value { 1 } else { 0 }, false)
-                .as_basic_value_enum(),
-            LiteralValue::Double(value) => self
-                .context
-                .f64_type()
-                .const_float(*value)
                 .as_basic_value_enum(),
         };
         self.store_value(id, value);
@@ -782,7 +802,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operand_type: &Type,
     ) -> Result<(), CodeGenError> {
         match operand_type {
-            Type::Int => {
+            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
                 let operand = self.get_int_value(expression)?;
                 self.builder.build_return(Some(&operand))?;
             }
@@ -790,7 +810,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 let operand = self.get_bool_value(expression)?;
                 self.builder.build_return(Some(&operand))?;
             }
-            Type::Double => {
+            Type::F32 | Type::F64 => {
                 let operand = self.get_float_value(expression)?;
                 self.builder.build_return(Some(&operand))?;
             }
@@ -991,23 +1011,22 @@ mod tests {
 
     #[test]
     fn test_add_one_function() {
-        let llvm_ir = compile_function_to_llvm("fn add_one(x: int) -> int { return 1 + x; }");
+        let llvm_ir = compile_function_to_llvm("fn add_one(x: i32) -> i32 { return 1i32 + x; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @add_one(i64 %x) {
+        define i32 @add_one(i32 %x) {
         bb0:
-          %add_2 = add i64 1, %x
-          ret i64 %add_2
+          %add_2 = add i32 1, %x
+          ret i32 %add_2
         }
         "#);
     }
 
     #[test]
     fn test_add_one_float_function() {
-        let llvm_ir =
-            compile_function_to_llvm("fn add(x: double, y: double) -> double { return x + y; }");
+        let llvm_ir = compile_function_to_llvm("fn add(x: f64, y: f64) -> f64 { return x + y; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
@@ -1022,7 +1041,7 @@ mod tests {
 
     #[test]
     fn test_neg_float_function() {
-        let llvm_ir = compile_function_to_llvm("fn neg(x: double) -> double { return -x; }");
+        let llvm_ir = compile_function_to_llvm("fn neg(x: f64) -> f64 { return -x; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
@@ -1038,14 +1057,14 @@ mod tests {
     #[test]
     fn test_comparison_int() {
         let llvm_ir =
-            compile_function_to_llvm("fn greater(x: int, y: int) -> bool { return x > y; }");
+            compile_function_to_llvm("fn greater(x: i32, y: i32) -> bool { return x > y; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i1 @greater(i64 %x, i64 %y) {
+        define i1 @greater(i32 %x, i32 %y) {
         bb0:
-          %gt_2 = icmp sgt i64 %x, %y
+          %gt_2 = icmp sgt i32 %x, %y
           ret i1 %gt_2
         }
         "#);
@@ -1054,7 +1073,7 @@ mod tests {
     #[test]
     fn test_comparison_float() {
         let llvm_ir =
-            compile_function_to_llvm("fn greater(x: double, y: double) -> bool { return x > y; }");
+            compile_function_to_llvm("fn greater(x: f64, y: f64) -> bool { return x > y; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
@@ -1069,16 +1088,16 @@ mod tests {
 
     #[test]
     fn test_declare_var_function() {
-        let llvm_ir = compile_function_to_llvm("fn declare_var() { let x = 1; let y = true; }");
+        let llvm_ir = compile_function_to_llvm("fn declare_var() { let x = 1i32; let y = true; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
         define void @declare_var() {
         bb0:
-          %x = alloca i64, align 8
+          %x = alloca i32, align 4
           %y = alloca i1, align 1
-          store i64 1, ptr %x, align 4
+          store i32 1, ptr %x, align 4
           store i1 true, ptr %y, align 1
           ret void
         }
@@ -1120,18 +1139,19 @@ mod tests {
 
     #[test]
     fn test_set_var_function() {
-        let llvm_ir =
-            compile_function_to_llvm("fn set_var() { let x = 0; x = 1; let y = false; y = true; }");
+        let llvm_ir = compile_function_to_llvm(
+            "fn set_var() { let x = 0i32; x = 1i32; let y = false; y = true; }",
+        );
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
         define void @set_var() {
         bb0:
-          %x = alloca i64, align 8
+          %x = alloca i32, align 4
           %y = alloca i1, align 1
-          store i64 0, ptr %x, align 4
-          store i64 1, ptr %x, align 4
+          store i32 0, ptr %x, align 4
+          store i32 1, ptr %x, align 4
           store i1 false, ptr %y, align 1
           store i1 true, ptr %y, align 1
           ret void
@@ -1142,7 +1162,7 @@ mod tests {
     #[test]
     fn test_float_variable() {
         let llvm_ir = compile_function_to_llvm(
-            "fn vars() -> double { let x = 1.0; let y = 2.0; return x + y; }",
+            "fn vars() -> f64 { let x = 1.0f64; let y = 2.0f64; return x + y; }",
         );
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
@@ -1165,18 +1185,18 @@ mod tests {
     #[test]
     fn test_set_param_function() {
         let llvm_ir =
-            compile_function_to_llvm("fn set_param(x: int) -> int { x = x + 1; return x; }");
+            compile_function_to_llvm("fn set_param(x: i32) -> i32 { x = x + 1; return x; }");
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @set_param(i64 %x) {
+        define i32 @set_param(i32 %x) {
         bb0:
-          %x1 = alloca i64, align 8
-          %add_2 = add i64 %x, 1
-          store i64 %add_2, ptr %x1, align 4
-          %load_4 = load i64, ptr %x1, align 4
-          ret i64 %load_4
+          %x1 = alloca i32, align 4
+          %add_2 = add i32 %x, 1
+          store i32 %add_2, ptr %x1, align 4
+          %load_4 = load i32, ptr %x1, align 4
+          ret i32 %load_4
         }
         "#);
     }
@@ -1184,22 +1204,22 @@ mod tests {
     #[test]
     fn test_function_call_no_args() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn get_five() -> int { return 5; }
-            fn main() -> int { return get_five(); }",
+            r"fn get_five() -> i32 { return 5; }
+            fn main() -> i32 { return get_five(); }",
         );
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @get_five() {
+        define i32 @get_five() {
         bb0:
-          ret i64 5
+          ret i32 5
         }
 
-        define i64 @main() {
+        define i32 @main() {
         bb0:
-          %call_0 = call i64 @get_five()
-          ret i64 %call_0
+          %call_0 = call i32 @get_five()
+          ret i32 %call_0
         }
         "#);
     }
@@ -1207,23 +1227,23 @@ mod tests {
     #[test]
     fn test_function_call_with_args() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn add(x: int, y: int) -> int { return x + y; }
-            fn main() -> int { return add(3, 7); }",
+            r"fn add(x: i32, y: i32) -> i32 { return x + y; }
+            fn main() -> i32 { return add(3, 7); }",
         );
         insta::assert_snapshot!(llvm_ir, @r#"
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @add(i64 %x, i64 %y) {
+        define i32 @add(i32 %x, i32 %y) {
         bb0:
-          %add_2 = add i64 %x, %y
-          ret i64 %add_2
+          %add_2 = add i32 %x, %y
+          ret i32 %add_2
         }
 
-        define i64 @main() {
+        define i32 @main() {
         bb0:
-          %call_2 = call i64 @add(i64 3, i64 7)
-          ret i64 %call_2
+          %call_2 = call i32 @add(i32 3, i32 7)
+          ret i32 %call_2
         }
         "#);
     }
@@ -1279,7 +1299,7 @@ mod tests {
     #[test]
     fn test_if_statement_simple() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn test(x: bool) -> int {
+            r"fn test(x: bool) -> i32 {
                 if x {
                     return 1;
                 }
@@ -1290,15 +1310,15 @@ mod tests {
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @test(i1 %x) {
+        define i32 @test(i1 %x) {
         bb0:
           br i1 %x, label %bb2, label %bb1
 
         bb2:                                              ; preds = %bb0
-          ret i64 1
+          ret i32 1
 
         bb1:                                              ; preds = %bb0
-          ret i64 0
+          ret i32 0
         }
         "#);
     }
@@ -1306,7 +1326,7 @@ mod tests {
     #[test]
     fn test_if_statement_with_else() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn test(x: bool) -> int {
+            r"fn test(x: bool) -> i32 {
                 if x {
                     return 1;
                 } else {
@@ -1318,15 +1338,15 @@ mod tests {
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @test(i1 %x) {
+        define i32 @test(i1 %x) {
         bb0:
           br i1 %x, label %bb2, label %bb3
 
         bb2:                                              ; preds = %bb0
-          ret i64 1
+          ret i32 1
 
         bb3:                                              ; preds = %bb0
-          ret i64 0
+          ret i32 0
         }
         "#);
     }
@@ -1334,7 +1354,7 @@ mod tests {
     #[test]
     fn test_if_elseif_else() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn test(x: int) -> int {
+            r"fn test(x: i32) -> i32 {
                 if x > 0 {
                     return 1;
                 } else if x < 0 {
@@ -1348,23 +1368,23 @@ mod tests {
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @test(i64 %x) {
+        define i32 @test(i32 %x) {
         bb0:
-          %gt_2 = icmp sgt i64 %x, 0
+          %gt_2 = icmp sgt i32 %x, 0
           br i1 %gt_2, label %bb2, label %bb3
 
         bb2:                                              ; preds = %bb0
-          ret i64 1
+          ret i32 1
 
         bb3:                                              ; preds = %bb0
-          %lt_8 = icmp slt i64 %x, 0
+          %lt_8 = icmp slt i32 %x, 0
           br i1 %lt_8, label %bb4, label %bb5
 
         bb4:                                              ; preds = %bb3
-          ret i64 -1
+          ret i32 -1
 
         bb5:                                              ; preds = %bb3
-          ret i64 0
+          ret i32 0
         }
         "#);
     }
@@ -1372,8 +1392,8 @@ mod tests {
     #[test]
     fn test_if_statement_variable_assignment() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn test(condition: bool) -> int {
-                let result = 0;
+            r"fn test(condition: bool) -> i32 {
+                let result = 0i32;
                 if condition {
                     result = 42;
                 }
@@ -1384,19 +1404,19 @@ mod tests {
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @test(i1 %condition) {
+        define i32 @test(i1 %condition) {
         bb0:
-          %result = alloca i64, align 8
-          store i64 0, ptr %result, align 4
+          %result = alloca i32, align 4
+          store i32 0, ptr %result, align 4
           br i1 %condition, label %bb2, label %bb1
 
         bb2:                                              ; preds = %bb0
-          store i64 42, ptr %result, align 4
+          store i32 42, ptr %result, align 4
           br label %bb1
 
         bb1:                                              ; preds = %bb2, %bb0
-          %load_7 = load i64, ptr %result, align 4
-          ret i64 %load_7
+          %load_7 = load i32, ptr %result, align 4
+          ret i32 %load_7
         }
         "#);
     }
@@ -1404,7 +1424,7 @@ mod tests {
     #[test]
     fn test_nested_if_statements() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn test(x: int, y: int) -> int {
+            r"fn test(x: i32, y: i32) -> i32 {
                 if x > 0 {
                     if y > 0 {
                         return 1;
@@ -1420,23 +1440,23 @@ mod tests {
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @test(i64 %x, i64 %y) {
+        define i32 @test(i32 %x, i32 %y) {
         bb0:
-          %gt_2 = icmp sgt i64 %x, 0
+          %gt_2 = icmp sgt i32 %x, 0
           br i1 %gt_2, label %bb2, label %bb3
 
         bb2:                                              ; preds = %bb0
-          %gt_6 = icmp sgt i64 %y, 0
+          %gt_6 = icmp sgt i32 %y, 0
           br i1 %gt_6, label %bb5, label %bb6
 
         bb3:                                              ; preds = %bb0
-          ret i64 3
+          ret i32 3
 
         bb5:                                              ; preds = %bb2
-          ret i64 1
+          ret i32 1
 
         bb6:                                              ; preds = %bb2
-          ret i64 2
+          ret i32 2
         }
         "#);
     }
@@ -1444,7 +1464,7 @@ mod tests {
     #[test]
     fn test_variable_declared_in_if_block() {
         let llvm_ir = compile_function_to_llvm(
-            r"fn test(condition: bool) -> int {
+            r"fn test(condition: bool) -> i32 {
                 if condition {
                     let x = 42;
                     return x;
@@ -1456,18 +1476,18 @@ mod tests {
         ; ModuleID = 'test'
         source_filename = "test"
 
-        define i64 @test(i1 %condition) {
+        define i32 @test(i1 %condition) {
         bb0:
-          %x = alloca i64, align 8
+          %x = alloca i32, align 4
           br i1 %condition, label %bb2, label %bb1
 
         bb2:                                              ; preds = %bb0
-          store i64 42, ptr %x, align 4
-          %load_4 = load i64, ptr %x, align 4
-          ret i64 %load_4
+          store i32 42, ptr %x, align 4
+          %load_4 = load i32, ptr %x, align 4
+          ret i32 %load_4
 
         bb1:                                              ; preds = %bb0
-          ret i64 0
+          ret i32 0
         }
         "#);
     }

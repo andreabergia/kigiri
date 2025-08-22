@@ -36,7 +36,7 @@ fn jit_test(source: &str, test_callback: unsafe fn(ExecutionEngine) -> ()) {
 
 #[test]
 fn test_basic_arithmetic() {
-    let source = "fn f(x: int) -> int { return 1 + x * 2; }";
+    let source = "fn f(x: i64) -> i64 { return 1i64 + x * 2i64; }";
     jit_test(source, |jit_engine| unsafe {
         type F = unsafe extern "C" fn(i64) -> i64;
         let fun: JitFunction<F> = jit_engine.get_function("f").expect("find function");
@@ -48,9 +48,9 @@ fn test_basic_arithmetic() {
 
 #[test]
 fn test_int_comparison() {
-    let source = "fn f(x: int, y: int, z: int) -> bool { return x < y || x < z; }";
+    let source = "fn f(x: i32, y: i32, z: i32) -> bool { return x < y || x < z; }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64, i64, i64) -> bool;
+        type F = unsafe extern "C" fn(i32, i32, i32) -> bool;
         let fun: JitFunction<F> = jit_engine.get_function("f").expect("find function");
 
         assert!(fun.call(0, 1, 2));
@@ -62,13 +62,13 @@ fn test_int_comparison() {
 #[test]
 fn test_variables() {
     let source = r"
-fn f(x: int) -> bool {
+fn f(x: i16) -> bool {
     let y = x * x;
-    let z = x + 1;
+    let z = x + 1i16;
     return y < z;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64) -> bool;
+        type F = unsafe extern "C" fn(i16) -> bool;
         let fun: JitFunction<F> = jit_engine.get_function("f").expect("find function");
 
         assert!(fun.call(0));
@@ -80,13 +80,13 @@ fn f(x: int) -> bool {
 #[test]
 fn test_variable_shadowing() {
     let source = r"
-fn f(x: int) -> int {
-    let x = x + 1;
-    let x = x * 2;
-    return x + 1;
+fn f(x: i8) -> i8 {
+    let x = x + 1i8;
+    let x = x * 2i8;
+    return x + 1i8;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64) -> i64;
+        type F = unsafe extern "C" fn(i8) -> i8;
         let fun: JitFunction<F> = jit_engine.get_function("f").expect("find function");
 
         assert_eq!(fun.call(0), 3);
@@ -98,13 +98,13 @@ fn f(x: int) -> int {
 #[test]
 fn test_functions_call() {
     let source = r"
-fn add_one(x: int) -> int { return x + 1; }
+fn add_one(x: i32) -> i32 { return x + 1i32; }
 
-fn f(x: int) -> int {
-    return 2 * add_one(x);
+fn f(x: i32) -> i32 {
+    return 2i32 * add_one(x);
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64) -> i64;
+        type F = unsafe extern "C" fn(i32) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("f").expect("find function");
 
         assert_eq!(fun.call(0), 2);
@@ -116,14 +116,14 @@ fn f(x: int) -> int {
 #[test]
 fn test_if_statement_simple() {
     let source = r"
-fn test(x: bool) -> int {
+fn test(x: bool) -> i32 {
     if x {
-        return 1;
+        return 1i32;
     }
-    return 0;
+    return 0i32;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(bool) -> i64;
+        type F = unsafe extern "C" fn(bool) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("test").expect("find function");
 
         assert_eq!(fun.call(true), 1);
@@ -134,15 +134,15 @@ fn test(x: bool) -> int {
 #[test]
 fn test_if_statement_with_else() {
     let source = r"
-fn test(x: bool) -> int {
+fn test(x: bool) -> i32 {
     if x {
-        return 1;
+        return 1i32;
     } else {
-        return 0;
+        return 0i32;
     }
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(bool) -> i64;
+        type F = unsafe extern "C" fn(bool) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("test").expect("find function");
 
         assert_eq!(fun.call(true), 1);
@@ -153,17 +153,17 @@ fn test(x: bool) -> int {
 #[test]
 fn test_if_elseif_else() {
     let source = r"
-fn test(x: int) -> int {
-    if x > 0 {
-        return 1;
-    } else if x < 0 {
+fn test(x: i32) -> i32 {
+    if x > 0i32 {
+        return 1i32;
+    } else if x < 0i32 {
         return -1;
     } else {
-        return 0;
+        return 0i32;
     }
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64) -> i64;
+        type F = unsafe extern "C" fn(i32) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("test").expect("find function");
 
         assert_eq!(fun.call(5), 1);
@@ -175,7 +175,7 @@ fn test(x: int) -> int {
 #[test]
 fn test_if_statement_variable_assignment() {
     let source = r"
-fn test(condition: bool) -> int {
+fn test(condition: bool) -> i32 {
     let result = 0;
     if condition {
         result = 42;
@@ -183,7 +183,7 @@ fn test(condition: bool) -> int {
     return result;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(bool) -> i64;
+        type F = unsafe extern "C" fn(bool) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("test").expect("find function");
 
         assert_eq!(fun.call(true), 42);
@@ -194,10 +194,10 @@ fn test(condition: bool) -> int {
 #[test]
 fn test_nested_if_statements() {
     let source = r"
-fn test(x: int, y: int) -> int {
-    if x > 0 {
+fn test(x: i32, y: i32) -> i32 {
+    if x > 0i32 {
         if y > 0 {
-            return 1;
+            return 1i32;
         } else {
             return 2;
         }
@@ -206,7 +206,7 @@ fn test(x: int, y: int) -> int {
     }
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64, i64) -> i64;
+        type F = unsafe extern "C" fn(i64, i64) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("test").expect("find function");
 
         assert_eq!(fun.call(1, 1), 1);
@@ -219,7 +219,7 @@ fn test(x: int, y: int) -> int {
 #[test]
 fn test_if_statement_variable_declaration_in_block() {
     let source = r"
-fn test(condition: bool) -> int {
+fn test(condition: bool) -> i32 {
     let r = 1;
     if condition {
         let x = 2;
@@ -228,7 +228,7 @@ fn test(condition: bool) -> int {
     return r;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(bool) -> i64;
+        type F = unsafe extern "C" fn(bool) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("test").expect("find function");
 
         assert_eq!(fun.call(true), 3);
@@ -239,14 +239,14 @@ fn test(condition: bool) -> int {
 #[test]
 fn test_factorial() {
     let source = r"
-fn fact(n: int) -> int {
+fn fact(n: i32) -> i32 {
     if n <= 1 {
-        return 1;
+        return 1i32;
     }
     return n * fact(n - 1);
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64) -> i64;
+        type F = unsafe extern "C" fn(i32) -> i32;
         let fun: JitFunction<F> = jit_engine.get_function("fact").expect("find function");
 
         assert_eq!(fun.call(0), 1);
@@ -260,7 +260,7 @@ fn fact(n: int) -> int {
 #[test]
 fn test_while_loop_simple() {
     let source = r"
-fn count_down(n: int) -> int {
+fn count_down(n: i32) -> i32 {
     let result = 0;
     let counter = n;
     while counter > 0 {
@@ -270,7 +270,7 @@ fn count_down(n: int) -> int {
     return result;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64) -> i64;
+        type F = unsafe extern "C" fn(i32) -> i32;
         let fun: JitFunction<F> = jit_engine
             .get_function("count_down")
             .expect("find function");
@@ -285,7 +285,7 @@ fn count_down(n: int) -> int {
 #[test]
 fn test_while_loop_with_early_return() {
     let source = r"
-fn find_first_multiple(start: int, target: int) -> int {
+fn find_first_multiple(start: i32, target: i32) -> i32 {
     let current = start;
     while current < 100 {
         if current % target == 0 {
@@ -296,7 +296,7 @@ fn find_first_multiple(start: int, target: int) -> int {
     return -1;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64, i64) -> i64;
+        type F = unsafe extern "C" fn(i64, i64) -> i32;
         let fun: JitFunction<F> = jit_engine
             .get_function("find_first_multiple")
             .expect("find function");
@@ -310,7 +310,7 @@ fn find_first_multiple(start: int, target: int) -> int {
 #[test]
 fn test_nested_while_loops() {
     let source = r"
-fn multiply_by_addition(a: int, b: int) -> int {
+fn multiply_by_addition(a: i32, b: i32) -> i32 {
     let result = 0;
     let i = 0;
     while i < a {
@@ -324,7 +324,7 @@ fn multiply_by_addition(a: int, b: int) -> int {
     return result;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64, i64) -> i64;
+        type F = unsafe extern "C" fn(i64, i64) -> i32;
         let fun: JitFunction<F> = jit_engine
             .get_function("multiply_by_addition")
             .expect("find function");
@@ -339,7 +339,7 @@ fn multiply_by_addition(a: int, b: int) -> int {
 #[test]
 fn test_break_continue() {
     let source = r"
-fn count_bits(a: int) -> int {
+fn count_bits(a: i32) -> i32 {
     let n = 0;
     let t = a;
     while true {
@@ -354,7 +354,7 @@ fn count_bits(a: int) -> int {
     return n;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn(i64) -> i64;
+        type F = unsafe extern "C" fn(i32) -> i32;
         let fun: JitFunction<F> = jit_engine
             .get_function("count_bits")
             .expect("find function");
@@ -372,7 +372,7 @@ fn count_bits(a: int) -> int {
 #[test]
 fn test_loop_with_break() {
     let source = r"
-fn count_to_ten() -> int {
+fn count_to_ten() -> i32 {
     let counter = 0;
     loop {
         if counter >= 10 {
@@ -383,7 +383,7 @@ fn count_to_ten() -> int {
     return counter;
 }";
     jit_test(source, |jit_engine| unsafe {
-        type F = unsafe extern "C" fn() -> i64;
+        type F = unsafe extern "C" fn() -> i32;
         let fun: JitFunction<F> = jit_engine
             .get_function("count_to_ten")
             .expect("find function");
