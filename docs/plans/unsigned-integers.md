@@ -16,44 +16,23 @@ Unsigned integers will use the same LLVM integer types as signed counterparts (i
 
 ## Implementation Plan
 
-### Phase 1: Parser Layer
+### Phase 1: Parser Layer ✅ COMPLETED
 
-1. **grammar.pest:66** - Extend `intSuffix` rule:
-   ```pest
-   intSuffix = @{
-       "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
-   }
-   ```
+**Commit:** `5bebb08` - feat: add unsigned integer types (u8/u16/u32/u64) to parser
 
-2. **ast.rs:143-151** - Add unsigned variants to `LiteralValue` enum:
-   ```rust
-   #[derive(Debug, PartialEq, Clone)]
-   pub enum LiteralValue {
-       I8(i8),
-       I16(i16),
-       I32(i32),
-       I64(i64),
-       U8(u8),    // Add
-       U16(u16),  // Add
-       U32(u32),  // Add
-       U64(u64),  // Add
-       F32(f32),
-       F64(f64),
-       Boolean(bool),
-   }
-   ```
+1. ✅ **grammar.pest:66** - Extended `intSuffix` rule to include u8/u16/u32/u64
+2. ✅ **ast.rs:143-155** - Added unsigned variants to `LiteralValue` enum (U8, U16, U32, U64)
+3. ✅ **ast.rs:421-424** - Updated `Display` impl for unsigned literals
+4. ✅ **parser.rs:62-69, 111-146** - Added parsing logic for decimal unsigned suffixes  
+5. ✅ **parser.rs:160-167, 214-253** - Added parsing logic for hex unsigned suffixes
+6. ✅ **parsed_ast.rs:69-95** - Added `literal_u8/u16/u32/u64` methods to allocator
+7. ✅ **Tests** - Added comprehensive test coverage (16 new tests including overflow detection)
 
-3. **ast.rs:410-422** - Update `Display` impl for `LiteralValue`:
-   ```rust
-   LiteralValue::U8(value) => write!(f, "{}u8", value),
-   LiteralValue::U16(value) => write!(f, "{}u16", value),
-   LiteralValue::U32(value) => write!(f, "{}u32", value),
-   LiteralValue::U64(value) => write!(f, "{}u64", value),
-   ```
+**Status:** Parser layer fully implemented and tested (107 tests pass)
 
-4. **parser.rs** - Update literal parsing logic to handle unsigned suffixes
+### Phase 2: Semantic Analysis Layer 🔄 IN PROGRESS
 
-### Phase 2: Semantic Analysis Layer
+**Current Error:** Compiler requires handling unsigned `LiteralValue` variants in `types.rs:46`
 
 5. **types.rs:8-16** - Add unsigned variants to `Type` enum:
    ```rust
@@ -115,7 +94,11 @@ Unsigned integers will use the same LLVM integer types as signed counterparts (i
     }
     ```
 
-### Phase 3: Backend LLVM Layer
+### Phase 3: Codegen Layer 📋 PENDING
+
+*Will need updates to handle unsigned types in IR generation*
+
+### Phase 4: Backend LLVM Layer 📋 PENDING
 
 11. **ir_to_llvm.rs:132-141** - Update `llvm_int_type()` method:
     ```rust
@@ -147,20 +130,41 @@ Unsigned integers will use the same LLVM integer types as signed counterparts (i
     LiteralValue::U64(value) => self.context.i64_type().const_int(*value, false).as_basic_value_enum(),
     ```
 
-### Phase 4: Testing
+### Phase 5: Testing 📋 PENDING
 
 14. Add test cases for unsigned integer literals and type checking
 15. Run `just test` to ensure no regressions
 16. Update any snapshot tests affected by new type support
 17. Run `just lint` to ensure code quality
 
-## Files to Modify
+## Progress Summary
 
-- `parser/src/grammar.pest:66`
-- `parser/src/ast.rs:143-151, 410-422`
-- `parser/src/parser.rs`
-- `semantic_analysis/src/types.rs:8-91` (multiple methods)
-- `backend_llvm/src/ir_to_llvm.rs:132-161, handle_constant method`
+✅ **Parser Layer Complete** (Commit `5bebb08`)
+- Grammar, AST, parsing logic, allocator methods, comprehensive tests
+- All 107 parser tests passing
+
+🔄 **Semantic Analysis Layer In Progress** 
+- Need to update `Type` enum and related methods in `types.rs`
+- Compiler error indicates next required step
+
+📋 **Remaining Work**
+- Semantic Analysis: Update type system for unsigned integers
+- Codegen: Handle unsigned types in IR generation  
+- Backend LLVM: Map unsigned types to LLVM integer types
+- Testing: Verify end-to-end functionality
+
+## Files Modified
+
+✅ **Parser Layer:**
+- `parser/src/grammar.pest:66` - Extended `intSuffix` rule
+- `parser/src/ast.rs:143-155, 421-424` - Updated `LiteralValue` enum and Display
+- `parser/src/parser.rs` - Added decimal/hex parsing logic for unsigned suffixes
+- `parser/src/parsed_ast.rs:69-95` - Added unsigned literal allocator methods
+
+📋 **Remaining Files:**
+- `semantic_analysis/src/types.rs:8-91` - Update Type enum and all methods
+- `codegen/src/ir.rs` - Handle unsigned types in IR (if needed)
+- `backend_llvm/src/ir_to_llvm.rs:132-161` - Update LLVM type mappings
 
 ## Testing Strategy
 

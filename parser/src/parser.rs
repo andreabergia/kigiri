@@ -59,6 +59,14 @@ fn parse_expression<'a>(
                                 (text.strip_suffix("i32").unwrap(), "i32")
                             } else if text.ends_with("i64") {
                                 (text.strip_suffix("i64").unwrap(), "i64")
+                            } else if text.ends_with("u8") {
+                                (text.strip_suffix("u8").unwrap(), "u8")
+                            } else if text.ends_with("u16") {
+                                (text.strip_suffix("u16").unwrap(), "u16")
+                            } else if text.ends_with("u32") {
+                                (text.strip_suffix("u32").unwrap(), "u32")
+                            } else if text.ends_with("u64") {
+                                (text.strip_suffix("u64").unwrap(), "u64")
                             } else {
                                 (text, "i32") // default to i32 if no suffix
                             };
@@ -100,6 +108,42 @@ fn parse_expression<'a>(
                                     })?;
                                     Ok(ast_allocator.literal_i64(value))
                                 }
+                                "u8" => {
+                                    let value = u8::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_u8(value))
+                                }
+                                "u16" => {
+                                    let value = u16::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_u16(value))
+                                }
+                                "u32" => {
+                                    let value = u32::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_u32(value))
+                                }
+                                "u64" => {
+                                    let value = u64::from_str(num_text).map_err(|source| {
+                                        ParseError::IntegerParseError {
+                                            text: text.to_owned(),
+                                            source,
+                                        }
+                                    })?;
+                                    Ok(ast_allocator.literal_u64(value))
+                                }
                                 _ => unreachable!(),
                             }
                         }
@@ -113,6 +157,14 @@ fn parse_expression<'a>(
                                 (lowercase_text.strip_suffix("i32").unwrap(), "i32")
                             } else if lowercase_text.ends_with("i64") {
                                 (lowercase_text.strip_suffix("i64").unwrap(), "i64")
+                            } else if lowercase_text.ends_with("u8") {
+                                (lowercase_text.strip_suffix("u8").unwrap(), "u8")
+                            } else if lowercase_text.ends_with("u16") {
+                                (lowercase_text.strip_suffix("u16").unwrap(), "u16")
+                            } else if lowercase_text.ends_with("u32") {
+                                (lowercase_text.strip_suffix("u32").unwrap(), "u32")
+                            } else if lowercase_text.ends_with("u64") {
+                                (lowercase_text.strip_suffix("u64").unwrap(), "u64")
                             } else {
                                 (lowercase_text.as_str(), "i32") // default to i32 if no suffix
                             };
@@ -158,6 +210,46 @@ fn parse_expression<'a>(
                                             }
                                         })?;
                                     Ok(ast_allocator.literal_i64(value))
+                                }
+                                "u8" => {
+                                    let value =
+                                        u8::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_u8(value))
+                                }
+                                "u16" => {
+                                    let value =
+                                        u16::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_u16(value))
+                                }
+                                "u32" => {
+                                    let value =
+                                        u32::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_u32(value))
+                                }
+                                "u64" => {
+                                    let value =
+                                        u64::from_str_radix(hex_text, 16).map_err(|source| {
+                                            ParseError::IntegerParseError {
+                                                text: text.to_owned(),
+                                                source,
+                                            }
+                                        })?;
+                                    Ok(ast_allocator.literal_u64(value))
                                 }
                                 _ => unreachable!(),
                             }
@@ -719,6 +811,26 @@ mod tests {
     test_expression!(literal_int_5, "2i16", "2i16");
     test_expression!(literal_int_6, "2i32", "2i32");
     test_expression!(literal_int_7, "2i64", "2i64");
+    test_expression!(literal_uint_1, "2u8", "2u8");
+    test_expression!(literal_uint_2, "2u16", "2u16");
+    test_expression!(literal_uint_3, "2u32", "2u32");
+    test_expression!(literal_uint_4, "2u64", "2u64");
+    test_expression!(literal_uint_5, "255u8", "255u8");
+    test_expression!(literal_uint_6, "65535u16", "65535u16");
+    test_expression!(literal_uint_7, "4294967295u32", "4294967295u32");
+    test_expression!(
+        literal_uint_8,
+        "18446744073709551615u64",
+        "18446744073709551615u64"
+    );
+    test_expression!(literal_hex_uint_1, "0xFFu8", "255u8");
+    test_expression!(literal_hex_uint_2, "0xFFFFu16", "65535u16");
+    test_expression!(literal_hex_uint_3, "0xFFFFFFFFu32", "4294967295u32");
+    test_expression!(
+        literal_hex_uint_4,
+        "0xFFFFFFFFFFFFFFFFu64",
+        "18446744073709551615u64"
+    );
 
     test_expression_ko!(invalid_i8, "1000i8", "Failed to parse integer: 1000i8");
     test_expression_ko!(
@@ -735,6 +847,19 @@ mod tests {
         invalid_i164,
         "12345678901223456176167123i64",
         "Failed to parse integer: 12345678901223456176167123i64"
+    );
+
+    test_expression_ko!(invalid_u8, "256u8", "Failed to parse integer: 256u8");
+    test_expression_ko!(invalid_u16, "65536u16", "Failed to parse integer: 65536u16");
+    test_expression_ko!(
+        invalid_u32,
+        "4294967296u32",
+        "Failed to parse integer: 4294967296u32"
+    );
+    test_expression_ko!(
+        invalid_u64,
+        "18446744073709551616u64",
+        "Failed to parse integer: 18446744073709551616u64"
     );
 
     test_expression!(literal_float_1, "0.", "0f64");

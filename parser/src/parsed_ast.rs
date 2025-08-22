@@ -66,6 +66,34 @@ impl ParsedAstAllocator {
         })
     }
 
+    pub fn literal_u8(&self, value: u8) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::U8(value),
+        })
+    }
+
+    pub fn literal_u16(&self, value: u16) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::U16(value),
+        })
+    }
+
+    pub fn literal_u32(&self, value: u32) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::U32(value),
+        })
+    }
+
+    pub fn literal_u64(&self, value: u64) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::U64(value),
+        })
+    }
+
     pub fn literal_f32(&self, value: f32) -> &Expression<PhaseParsed> {
         self.allocator.alloc(Expression::Literal {
             resolved_type: (),
