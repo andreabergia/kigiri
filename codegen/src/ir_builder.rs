@@ -712,36 +712,36 @@ mod tests {
 
     test_module_ir!(
         fn_constant,
-        r"fn one() -> int {
+        r"fn one() -> i32 {
     return 1;
 }",
         r"module test
 
 fn one(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i const 1i
-    00001 i ret @0
+    00000 i32 const 1i32
+    00001 i32 ret @0
   }
 }
 "
     );
     test_module_ir!(
         fn_unary,
-        r"fn neg(x: int) -> int {
+        r"fn neg(x: i32) -> i32 {
     return - x;
 }",
         r"module test
 
 fn neg(
-  x: int,
-) -> i {
+  x: i32,
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i loadarg x
-    00001 i neg @0
-    00002 i ret @1
+    00000 i32 loadarg x
+    00001 i32 neg @0
+    00002 i32 ret @1
   }
 }
 "
@@ -749,44 +749,44 @@ fn neg(
 
     test_module_ir!(
         fn_binary,
-        r"fn add_one(x: double) -> double {
+        r"fn add_one(x: f64) -> f64 {
     return 1.0 + x;
 }",
         r"module test
 
 fn add_one(
-  x: double,
-) -> d {
+  x: f64,
+) -> f64 {
   entry_block: #0
   { #0
-    00000 d const 1d
-    00001 d loadarg x
-    00002 d add @0, @1
-    00003 d ret @2
+    00000 f64 const 1f64
+    00001 f64 loadarg x
+    00002 f64 add @0, @1
+    00003 f64 ret @2
   }
 }
 "
     );
     test_module_ir!(
         multiple_fn_reset_ir_counter,
-        r"fn one() -> int { return 1; }
-fn two() -> int { return 2; }",
+        r"fn one() -> i32 { return 1; }
+fn two() -> i32 { return 2; }",
         r"module test
 
 fn one(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i const 1i
-    00001 i ret @0
+    00000 i32 const 1i32
+    00001 i32 ret @0
   }
 }
 fn two(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i const 2i
-    00001 i ret @0
+    00000 i32 const 2i32
+    00001 i32 ret @0
   }
 }
 "
@@ -800,7 +800,7 @@ fn empty(
 ) -> void {
   entry_block: #0
   { #0
-    00000 v ret
+    00000 v   ret
   }
 }
 "
@@ -818,10 +818,10 @@ fn var(
   entry_block: #0
   { #0
     var y: bool
-    00000 b const true
-    00001 b let y = @0
-    00002 b loadvar y
-    00003 b ret @2
+    00000 b   const true
+    00001 b   let y = @0
+    00002 b   loadvar y
+    00003 b   ret @2
   }
 }
 "
@@ -837,20 +837,20 @@ fn var(
 ) -> void {
   entry_block: #0
   { #0
-    var y: int
-    var z: int
-    00000 i const 1i
-    00001 i let y = @0
-    00002 i const 2i
-    00003 i let z = @2
-    00004 v ret
+    var y: i32
+    var z: i32
+    00000 i32 const 1i32
+    00001 i32 let y = @0
+    00002 i32 const 2i32
+    00003 i32 let z = @2
+    00004 v   ret
   }
 }
 "
     );
     test_module_ir!(
         variable_assignment,
-        r"fn var() -> int {
+        r"fn var() -> i32 {
     let y = 1;
     y = 2;
     return y;
@@ -858,40 +858,40 @@ fn var(
         r"module test
 
 fn var(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    var y: int
-    00000 i const 1i
-    00001 i let y = @0
-    00002 i const 2i
-    00003 i storevar y = @2
-    00004 i loadvar y
-    00005 i ret @4
+    var y: i32
+    00000 i32 const 1i32
+    00001 i32 let y = @0
+    00002 i32 const 2i32
+    00003 i32 storevar y = @2
+    00004 i32 loadvar y
+    00005 i32 ret @4
   }
 }
 "
     );
     test_module_ir!(
         argument_reassignment,
-        r"fn arg_assign(x: int) -> int {
+        r"fn arg_assign(x: i32) -> i32 {
     x = x + 1;
     return x;
 }",
         r"module test
 
 fn arg_assign(
-  x: int,
-) -> i {
+  x: i32,
+) -> i32 {
   entry_block: #0
   { #0
-    var x: int
-    00000 i loadarg x
-    00001 i const 1i
-    00002 i add @0, @1
-    00003 i let x = @2
-    00004 i loadvar x
-    00005 i ret @4
+    var x: i32
+    00000 i32 loadarg x
+    00001 i32 const 1i32
+    00002 i32 add @0, @1
+    00003 i32 let x = @2
+    00004 i32 loadvar x
+    00005 i32 ret @4
   }
 }
 "
@@ -899,26 +899,26 @@ fn arg_assign(
 
     test_module_ir!(
         function_call_no_args,
-        r"fn get_five() -> int { return 5; }
-fn main() -> int {
+        r"fn get_five() -> i32 { return 5; }
+fn main() -> i32 {
     return get_five();
 }",
         r"module test
 
 fn get_five(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i const 5i
-    00001 i ret @0
+    00000 i32 const 5i32
+    00001 i32 ret @0
   }
 }
 fn main(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i call get_five()
-    00001 i ret @0
+    00000 i32 call get_five()
+    00001 i32 ret @0
   }
 }
 "
@@ -926,32 +926,32 @@ fn main(
 
     test_module_ir!(
         function_call_with_args,
-        r"fn add(x: int, y: int) -> int { return x + y; }
-fn main() -> int {
+        r"fn add(x: i32, y: i32) -> i32 { return x + y; }
+fn main() -> i32 {
     return add(3, 7);
 }",
         r"module test
 
 fn add(
-  x: int,
-  y: int,
-) -> i {
+  x: i32,
+  y: i32,
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i loadarg x
-    00001 i loadarg y
-    00002 i add @0, @1
-    00003 i ret @2
+    00000 i32 loadarg x
+    00001 i32 loadarg y
+    00002 i32 add @0, @1
+    00003 i32 ret @2
   }
 }
 fn main(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 i const 3i
-    00001 i const 7i
-    00002 i call add(@0, @1)
-    00003 i ret @2
+    00000 i32 const 3i32
+    00001 i32 const 7i32
+    00002 i32 call add(@0, @1)
+    00003 i32 ret @2
   }
 }
 "
@@ -969,15 +969,15 @@ fn print_hello(
 ) -> void {
   entry_block: #0
   { #0
-    00000 v ret
+    00000 v   ret
   }
 }
 fn main(
 ) -> void {
   entry_block: #0
   { #0
-    00000 v call print_hello()
-    00001 v ret
+    00000 v   call print_hello()
+    00001 v   ret
   }
 }
 "
@@ -985,7 +985,7 @@ fn main(
 
     test_module_ir!(
         if_statement_simple,
-        r"fn test(x: bool) -> int {
+        r"fn test(x: bool) -> i32 {
     if (x) {
         return 1;
     }
@@ -995,19 +995,19 @@ fn main(
 
 fn test(
   x: bool,
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 b loadarg x
-    00001 v br @0, #2, #1
+    00000 b   loadarg x
+    00001 v   br @0, #2, #1
   }
   { #2
-    00002 i const 1i
-    00003 i ret @2
+    00002 i32 const 1i32
+    00003 i32 ret @2
   }
   { #1
-    00004 i const 2i
-    00005 i ret @4
+    00004 i32 const 2i32
+    00005 i32 ret @4
   }
 }
 "
@@ -1015,7 +1015,7 @@ fn test(
 
     test_module_ir!(
         if_statement_with_else,
-        r"fn test(x: bool) -> int {
+        r"fn test(x: bool) -> i32 {
     if (x) {
         return 1;
     } else {
@@ -1026,19 +1026,19 @@ fn test(
 
 fn test(
   x: bool,
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    00000 b loadarg x
-    00001 v br @0, #2, #3
+    00000 b   loadarg x
+    00001 v   br @0, #2, #3
   }
   { #2
-    00002 i const 1i
-    00003 i ret @2
+    00002 i32 const 1i32
+    00003 i32 ret @2
   }
   { #3
-    00004 i const 2i
-    00005 i ret @4
+    00004 i32 const 2i32
+    00005 i32 ret @4
   }
   { #1
   }
@@ -1048,7 +1048,7 @@ fn test(
 
     test_module_ir!(
         if_elseif_else,
-        r"fn test(x: int) -> int {
+        r"fn test(x: i32) -> i32 {
     let result = 0;
     if (x > 10) {
         result = 1;
@@ -1062,42 +1062,42 @@ fn test(
         r"module test
 
 fn test(
-  x: int,
-) -> i {
+  x: i32,
+) -> i32 {
   entry_block: #0
   { #0
-    var result: int
-    00000 i const 0i
-    00001 i let result = @0
-    00002 i loadarg x
-    00003 i const 10i
-    00004 b gt @2, @3
-    00005 v br @4, #2, #3
+    var result: i32
+    00000 i32 const 0i32
+    00001 i32 let result = @0
+    00002 i32 loadarg x
+    00003 i32 const 10i32
+    00004 b   gt @2, @3
+    00005 v   br @4, #2, #3
   }
   { #2
-    00006 i const 1i
-    00007 i storevar result = @6
-    00008 v jmp #1
+    00006 i32 const 1i32
+    00007 i32 storevar result = @6
+    00008 v   jmp #1
   }
   { #3
-    00009 i loadarg x
-    00010 i const 5i
-    00011 b gt @9, @10
-    00012 v br @11, #4, #5
+    00009 i32 loadarg x
+    00010 i32 const 5i32
+    00011 b   gt @9, @10
+    00012 v   br @11, #4, #5
   }
   { #4
-    00013 i const 2i
-    00014 i storevar result = @13
-    00015 v jmp #1
+    00013 i32 const 2i32
+    00014 i32 storevar result = @13
+    00015 v   jmp #1
   }
   { #5
-    00016 i const 3i
-    00017 i storevar result = @16
-    00018 v jmp #1
+    00016 i32 const 3i32
+    00017 i32 storevar result = @16
+    00018 v   jmp #1
   }
   { #1
-    00019 i loadvar result
-    00020 i ret @19
+    00019 i32 loadvar result
+    00020 i32 ret @19
   }
 }
 "
@@ -1106,7 +1106,7 @@ fn test(
     test_module_ir!(
         variable_can_be_declared_in_ifs,
         r"
-fn test(condition: bool) -> int {
+fn test(condition: bool) -> i32 {
     let r = 1;
     if condition {
         let x = 2;
@@ -1118,27 +1118,27 @@ fn test(condition: bool) -> int {
 
 fn test(
   condition: bool,
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    var r: int
-    00000 i const 1i
-    00001 i let r = @0
-    00002 b loadarg condition
-    00003 v br @2, #2, #1
+    var r: i32
+    00000 i32 const 1i32
+    00001 i32 let r = @0
+    00002 b   loadarg condition
+    00003 v   br @2, #2, #1
   }
   { #2
-    var x: int
-    00004 i const 2i
-    00005 i let x = @4
-    00006 i loadvar x
-    00007 i loadvar r
-    00008 i add @6, @7
-    00009 i ret @8
+    var x: i32
+    00004 i32 const 2i32
+    00005 i32 let x = @4
+    00006 i32 loadvar x
+    00007 i32 loadvar r
+    00008 i32 add @6, @7
+    00009 i32 ret @8
   }
   { #1
-    00010 i loadvar r
-    00011 i ret @10
+    00010 i32 loadvar r
+    00011 i32 ret @10
   }
 }
 "
@@ -1146,7 +1146,7 @@ fn test(
 
     test_module_ir!(
         while_simple,
-        r"fn test() -> int {
+        r"fn test() -> i32 {
     let x = 0;
     while (x < 10) {
         x = x + 1;
@@ -1156,30 +1156,30 @@ fn test(
         r"module test
 
 fn test(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    var x: int
-    00000 i const 0i
-    00001 i let x = @0
-    00002 v jmp #1
+    var x: i32
+    00000 i32 const 0i32
+    00001 i32 let x = @0
+    00002 v   jmp #1
   }
   { #1
-    00003 i loadvar x
-    00004 i const 10i
-    00005 b lt @3, @4
-    00006 v br @5, #2, #3
+    00003 i32 loadvar x
+    00004 i32 const 10i32
+    00005 b   lt @3, @4
+    00006 v   br @5, #2, #3
   }
   { #2
-    00007 i loadvar x
-    00008 i const 1i
-    00009 i add @7, @8
-    00010 i storevar x = @9
-    00011 v jmp #1
+    00007 i32 loadvar x
+    00008 i32 const 1i32
+    00009 i32 add @7, @8
+    00010 i32 storevar x = @9
+    00011 v   jmp #1
   }
   { #3
-    00012 i loadvar x
-    00013 i ret @12
+    00012 i32 loadvar x
+    00013 i32 ret @12
   }
 }
 "
@@ -1187,7 +1187,7 @@ fn test(
 
     test_module_ir!(
         while_with_early_return,
-        r"fn test() -> int {
+        r"fn test() -> i32 {
     let x = 0;
     while (x < 10) {
         if (x == 5) {
@@ -1200,40 +1200,40 @@ fn test(
         r"module test
 
 fn test(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    var x: int
-    00000 i const 0i
-    00001 i let x = @0
-    00002 v jmp #1
+    var x: i32
+    00000 i32 const 0i32
+    00001 i32 let x = @0
+    00002 v   jmp #1
   }
   { #1
-    00003 i loadvar x
-    00004 i const 10i
-    00005 b lt @3, @4
-    00006 v br @5, #2, #3
+    00003 i32 loadvar x
+    00004 i32 const 10i32
+    00005 b   lt @3, @4
+    00006 v   br @5, #2, #3
   }
   { #2
-    00007 i loadvar x
-    00008 i const 5i
-    00009 b eq @7, @8
-    00010 v br @9, #5, #4
+    00007 i32 loadvar x
+    00008 i32 const 5i32
+    00009 b   eq @7, @8
+    00010 v   br @9, #5, #4
   }
   { #5
-    00011 i loadvar x
-    00012 i ret @11
+    00011 i32 loadvar x
+    00012 i32 ret @11
   }
   { #4
-    00013 i loadvar x
-    00014 i const 1i
-    00015 i add @13, @14
-    00016 i storevar x = @15
-    00017 v jmp #1
+    00013 i32 loadvar x
+    00014 i32 const 1i32
+    00015 i32 add @13, @14
+    00016 i32 storevar x = @15
+    00017 v   jmp #1
   }
   { #3
-    00018 i loadvar x
-    00019 i ret @18
+    00018 i32 loadvar x
+    00019 i32 ret @18
   }
 }
 "
@@ -1241,7 +1241,7 @@ fn test(
 
     test_module_ir!(
         while_variable_scope,
-        r"fn test() -> int {
+        r"fn test() -> i32 {
     let sum = 0;
     let i = 0;
     while (i < 5) {
@@ -1254,42 +1254,42 @@ fn test(
         r"module test
 
 fn test(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    var sum: int
-    var i: int
-    00000 i const 0i
-    00001 i let sum = @0
-    00002 i const 0i
-    00003 i let i = @2
-    00004 v jmp #1
+    var sum: i32
+    var i: i32
+    00000 i32 const 0i32
+    00001 i32 let sum = @0
+    00002 i32 const 0i32
+    00003 i32 let i = @2
+    00004 v   jmp #1
   }
   { #1
-    00005 i loadvar i
-    00006 i const 5i
-    00007 b lt @5, @6
-    00008 v br @7, #2, #3
+    00005 i32 loadvar i
+    00006 i32 const 5i32
+    00007 b   lt @5, @6
+    00008 v   br @7, #2, #3
   }
   { #2
-    var temp: int
-    00009 i loadvar i
-    00010 i const 2i
-    00011 i mul @9, @10
-    00012 i let temp = @11
-    00013 i loadvar sum
-    00014 i loadvar temp
-    00015 i add @13, @14
-    00016 i storevar sum = @15
-    00017 i loadvar i
-    00018 i const 1i
-    00019 i add @17, @18
-    00020 i storevar i = @19
-    00021 v jmp #1
+    var temp: i32
+    00009 i32 loadvar i
+    00010 i32 const 2i32
+    00011 i32 mul @9, @10
+    00012 i32 let temp = @11
+    00013 i32 loadvar sum
+    00014 i32 loadvar temp
+    00015 i32 add @13, @14
+    00016 i32 storevar sum = @15
+    00017 i32 loadvar i
+    00018 i32 const 1i32
+    00019 i32 add @17, @18
+    00020 i32 storevar i = @19
+    00021 v   jmp #1
   }
   { #3
-    00022 i loadvar sum
-    00023 i ret @22
+    00022 i32 loadvar sum
+    00023 i32 ret @22
   }
 }
 "
@@ -1297,7 +1297,7 @@ fn test(
 
     test_module_ir!(
         break_in_while_loop,
-        r"fn test() -> int {
+        r"fn test() -> i32 {
     let x = 0;
     while (x < 10) {
         if (x == 5) {
@@ -1310,39 +1310,39 @@ fn test(
         r"module test
 
 fn test(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    var x: int
-    00000 i const 0i
-    00001 i let x = @0
-    00002 v jmp #1
+    var x: i32
+    00000 i32 const 0i32
+    00001 i32 let x = @0
+    00002 v   jmp #1
   }
   { #1
-    00003 i loadvar x
-    00004 i const 10i
-    00005 b lt @3, @4
-    00006 v br @5, #2, #3
+    00003 i32 loadvar x
+    00004 i32 const 10i32
+    00005 b   lt @3, @4
+    00006 v   br @5, #2, #3
   }
   { #2
-    00007 i loadvar x
-    00008 i const 5i
-    00009 b eq @7, @8
-    00010 v br @9, #5, #4
+    00007 i32 loadvar x
+    00008 i32 const 5i32
+    00009 b   eq @7, @8
+    00010 v   br @9, #5, #4
   }
   { #5
-    00011 v jmp #3
+    00011 v   jmp #3
   }
   { #4
-    00012 i loadvar x
-    00013 i const 1i
-    00014 i add @12, @13
-    00015 i storevar x = @14
-    00016 v jmp #1
+    00012 i32 loadvar x
+    00013 i32 const 1i32
+    00014 i32 add @12, @13
+    00015 i32 storevar x = @14
+    00016 v   jmp #1
   }
   { #3
-    00017 i loadvar x
-    00018 i ret @17
+    00017 i32 loadvar x
+    00018 i32 ret @17
   }
 }
 "
@@ -1350,7 +1350,7 @@ fn test(
 
     test_module_ir!(
         continue_in_while_loop,
-        r"fn test() -> int {
+        r"fn test() -> i32 {
     let x = 0;
     let count = 0;
     while (x < 10) {
@@ -1365,48 +1365,48 @@ fn test(
         r"module test
 
 fn test(
-) -> i {
+) -> i32 {
   entry_block: #0
   { #0
-    var x: int
-    var count: int
-    00000 i const 0i
-    00001 i let x = @0
-    00002 i const 0i
-    00003 i let count = @2
-    00004 v jmp #1
+    var x: i32
+    var count: i32
+    00000 i32 const 0i32
+    00001 i32 let x = @0
+    00002 i32 const 0i32
+    00003 i32 let count = @2
+    00004 v   jmp #1
   }
   { #1
-    00005 i loadvar x
-    00006 i const 10i
-    00007 b lt @5, @6
-    00008 v br @7, #2, #3
+    00005 i32 loadvar x
+    00006 i32 const 10i32
+    00007 b   lt @5, @6
+    00008 v   br @7, #2, #3
   }
   { #2
-    00009 i loadvar x
-    00010 i const 1i
-    00011 i add @9, @10
-    00012 i storevar x = @11
-    00013 i loadvar x
-    00014 i const 2i
-    00015 i rem @13, @14
-    00016 i const 0i
-    00017 b eq @15, @16
-    00018 v br @17, #5, #4
+    00009 i32 loadvar x
+    00010 i32 const 1i32
+    00011 i32 add @9, @10
+    00012 i32 storevar x = @11
+    00013 i32 loadvar x
+    00014 i32 const 2i32
+    00015 i32 rem @13, @14
+    00016 i32 const 0i32
+    00017 b   eq @15, @16
+    00018 v   br @17, #5, #4
   }
   { #5
-    00019 v jmp #1
+    00019 v   jmp #1
   }
   { #4
-    00020 i loadvar count
-    00021 i const 1i
-    00022 i add @20, @21
-    00023 i storevar count = @22
-    00024 v jmp #1
+    00020 i32 loadvar count
+    00021 i32 const 1i32
+    00022 i32 add @20, @21
+    00023 i32 storevar count = @22
+    00024 v   jmp #1
   }
   { #3
-    00025 i loadvar count
-    00026 i ret @25
+    00025 i32 loadvar count
+    00026 i32 ret @25
   }
 }
 "
@@ -1428,27 +1428,27 @@ fn test(
 ) -> void {
   entry_block: #0
   { #0
-    00000 v jmp #1
+    00000 v   jmp #1
   }
   { #1
-    00001 b const true
-    00002 v br @1, #2, #3
+    00001 b   const true
+    00002 v   br @1, #2, #3
   }
   { #2
-    00003 v jmp #4
+    00003 v   jmp #4
   }
   { #4
-    00004 b const true
-    00005 v br @4, #5, #6
+    00004 b   const true
+    00005 v   br @4, #5, #6
   }
   { #5
-    00006 v jmp #6
+    00006 v   jmp #6
   }
   { #6
-    00007 v jmp #1
+    00007 v   jmp #1
   }
   { #3
-    00008 v ret
+    00008 v   ret
   }
 }
 "
@@ -1468,13 +1468,13 @@ fn test(
 ) -> void {
   entry_block: #0
   { #0
-    00000 v jmp #1
+    00000 v   jmp #1
   }
   { #1
-    00001 v ret
+    00001 v   ret
   }
   { #2
-    00002 v ret
+    00002 v   ret
   }
 }
 "
@@ -1493,13 +1493,13 @@ fn test(
 ) -> void {
   entry_block: #0
   { #0
-    00000 v jmp #1
+    00000 v   jmp #1
   }
   { #1
-    00001 v jmp #2
+    00001 v   jmp #2
   }
   { #2
-    00002 v ret
+    00002 v   ret
   }
 }
 "
@@ -1518,13 +1518,13 @@ fn test(
 ) -> void {
   entry_block: #0
   { #0
-    00000 v jmp #1
+    00000 v   jmp #1
   }
   { #1
-    00001 v jmp #1
+    00001 v   jmp #1
   }
   { #2
-    00002 v ret
+    00002 v   ret
   }
 }
 "
@@ -1544,18 +1544,18 @@ fn test(
   entry_block: #0
   { #0
     var $temp0: bool
-    00000 b loadarg a
-    00001 b storevar $temp0 = @0
-    00002 v br @0, #1, #2
+    00000 b   loadarg a
+    00001 b   storevar $temp0 = @0
+    00002 v   br @0, #1, #2
   }
   { #1
-    00003 b loadarg b
-    00004 b storevar $temp0 = @3
-    00005 v jmp #2
+    00003 b   loadarg b
+    00004 b   storevar $temp0 = @3
+    00005 v   jmp #2
   }
   { #2
-    00006 b loadvar $temp0
-    00007 b ret @6
+    00006 b   loadvar $temp0
+    00007 b   ret @6
   }
 }
 "
@@ -1575,18 +1575,18 @@ fn test(
   entry_block: #0
   { #0
     var $temp0: bool
-    00000 b loadarg a
-    00001 b storevar $temp0 = @0
-    00002 v br @0, #2, #1
+    00000 b   loadarg a
+    00001 b   storevar $temp0 = @0
+    00002 v   br @0, #2, #1
   }
   { #1
-    00003 b loadarg b
-    00004 b storevar $temp0 = @3
-    00005 v jmp #2
+    00003 b   loadarg b
+    00004 b   storevar $temp0 = @3
+    00005 v   jmp #2
   }
   { #2
-    00006 b loadvar $temp0
-    00007 b ret @6
+    00006 b   loadvar $temp0
+    00007 b   ret @6
   }
 }
 "

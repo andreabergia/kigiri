@@ -223,7 +223,7 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{:05} {} {}",
+            "{:05} {:3} {}",
             self.id.0,
             self.payload
                 .instruction_type()
@@ -598,15 +598,15 @@ mod tests {
     #[test]
     fn test_display_instruction_ret() {
         let ir_allocator = IrAllocator::new();
-        assert_eq!("00000 v ret", ir_allocator.new_ret().to_string())
+        assert_eq!("00000 v   ret", ir_allocator.new_ret().to_string())
     }
 
     #[test]
     fn test_display_instruction_ret_expr() {
         let ir_allocator = IrAllocator::new();
-        let const_0 = ir_allocator.new_const(LiteralValue::Integer(1));
+        let const_0 = ir_allocator.new_const(LiteralValue::I16(1));
         assert_eq!(
-            "00001 i ret @0",
+            "00001 i16 ret @0",
             ir_allocator
                 .new_ret_expr(const_0)
                 .expect("should succeed")
@@ -618,17 +618,17 @@ mod tests {
     fn test_display_instruction_const() {
         let ir_allocator = IrAllocator::new();
         assert_eq!(
-            "00000 i const 1i",
-            ir_allocator.new_const(LiteralValue::Integer(1)).to_string()
+            "00000 i64 const 1i64",
+            ir_allocator.new_const(LiteralValue::I64(1)).to_string()
         )
     }
 
     #[test]
     fn test_display_instruction_unary() {
         let ir_allocator = IrAllocator::new();
-        let const_0 = ir_allocator.new_const(LiteralValue::Integer(1));
+        let const_0 = ir_allocator.new_const(LiteralValue::I8(1));
         assert_eq!(
-            "00001 i neg @0",
+            "00001 i8  neg @0",
             ir_allocator
                 .new_unary(UnaryOperator::Neg, const_0)
                 .expect("should succeed")
@@ -639,15 +639,15 @@ mod tests {
     #[test]
     fn test_display_instruction_binary() {
         let ir_allocator = IrAllocator::new();
-        let const_0 = ir_allocator.new_const(LiteralValue::Integer(0));
-        let const_1 = ir_allocator.new_const(LiteralValue::Integer(1));
+        let const_0 = ir_allocator.new_const(LiteralValue::I32(0));
+        let const_1 = ir_allocator.new_const(LiteralValue::I32(1));
         assert_eq!(
-            "00002 i add @0, @1",
+            "00002 i32 add @0, @1",
             ir_allocator
                 .new_binary(
                     BinaryOperator::Add,
-                    &Type::Int,
-                    &Type::Int,
+                    &Type::I32,
+                    &Type::I32,
                     const_0,
                     const_1
                 )
@@ -659,13 +659,13 @@ mod tests {
     #[test]
     fn test_display_instruction_call() {
         let ir_allocator = IrAllocator::new();
-        let const_0 = ir_allocator.new_const(LiteralValue::Integer(42));
-        let const_1 = ir_allocator.new_const(LiteralValue::Integer(10));
+        let const_0 = ir_allocator.new_const(LiteralValue::I32(42));
+        let const_1 = ir_allocator.new_const(LiteralValue::I32(10));
         let function_name = intern_string("test_func");
         assert_eq!(
-            "00002 i call test_func(@0, @1)",
+            "00002 i32 call test_func(@0, @1)",
             ir_allocator
-                .new_call(function_name, Some(Type::Int), vec![const_0, const_1])
+                .new_call(function_name, Some(Type::I32), vec![const_0, const_1])
                 .to_string()
         )
     }
@@ -673,10 +673,10 @@ mod tests {
     #[test]
     fn test_display_instruction_call_void() {
         let ir_allocator = IrAllocator::new();
-        let const_0 = ir_allocator.new_const(LiteralValue::Integer(42));
+        let const_0 = ir_allocator.new_const(LiteralValue::I32(42));
         let function_name = intern_string("print");
         assert_eq!(
-            "00001 v call print(@0)",
+            "00001 v   call print(@0)",
             ir_allocator
                 .new_call(function_name, None, vec![const_0])
                 .to_string()
@@ -688,7 +688,7 @@ mod tests {
         let ir_allocator = IrAllocator::new();
         let target_block = BlockId(5);
         assert_eq!(
-            "00000 v jmp #5",
+            "00000 v   jmp #5",
             ir_allocator.new_jump(target_block).to_string()
         )
     }
@@ -700,7 +700,7 @@ mod tests {
         let then_block = BlockId(1);
         let else_block = BlockId(2);
         assert_eq!(
-            "00001 v br @0, #1, #2",
+            "00001 v   br @0, #1, #2",
             ir_allocator
                 .new_branch(condition, then_block, else_block)
                 .to_string()
