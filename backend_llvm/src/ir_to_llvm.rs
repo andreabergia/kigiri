@@ -130,11 +130,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     }
 
     fn llvm_int_type(&self, type_: &Type) -> IntType<'c> {
+        // In LLVM, we only have integer types. The operations themselves
+        // will have a difference depending on signedness.
         match type_ {
-            Type::I8 => self.context.i8_type(),
-            Type::I16 => self.context.i16_type(),
-            Type::I32 => self.context.i32_type(),
-            Type::I64 => self.context.i64_type(),
+            Type::I8 | Type::U8 => self.context.i8_type(),
+            Type::I16 | Type::U16 => self.context.i16_type(),
+            Type::I32 | Type::U32 => self.context.i32_type(),
+            Type::I64 | Type::U64 => self.context.i64_type(),
             Type::Bool => self.context.bool_type(),
             _ => panic!("cannot get llvm_int_type for {}", type_),
         }
@@ -150,10 +152,10 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
 
     fn llvm_type(&self, type_: &Type) -> BasicMetadataTypeEnum<'c> {
         match type_ {
-            Type::I8 => self.context.i8_type().into(),
-            Type::I16 => self.context.i16_type().into(),
-            Type::I32 => self.context.i32_type().into(),
-            Type::I64 => self.context.i64_type().into(),
+            Type::I8 | Type::U8 => self.context.i8_type().into(),
+            Type::I16 | Type::U16 => self.context.i16_type().into(),
+            Type::I32 | Type::U32 => self.context.i32_type().into(),
+            Type::I64 | Type::U64 => self.context.i64_type().into(),
             Type::Bool => self.context.bool_type().into(),
             Type::F32 => self.context.f32_type().into(),
             Type::F64 => self.context.f64_type().into(),
@@ -359,20 +361,17 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     ) -> Result<(), CodeGenError> {
         let var_pointer = self.get_variable(variable_index)?;
 
-        match operand_type {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
-                self.builder
-                    .build_store(var_pointer, self.get_int_value(value)?)?;
-            }
-            Type::Bool => {
-                self.builder
-                    .build_store(var_pointer, self.get_bool_value(value)?)?;
-            }
-            Type::F32 | Type::F64 => {
-                self.builder
-                    .build_store(var_pointer, self.get_float_value(value)?)?;
-            }
-        };
+        if operand_type.is_integer() {
+            self.builder
+                .build_store(var_pointer, self.get_int_value(value)?)?;
+        } else if *operand_type == Type::Bool {
+            self.builder
+                .build_store(var_pointer, self.get_bool_value(value)?)?;
+        } else {
+            assert!(operand_type.is_float());
+            self.builder
+                .build_store(var_pointer, self.get_float_value(value)?)?;
+        }
         Ok(())
     }
 
@@ -384,10 +383,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
     ) -> Result<(), CodeGenError> {
         let var_pointer = self.get_variable(variable_index)?;
 
-        let initializer_value: BasicValueEnum = match operand_type {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => self.get_int_value(initializer)?.into(),
-            Type::Bool => self.get_bool_value(initializer)?.into(),
-            Type::F32 | Type::F64 => self.get_float_value(initializer)?.into(),
+        let initializer_value: BasicValueEnum = if operand_type.is_integer() {
+            self.get_int_value(initializer)?.into()
+        } else if *operand_type == Type::Bool {
+            self.get_bool_value(initializer)?.into()
+        } else {
+            assert!(operand_type.is_float());
+            self.get_float_value(initializer)?.into()
         };
 
         self.builder.build_store(var_pointer, initializer_value)?;
@@ -435,16 +437,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
-        match operand_type {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
-                self.handle_binary_int_operands(id, operator, left, right)?;
-            }
-            Type::Bool => {
-                self.handle_binary_bool_operands(id, operator, left, right)?;
-            }
-            Type::F32 | Type::F64 => {
-                self.handle_binary_float_operands(id, operator, left, right)?;
-            }
+        if operand_type.is_integer() {
+            self.handle_binary_int_operands(id, operator, operand_type, left, right)?;
+        } else if *operand_type == Type::Bool {
+            self.handle_binary_bool_operands(id, operator, left, right)?;
+        } else {
+            assert!(operand_type.is_float());
+            self.handle_binary_float_operands(id, operator, left, right)?;
         }
         Ok(())
     }
@@ -501,6 +500,7 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         &self,
         id: InstructionId,
         operator: &BinaryOperator,
+        operand_type: &Type,
         left: InstructionId,
         right: InstructionId,
     ) -> Result<(), CodeGenError> {
@@ -520,12 +520,22 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                     .build_int_mul(left, right, &Self::name("mul", id))?
             }
             BinaryOperator::Div => {
-                self.builder
-                    .build_int_signed_div(left, right, &Self::name("div", id))?
+                if operand_type.is_unsigned() {
+                    self.builder
+                        .build_int_unsigned_div(left, right, &Self::name("div", id))?
+                } else {
+                    self.builder
+                        .build_int_signed_div(left, right, &Self::name("div", id))?
+                }
             }
             BinaryOperator::Rem => {
-                self.builder
-                    .build_int_signed_rem(left, right, &Self::name("rem", id))?
+                if operand_type.is_unsigned() {
+                    self.builder
+                        .build_int_unsigned_rem(left, right, &Self::name("rem", id))?
+                } else {
+                    self.builder
+                        .build_int_signed_rem(left, right, &Self::name("rem", id))?
+                }
             }
             BinaryOperator::Exp => {
                 todo!()
@@ -542,30 +552,42 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 right,
                 &Self::name("neq", id),
             )?,
-            BinaryOperator::Lt => self.builder.build_int_compare(
-                IntPredicate::SLT,
-                left,
-                right,
-                &Self::name("lt", id),
-            )?,
-            BinaryOperator::Lte => self.builder.build_int_compare(
-                IntPredicate::SLE,
-                left,
-                right,
-                &Self::name("lte", id),
-            )?,
-            BinaryOperator::Gt => self.builder.build_int_compare(
-                IntPredicate::SGT,
-                left,
-                right,
-                &Self::name("gt", id),
-            )?,
-            BinaryOperator::Gte => self.builder.build_int_compare(
-                IntPredicate::SGE,
-                left,
-                right,
-                &Self::name("gte", id),
-            )?,
+            BinaryOperator::Lt => {
+                let predicate = if operand_type.is_unsigned() {
+                    IntPredicate::ULT
+                } else {
+                    IntPredicate::SLT
+                };
+                self.builder
+                    .build_int_compare(predicate, left, right, &Self::name("lt", id))?
+            }
+            BinaryOperator::Lte => {
+                let predicate = if operand_type.is_unsigned() {
+                    IntPredicate::ULE
+                } else {
+                    IntPredicate::SLE
+                };
+                self.builder
+                    .build_int_compare(predicate, left, right, &Self::name("lte", id))?
+            }
+            BinaryOperator::Gt => {
+                let predicate = if operand_type.is_unsigned() {
+                    IntPredicate::UGT
+                } else {
+                    IntPredicate::SGT
+                };
+                self.builder
+                    .build_int_compare(predicate, left, right, &Self::name("gt", id))?
+            }
+            BinaryOperator::Gte => {
+                let predicate = if operand_type.is_unsigned() {
+                    IntPredicate::UGE
+                } else {
+                    IntPredicate::SGE
+                };
+                self.builder
+                    .build_int_compare(predicate, left, right, &Self::name("gte", id))?
+            }
             BinaryOperator::BitwiseAnd => {
                 self.builder
                     .build_and(left, right, &Self::name("bitwise_and", id))?
@@ -674,16 +696,13 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         operator: &UnaryOperator,
         operand: InstructionId,
     ) -> Result<(), CodeGenError> {
-        match operand_type {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
-                self.handle_unary_int_operand(id, operator, operand)?;
-            }
-            Type::Bool => {
-                self.handle_unary_bool_operand(id, operator, operand)?;
-            }
-            Type::F32 | Type::F64 => {
-                self.handle_unary_float_operand(id, operator, operand)?;
-            }
+        if operand_type.is_integer() {
+            self.handle_unary_int_operand(id, operator, operand)?;
+        } else if *operand_type == Type::Bool {
+            self.handle_unary_bool_operand(id, operator, operand)?;
+        } else {
+            assert!(operand_type.is_float());
+            self.handle_unary_float_operand(id, operator, operand)?;
         }
         Ok(())
     }
@@ -777,6 +796,26 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 .i64_type()
                 .const_int(*value as u64, false)
                 .as_basic_value_enum(),
+            LiteralValue::U8(value) => self
+                .context
+                .i8_type()
+                .const_int(*value as u64, false)
+                .as_basic_value_enum(),
+            LiteralValue::U16(value) => self
+                .context
+                .i16_type()
+                .const_int(*value as u64, false)
+                .as_basic_value_enum(),
+            LiteralValue::U32(value) => self
+                .context
+                .i32_type()
+                .const_int(*value as u64, false)
+                .as_basic_value_enum(),
+            LiteralValue::U64(value) => self
+                .context
+                .i64_type()
+                .const_int(*value, false)
+                .as_basic_value_enum(),
             LiteralValue::F32(value) => self
                 .context
                 .f32_type()
@@ -801,19 +840,16 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
         expression: InstructionId,
         operand_type: &Type,
     ) -> Result<(), CodeGenError> {
-        match operand_type {
-            Type::I8 | Type::I16 | Type::I32 | Type::I64 => {
-                let operand = self.get_int_value(expression)?;
-                self.builder.build_return(Some(&operand))?;
-            }
-            Type::Bool => {
-                let operand = self.get_bool_value(expression)?;
-                self.builder.build_return(Some(&operand))?;
-            }
-            Type::F32 | Type::F64 => {
-                let operand = self.get_float_value(expression)?;
-                self.builder.build_return(Some(&operand))?;
-            }
+        if operand_type.is_integer() {
+            let operand = self.get_int_value(expression)?;
+            self.builder.build_return(Some(&operand))?;
+        } else if *operand_type == Type::Bool {
+            let operand = self.get_bool_value(expression)?;
+            self.builder.build_return(Some(&operand))?;
+        } else {
+            assert!(operand_type.is_float());
+            let operand = self.get_float_value(expression)?;
+            self.builder.build_return(Some(&operand))?;
         }
         Ok(())
     }
@@ -1082,6 +1118,43 @@ mod tests {
         bb0:
           %fcmp_2 = fcmp ogt double %x, %y
           ret i1 %fcmp_2
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_unsigned_integer_arithmetic() {
+        let llvm_ir = compile_function_to_llvm(
+            "fn add_one(x: u32) -> u32 { let one = 1u32; return one + x; }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i32 @add_one(i32 %x) {
+        bb0:
+          %one = alloca i32, align 4
+          store i32 1, ptr %one, align 4
+          %load_2 = load i32, ptr %one, align 4
+          %add_4 = add i32 %load_2, %x
+          ret i32 %add_4
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_unsigned_integer_comparison() {
+        let llvm_ir = compile_function_to_llvm(
+            "fn greater_unsigned(x: u32, y: u32) -> bool { return x > y; }",
+        );
+        insta::assert_snapshot!(llvm_ir, @r#"
+        ; ModuleID = 'test'
+        source_filename = "test"
+
+        define i1 @greater_unsigned(i32 %x, i32 %y) {
+        bb0:
+          %gt_2 = icmp ugt i32 %x, %y
+          ret i1 %gt_2
         }
         "#);
     }
