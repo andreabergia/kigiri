@@ -251,6 +251,135 @@ fn tests(
 "
     );
     test_ok!(
+        unsigned_integer_literals,
+        r"
+fn test_unsigned_literals() {
+    42u8;
+    1000u16;
+    50000u32;
+    18446744073709551615u64;
+    
+    0xFFu8;
+    0x1000u16;
+    0xDEADBEEFu32;
+    0xFFFFFFFFFFFFFFFFu64;
+}
+",
+        r"module test
+
+fn test_unsigned_literals(
+) -> void
+{ #0
+  42u8;
+  1000u16;
+  50000u32;
+  18446744073709551615u64;
+  255u8;
+  4096u16;
+  3735928559u32;
+  18446744073709551615u64;
+}
+
+"
+    );
+    test_ok!(
+        unsigned_integer_arithmetic,
+        r"
+fn test_unsigned_arithmetic() {
+    1u8 + 2u8;
+    100u16 - 50u16;
+    1000u32 * 2u32;
+    10u64 / 2u64;
+    15u8 % 4u8;
+    
+    3u16 << 2u16;
+    12u32 >> 2u32;
+    5u64 & 3u64;
+    5u64 | 3u64;
+    5u64 ^ 3u64;
+}
+",
+        r"module test
+
+fn test_unsigned_arithmetic(
+) -> void
+{ #0
+  (+u8 1u8 2u8);
+  (-u16 100u16 50u16);
+  (*u32 1000u32 2u32);
+  (/u64 10u64 2u64);
+  (%u8 15u8 4u8);
+  (<<u16 3u16 2u16);
+  (>>u32 12u32 2u32);
+  (&u64 5u64 3u64);
+  (|u64 5u64 3u64);
+  (^u64 5u64 3u64);
+}
+
+"
+    );
+    test_ok!(
+        unsigned_integer_variables,
+        r"
+fn test_unsigned_variables() -> u32 {
+    let a = 42u32;
+    let b = 1000u32;
+    let c = 50000u32;
+    let d = 18446744073709551615u64;
+    
+    let sum = a + b + c;
+    return sum;
+}
+",
+        r"module test
+
+fn test_unsigned_variables(
+) -> u32
+{ #0
+  let a: u32 = 42u32;
+  let b: u32 = 1000u32;
+  let c: u32 = 50000u32;
+  let d: u64 = 18446744073709551615u64;
+  let sum: u32 = (+u32 (+u32 a b) c);
+  return sum;
+}
+
+"
+    );
+    test_ok!(
+        unsigned_integer_comparisons,
+        r"
+fn test_unsigned_comparisons() -> bool {
+    let a = 10u32;
+    let b = 20u32;
+    
+    return a < b && b > a && a <= b && b >= a && a == a && a != b;
+}
+",
+        r"module test
+
+fn test_unsigned_comparisons(
+) -> bool
+{ #0
+  let a: u32 = 10u32;
+  let b: u32 = 20u32;
+  return (&&b (&&b (&&b (&&b (&&b (<b a b) (>b b a)) (<=b a b)) (>=b b a)) (==b a a)) (!=b a b));
+}
+
+"
+    );
+    test_ko!(
+        unsigned_integer_type_mismatch,
+        r"
+fn mixed_unsigned_types() {
+    let a = 42u8;
+    let b = 1000u16;
+    let sum = a + b;
+}
+",
+        "cannot apply operator \"+\" to types u8 and u16"
+    );
+    test_ok!(
         can_declare_and_use_variables,
         r"fn sum(x: i32, y: i32, z: i32) -> i32 {
   let sum = x + y;

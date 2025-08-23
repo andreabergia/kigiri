@@ -10,6 +10,10 @@ pub enum Type {
     I16,
     I32,
     I64,
+    U8,
+    U16,
+    U32,
+    U64,
     F32,
     F64,
     Bool,
@@ -22,6 +26,10 @@ impl Display for Type {
             Type::I16 => write!(f, "i16"),
             Type::I32 => write!(f, "i32"),
             Type::I64 => write!(f, "i64"),
+            Type::U8 => write!(f, "u8"),
+            Type::U16 => write!(f, "u16"),
+            Type::U32 => write!(f, "u32"),
+            Type::U64 => write!(f, "u64"),
             Type::F32 => write!(f, "f32"),
             Type::F64 => write!(f, "f64"),
             Type::Bool => write!(f, "bool"),
@@ -36,6 +44,10 @@ impl Type {
             Type::I16 => "i16",
             Type::I32 => "i32",
             Type::I64 => "i64",
+            Type::U8 => "u8",
+            Type::U16 => "u16",
+            Type::U32 => "u32",
+            Type::U64 => "u64",
             Type::F32 => "f32",
             Type::F64 => "f64",
             Type::Bool => "b",
@@ -48,6 +60,10 @@ impl Type {
             LiteralValue::I16(_) => Type::I16,
             LiteralValue::I32(_) => Type::I32,
             LiteralValue::I64(_) => Type::I64,
+            LiteralValue::U8(_) => Type::U8,
+            LiteralValue::U16(_) => Type::U16,
+            LiteralValue::U32(_) => Type::U32,
+            LiteralValue::U64(_) => Type::U64,
             LiteralValue::F32(_) => Type::F32,
             LiteralValue::F64(_) => Type::F64,
             LiteralValue::Boolean(_) => Type::Bool,
@@ -68,6 +84,10 @@ impl Type {
             "i16" => Ok(Type::I16),
             "i32" => Ok(Type::I32),
             "i64" => Ok(Type::I64),
+            "u8" => Ok(Type::U8),
+            "u16" => Ok(Type::U16),
+            "u32" => Ok(Type::U32),
+            "u64" => Ok(Type::U64),
             "f32" => Ok(Type::F32),
             "f64" => Ok(Type::F64),
             "bool" => Ok(Type::Bool),
@@ -78,7 +98,21 @@ impl Type {
     }
 
     pub fn is_integer(&self) -> bool {
-        matches!(self, Type::I8 | Type::I16 | Type::I32 | Type::I64)
+        matches!(
+            self,
+            Type::I8
+                | Type::I16
+                | Type::I32
+                | Type::I64
+                | Type::U8
+                | Type::U16
+                | Type::U32
+                | Type::U64
+        )
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        matches!(self, Type::U8 | Type::U16 | Type::U32 | Type::U64)
     }
 
     pub fn is_float(&self) -> bool {
