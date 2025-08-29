@@ -1,4 +1,5 @@
 Language as a whole
+- [ ] untyped integer and deduction
 - [ ] cast
 - [ ] let without initializer, but with type, with checks that it gets initialized before use
 - [ ] keep track of mutable/immutable variables
