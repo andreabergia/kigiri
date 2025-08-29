@@ -67,6 +67,7 @@ impl Type {
             LiteralValue::F32(_) => Type::F32,
             LiteralValue::F64(_) => Type::F64,
             LiteralValue::Boolean(_) => Type::Bool,
+            LiteralValue::UntypedInteger(_) => todo!(),
         }
     }
 

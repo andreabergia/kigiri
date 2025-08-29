@@ -831,6 +831,9 @@ impl<'c, 'c2, 'ir, 'ir2> LlvmFunctionGenerator<'c, 'c2, 'ir, 'ir2> {
                 .bool_type()
                 .const_int(if *value { 1 } else { 0 }, false)
                 .as_basic_value_enum(),
+            LiteralValue::UntypedInteger(_) => {
+                panic!("untyped integer literal should have been resolved by semantic analysis")
+            }
         };
         self.store_value(id, value);
     }

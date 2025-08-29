@@ -141,6 +141,7 @@ pub enum BinaryOperator {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LiteralValue {
+    UntypedInteger(String),
     I8(i8),
     I16(i16),
     I32(i32),
@@ -414,6 +415,7 @@ impl Display for BinaryOperator {
 impl Display for LiteralValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            LiteralValue::UntypedInteger(value) => write!(f, "{}", value),
             LiteralValue::I8(value) => write!(f, "{}i8", value),
             LiteralValue::I16(value) => write!(f, "{}i16", value),
             LiteralValue::I32(value) => write!(f, "{}i32", value),

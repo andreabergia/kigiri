@@ -115,6 +115,13 @@ impl ParsedAstAllocator {
         })
     }
 
+    pub fn literal_untyped_integer(&self, text: &str) -> &Expression<PhaseParsed> {
+        self.allocator.alloc(Expression::Literal {
+            resolved_type: (),
+            value: LiteralValue::UntypedInteger(text.to_string()),
+        })
+    }
+
     pub fn unary<'s, 'l>(
         &'s self,
         operator: UnaryOperator,
