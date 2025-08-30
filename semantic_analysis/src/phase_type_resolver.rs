@@ -53,7 +53,8 @@ impl<'a> TypeResolver {
         // Second pass: analyze functions with access to the global symbol table
         let mut functions = allocator.new_bump_vec_with_capacity(module.functions.len());
         for function in module.functions.iter() {
-            let function = Self::analyze_function(allocator, function, &mapped_signatures)?;
+            let function_resolver = FunctionTypeResolver::new(allocator);
+            let function = function_resolver.analyze_function(function, &mapped_signatures)?;
             functions.push(function);
         }
 
@@ -110,9 +111,19 @@ impl<'a> TypeResolver {
             symbol_table,
         })
     }
+}
+
+struct FunctionTypeResolver<'a> {
+    allocator: &'a AstAllocator,
+}
+
+impl<'a> FunctionTypeResolver<'a> {
+    fn new(allocator: &'a AstAllocator) -> Self {
+        Self { allocator }
+    }
 
     fn analyze_function(
-        allocator: &'a AstAllocator,
+        &self,
         function: &FunctionDeclaration<PhaseTopLevelDeclarationCollected>,
         mapped_signatures: &MappedFunctionSignatures<'a>,
     ) -> Result<&'a FunctionDeclaration<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
@@ -125,9 +136,9 @@ impl<'a> TypeResolver {
                 message: "failed to find function signature that was just created".to_string(),
             })?;
 
-        let body = Self::analyze_block(allocator, function.body, symbol_table, false)?;
+        let body = self.analyze_block(function.body, symbol_table, false)?;
 
-        Ok(allocator.alloc(FunctionDeclaration {
+        Ok(self.allocator.alloc(FunctionDeclaration {
             signature,
             body,
             symbol_table,
@@ -135,16 +146,18 @@ impl<'a> TypeResolver {
     }
 
     fn analyze_block(
-        allocator: &'a AstAllocator,
+        &self,
         block: &Block<PhaseTopLevelDeclarationCollected>,
         symbol_table: &'a SymbolTable<'a>,
         in_loop: bool,
     ) -> Result<&'a Block<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
-        let mut statements = allocator.new_bump_vec_with_capacity(block.statements.len());
+        let mut statements = self
+            .allocator
+            .new_bump_vec_with_capacity(block.statements.len());
         for statement in &block.statements {
-            Self::analyze_statement(allocator, statement, &mut statements, symbol_table, in_loop)?;
+            self.analyze_statement(statement, &mut statements, symbol_table, in_loop)?;
         }
-        Ok(allocator.alloc(Block {
+        Ok(self.allocator.alloc(Block {
             id: block.id,
             statements,
             symbol_table,
@@ -152,7 +165,7 @@ impl<'a> TypeResolver {
     }
 
     fn analyze_statement(
-        allocator: &'a AstAllocator,
+        &self,
         statement: &Statement<PhaseTopLevelDeclarationCollected>,
         statements: &mut BumpVec<'a, &'a Statement<'a, PhaseTypeResolved<'a>>>,
         symbol_table: &'a SymbolTable<'a>,
@@ -160,11 +173,10 @@ impl<'a> TypeResolver {
     ) -> Result<(), SemanticAnalysisError> {
         match statement {
             Statement::Let { initializers } => {
-                let mut typed_initializers = allocator.new_bump_vec();
+                let mut typed_initializers = self.allocator.new_bump_vec();
 
                 for initializer in initializers {
-                    let value =
-                        Self::analyze_expression(allocator, initializer.value, symbol_table)?;
+                    let value = self.analyze_expression(initializer.value, symbol_table)?;
 
                     let Some(variable_type) = resolved_type(value) else {
                         let variable_name = resolve_string_id(initializer.variable)
@@ -180,7 +192,7 @@ impl<'a> TypeResolver {
 
                     let variable = symbol_table
                         .add_symbol(
-                            allocator,
+                            self.allocator,
                             initializer.variable,
                             SymbolKind::Variable {
                                 index: symbol_table.next_variable_index(),
@@ -191,7 +203,7 @@ impl<'a> TypeResolver {
                     typed_initializers.push(LetInitializer { variable, value });
                 }
 
-                statements.push(allocator.alloc(Statement::Let {
+                statements.push(self.allocator.alloc(Statement::Let {
                     initializers: typed_initializers,
                 }))
             }
@@ -212,7 +224,7 @@ impl<'a> TypeResolver {
                         return Err(SemanticAnalysisError::SymbolNotFound { name: symbol_name });
                     }
                     Some(symbol) => {
-                        let value = Self::analyze_expression(allocator, expression, symbol_table)?;
+                        let value = self.analyze_expression(expression, symbol_table)?;
 
                         let target_name = resolve_string_id(symbol.name)
                             .ok_or_else(|| SemanticAnalysisError::InternalError {
@@ -240,7 +252,7 @@ impl<'a> TypeResolver {
                                     });
                                 }
 
-                                statements.push(allocator.alloc(Statement::Assignment {
+                                statements.push(self.allocator.alloc(Statement::Assignment {
                                     target: symbol.id,
                                     expression: value,
                                 }))
@@ -259,7 +271,7 @@ impl<'a> TypeResolver {
                                 // a function argument.
                                 let new_variable = symbol_table
                                     .add_symbol(
-                                        allocator,
+                                        self.allocator,
                                         *name,
                                         SymbolKind::Variable {
                                             index: symbol_table.next_variable_index(),
@@ -267,8 +279,8 @@ impl<'a> TypeResolver {
                                         },
                                     )?
                                     .id;
-                                statements.push(allocator.alloc(Statement::Let {
-                                    initializers: allocator.new_bump_vec_from_iter([
+                                statements.push(self.allocator.alloc(Statement::Let {
+                                    initializers: self.allocator.new_bump_vec_from_iter([
                                         LetInitializer {
                                             variable: new_variable,
                                             value,
@@ -282,27 +294,28 @@ impl<'a> TypeResolver {
             }
             Statement::Return { expression } => {
                 let expression = expression
-                    .map(|expr| Self::analyze_expression(allocator, expr, symbol_table))
+                    .map(|expr| self.analyze_expression(expr, symbol_table))
                     .transpose()?;
-                statements.push(allocator.alloc(Statement::Return { expression }));
+                statements.push(self.allocator.alloc(Statement::Return { expression }));
             }
             Statement::Expression { expression } => {
-                let typed_expression =
-                    Self::analyze_expression(allocator, expression, symbol_table)?;
-                statements.push(allocator.alloc(Statement::Expression {
+                let typed_expression = self.analyze_expression(expression, symbol_table)?;
+                statements.push(self.allocator.alloc(Statement::Expression {
                     expression: typed_expression,
                 }))
             }
             Statement::NestedBlock { block } => {
-                let nested_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_block =
-                    Self::analyze_block(allocator, block, nested_symbol_table, in_loop)?;
-                statements.push(allocator.alloc(Statement::NestedBlock { block: typed_block }));
+                let nested_symbol_table = SymbolTable::new(self.allocator, Some(symbol_table));
+                let typed_block = self.analyze_block(block, nested_symbol_table, in_loop)?;
+                statements.push(
+                    self.allocator
+                        .alloc(Statement::NestedBlock { block: typed_block }),
+                );
             }
             Statement::If(if_statement) => {
                 // Type check the condition - it must be a boolean expression
                 let typed_condition =
-                    Self::analyze_expression(allocator, if_statement.condition, symbol_table)?;
+                    self.analyze_expression(if_statement.condition, symbol_table)?;
                 let condition_type = resolved_type(typed_condition);
 
                 match condition_type {
@@ -322,38 +335,29 @@ impl<'a> TypeResolver {
                 }
 
                 // Type check the then block
-                let then_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_then_block = Self::analyze_block(
-                    allocator,
-                    if_statement.then_block,
-                    then_symbol_table,
-                    in_loop,
-                )?;
+                let then_symbol_table = SymbolTable::new(self.allocator, Some(symbol_table));
+                let typed_then_block =
+                    self.analyze_block(if_statement.then_block, then_symbol_table, in_loop)?;
 
                 // Type check the else block if present
                 let typed_else_block = if let Some(else_block) = if_statement.else_block {
-                    Some(Self::analyze_if_else_block(
-                        allocator,
-                        else_block,
-                        symbol_table,
-                        in_loop,
-                    )?)
+                    Some(self.analyze_if_else_block(else_block, symbol_table, in_loop)?)
                 } else {
                     None
                 };
 
-                let typed_if_statement = allocator.alloc(IfStatement {
+                let typed_if_statement = self.allocator.alloc(IfStatement {
                     condition: typed_condition,
                     then_block: typed_then_block,
                     else_block: typed_else_block,
                 });
 
-                statements.push(allocator.alloc(Statement::If(typed_if_statement)));
+                statements.push(self.allocator.alloc(Statement::If(typed_if_statement)));
             }
             Statement::While(while_statement) => {
                 // Type check the condition - it must be a boolean expression
                 let typed_condition =
-                    Self::analyze_expression(allocator, while_statement.condition, symbol_table)?;
+                    self.analyze_expression(while_statement.condition, symbol_table)?;
                 let condition_type = resolved_type(typed_condition);
 
                 match condition_type {
@@ -373,56 +377,58 @@ impl<'a> TypeResolver {
                 }
 
                 // Type check the body block - note that we're now in a loop
-                let body_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
+                let body_symbol_table = SymbolTable::new(self.allocator, Some(symbol_table));
                 let typed_body =
-                    Self::analyze_block(allocator, while_statement.body, body_symbol_table, true)?;
+                    self.analyze_block(while_statement.body, body_symbol_table, true)?;
 
-                let typed_while_statement = allocator.alloc(WhileStatement {
+                let typed_while_statement = self.allocator.alloc(WhileStatement {
                     condition: typed_condition,
                     body: typed_body,
                 });
 
-                statements.push(allocator.alloc(Statement::While(typed_while_statement)));
+                statements.push(
+                    self.allocator
+                        .alloc(Statement::While(typed_while_statement)),
+                );
             }
             Statement::Loop { body } => {
-                let body_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_body = Self::analyze_block(allocator, body, body_symbol_table, true)?;
+                let body_symbol_table = SymbolTable::new(self.allocator, Some(symbol_table));
+                let typed_body = self.analyze_block(body, body_symbol_table, true)?;
 
-                statements.push(allocator.alloc(Statement::Loop { body: typed_body }));
+                statements.push(self.allocator.alloc(Statement::Loop { body: typed_body }));
             }
             Statement::Break => {
                 if !in_loop {
                     return Err(SemanticAnalysisError::BreakOutsideLoop);
                 }
-                statements.push(allocator.alloc(Statement::Break));
+                statements.push(self.allocator.alloc(Statement::Break));
             }
             Statement::Continue => {
                 if !in_loop {
                     return Err(SemanticAnalysisError::ContinueOutsideLoop);
                 }
-                statements.push(allocator.alloc(Statement::Continue));
+                statements.push(self.allocator.alloc(Statement::Continue));
             }
         };
         Ok(())
     }
 
     fn analyze_if_else_block(
-        allocator: &'a AstAllocator,
+        &self,
         else_block: &IfElseBlock<PhaseTopLevelDeclarationCollected>,
         symbol_table: &'a SymbolTable<'a>,
         in_loop: bool,
     ) -> Result<&'a IfElseBlock<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
         match else_block {
             IfElseBlock::Block(block) => {
-                let else_symbol_table = SymbolTable::new(allocator, Some(symbol_table));
-                let typed_block =
-                    Self::analyze_block(allocator, block, else_symbol_table, in_loop)?;
-                Ok(allocator.alloc(IfElseBlock::Block(typed_block)))
+                let else_symbol_table = SymbolTable::new(self.allocator, Some(symbol_table));
+                let typed_block = self.analyze_block(block, else_symbol_table, in_loop)?;
+                Ok(self.allocator.alloc(IfElseBlock::Block(typed_block)))
             }
             IfElseBlock::If(if_statement) => {
                 // Type check the condition - it must be a boolean expression
                 let analyzed_condition =
-                    Self::analyze_expression(allocator, if_statement.condition, symbol_table)?;
+                    self.analyze_expression(if_statement.condition, symbol_table)?;
                 let condition_type = resolved_type(analyzed_condition);
 
                 match condition_type {
@@ -442,30 +448,25 @@ impl<'a> TypeResolver {
                 }
 
                 let analyzed_then_block =
-                    Self::analyze_block(allocator, if_statement.then_block, symbol_table, in_loop)?;
+                    self.analyze_block(if_statement.then_block, symbol_table, in_loop)?;
                 let analyzed_else_block = if let Some(else_block) = if_statement.else_block {
-                    Some(Self::analyze_if_else_block(
-                        allocator,
-                        else_block,
-                        symbol_table,
-                        in_loop,
-                    )?)
+                    Some(self.analyze_if_else_block(else_block, symbol_table, in_loop)?)
                 } else {
                     None
                 };
 
-                let analyzed_if_statement = allocator.alloc(IfStatement {
+                let analyzed_if_statement = self.allocator.alloc(IfStatement {
                     condition: analyzed_condition,
                     then_block: analyzed_then_block,
                     else_block: analyzed_else_block,
                 });
-                Ok(allocator.alloc(IfElseBlock::If(analyzed_if_statement)))
+                Ok(self.allocator.alloc(IfElseBlock::If(analyzed_if_statement)))
             }
         }
     }
 
     fn analyze_expression(
-        allocator: &'a AstAllocator,
+        &self,
         expr: &Expression<PhaseTopLevelDeclarationCollected>,
         symbol_table: &'a SymbolTable<'a>,
     ) -> Result<&'a Expression<'a, PhaseTypeResolved<'a>>, SemanticAnalysisError> {
@@ -485,7 +486,7 @@ impl<'a> TypeResolver {
                             | SymbolKind::Argument {
                                 argument_type: resolved_type,
                                 ..
-                            } => Ok(allocator.alloc(Expression::Identifier {
+                            } => Ok(self.allocator.alloc(Expression::Identifier {
                                 name: symbol.id,
                                 resolved_type: Some(resolved_type),
                             })),
@@ -559,7 +560,7 @@ impl<'a> TypeResolver {
                         // Type-check all arguments
                         let actual_arguments = args
                             .iter()
-                            .map(|arg| Self::analyze_expression(allocator, arg, symbol_table))
+                            .map(|arg| self.analyze_expression(arg, symbol_table))
                             .collect::<Result<Vec<_>, _>>()?;
 
                         // Check each argument type against the expected type
@@ -606,9 +607,9 @@ impl<'a> TypeResolver {
                             }
                         }
 
-                        let typed_args = allocator.new_bump_vec_from_iter(actual_arguments);
+                        let typed_args = self.allocator.new_bump_vec_from_iter(actual_arguments);
 
-                        Ok(allocator.alloc(Expression::FunctionCall {
+                        Ok(self.allocator.alloc(Expression::FunctionCall {
                             name: function_symbol.id,
                             args: typed_args,
                             return_type: signature.return_type,
@@ -618,7 +619,7 @@ impl<'a> TypeResolver {
             }
 
             // Literals will never fail
-            Expression::Literal { value, .. } => Ok(allocator.alloc(Expression::Literal {
+            Expression::Literal { value, .. } => Ok(self.allocator.alloc(Expression::Literal {
                 resolved_type: Some(Type::of_literal(value)),
                 value: value.clone(),
             })),
@@ -627,7 +628,7 @@ impl<'a> TypeResolver {
             Expression::Unary {
                 operator, operand, ..
             } => {
-                let typed_operand = Self::analyze_expression(allocator, operand, symbol_table)?;
+                let typed_operand = self.analyze_expression(operand, symbol_table)?;
                 let operand_type = resolved_type(typed_operand);
 
                 let operand_type =
@@ -637,7 +638,7 @@ impl<'a> TypeResolver {
                     })?;
 
                 if Self::unary_op_is_allowed(operator.clone(), operand_type) {
-                    Ok(allocator.alloc(Expression::Unary {
+                    Ok(self.allocator.alloc(Expression::Unary {
                         resolved_type: operand_type,
                         operator: operator.clone(),
                         operand: typed_operand,
@@ -657,8 +658,8 @@ impl<'a> TypeResolver {
                 right,
                 ..
             } => {
-                let typed_left = Self::analyze_expression(allocator, left, symbol_table)?;
-                let typed_right = Self::analyze_expression(allocator, right, symbol_table)?;
+                let typed_left = self.analyze_expression(left, symbol_table)?;
+                let typed_right = self.analyze_expression(right, symbol_table)?;
                 let left_type = resolved_type(typed_left);
                 let right_type = resolved_type(typed_right);
 
@@ -678,7 +679,7 @@ impl<'a> TypeResolver {
                 })?;
 
                 if Self::bin_op_is_allowed(operator.clone(), left_type, right_type) {
-                    Ok(allocator.alloc(Expression::Binary {
+                    Ok(self.allocator.alloc(Expression::Binary {
                         result_type: Self::type_of_operator(operator.clone(), left_type),
                         operator: operator.clone(),
                         operand_type: left_type,
