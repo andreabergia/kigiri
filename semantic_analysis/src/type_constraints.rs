@@ -1,7 +1,7 @@
-use crate::Type;
 use crate::semantic_analyzer::SemanticAnalysisError;
-use kigiri_memory::{StringId, resolve_string_id};
-use std::collections::HashMap;
+use crate::Type;
+use kigiri_memory::{resolve_string_id, StringId};
+use std::collections::{HashMap, HashSet};
 
 enum Constraint {
     TypeEqual {
@@ -17,13 +17,15 @@ enum Constraint {
 pub type SymbolToType = HashMap<StringId, Type>;
 
 struct ConstraintSolver {
-    assigned_symbols: SymbolToType,
+    to_assign: HashSet<StringId>,
+    assigned: SymbolToType,
 }
 
 impl ConstraintSolver {
-    fn new() -> Self {
+    fn new(symbol_universe: &[StringId]) -> Self {
         Self {
-            assigned_symbols: HashMap::new(),
+            to_assign: symbol_universe.iter().copied().collect(),
+            assigned: HashMap::new(),
         }
     }
 
@@ -36,9 +38,14 @@ impl ConstraintSolver {
             current = self.iteration(&current)?;
         }
 
-        // TODO: check all symbols got assigned
-
-        Ok(std::mem::take(&mut self.assigned_symbols))
+        let unresolved = self.to_assign.iter().next();
+        if let Some(unresolved) = unresolved {
+            Err(SemanticAnalysisError::UnableToInferTypeOfSymbol {
+                symbol: Self::name(*unresolved)?,
+            })
+        } else {
+            Ok(std::mem::take(&mut self.assigned))
+        }
     }
 
     fn iteration(
@@ -54,9 +61,9 @@ impl ConstraintSolver {
                     required_type,
                 } => self.assign_type(symbol, required_type)?,
                 Constraint::TypeSameAs { symbol, other } => {
-                    if let Some(type_1) = self.assigned_symbols.get(symbol).cloned() {
+                    if let Some(type_1) = self.assigned.get(symbol).cloned() {
                         self.assign_type(other, &type_1)?;
-                    } else if let Some(type_2) = self.assigned_symbols.get(other).cloned() {
+                    } else if let Some(type_2) = self.assigned.get(other).cloned() {
                         self.assign_type(symbol, &type_2)?;
                     } else {
                         // Leave it for next iteration
@@ -77,19 +84,23 @@ impl ConstraintSolver {
         symbol: &StringId,
         required_type: &Type,
     ) -> Result<(), SemanticAnalysisError> {
-        match self.assigned_symbols.get(symbol) {
+        match self.assigned.get(symbol) {
             None => {
-                self.assigned_symbols.insert(*symbol, *required_type);
+                self.assigned.insert(*symbol, *required_type);
+                let removed = self.to_assign.remove(symbol);
+                if !removed {
+                    return Err(SemanticAnalysisError::InternalError {
+                        message: format!(
+                            "symbol \"{}\" was not present in to_assign set",
+                            Self::name(*symbol)?
+                        ),
+                    });
+                }
             }
             Some(previously_assigned_type) => {
                 if previously_assigned_type != required_type {
-                    let symbol_name =
-                        resolve_string_id(*symbol).ok_or(SemanticAnalysisError::InternalError {
-                            message: "failed to resolve symbol name".to_string(),
-                        })?;
-
                     return Err(SemanticAnalysisError::ConflictingTypeRequirements {
-                        symbol: symbol_name.to_string(),
+                        symbol: Self::name(*symbol)?,
                         first_type: previously_assigned_type.to_string(),
                         second_type: required_type.to_string(),
                     });
@@ -97,6 +108,14 @@ impl ConstraintSolver {
             }
         }
         Ok(())
+    }
+
+    fn name(string_id: StringId) -> Result<String, SemanticAnalysisError> {
+        resolve_string_id(string_id)
+            .map(|s| s.to_string())
+            .ok_or_else(|| SemanticAnalysisError::InternalError {
+                message: format!("failed to resolve symbol name for {:?}", string_id),
+            })
     }
 }
 
@@ -113,7 +132,7 @@ mod tests {
             symbol: symbol_a,
             required_type: Type::I32,
         }];
-        let mut solver = ConstraintSolver::new();
+        let mut solver = ConstraintSolver::new(&[symbol_a]);
         let result = solver.solve(constraint).unwrap();
 
         assert_eq!(result.len(), 1);
@@ -136,7 +155,7 @@ mod tests {
             },
         ];
 
-        let mut solver = ConstraintSolver::new();
+        let mut solver = ConstraintSolver::new(&[symbol_a, symbol_b]);
         let result = solver.solve(constraint).unwrap();
 
         assert_eq!(result.len(), 2);
@@ -159,13 +178,13 @@ mod tests {
             },
         ];
 
-        let mut solver = ConstraintSolver::new();
+        let mut solver = ConstraintSolver::new(&[symbol_a]);
         let result = solver.solve(constraint).expect_err("should be invalid");
 
         assert_eq!(
             result.to_string(),
             "conflicting type requirements for symbol \"a\": first type u64, second type i32"
-        )
+        );
     }
 
     #[test]
@@ -193,12 +212,46 @@ mod tests {
             },
         ];
 
-        let mut solver = ConstraintSolver::new();
+        let mut solver = ConstraintSolver::new(&[symbol_a, symbol_b, symbol_c]);
         let result = solver.solve(constraint).expect_err("should be invalid");
 
         assert_eq!(
             result.to_string(),
             "conflicting type requirements for symbol \"c\": first type i32, second type u64"
-        )
+        );
+    }
+
+    #[test]
+    fn constraint_for_symbol_not_marked_to_assign() {
+        let symbol_a = intern_string("a");
+
+        let constraint = vec![Constraint::TypeEqual {
+            symbol: symbol_a,
+            required_type: Type::U64,
+        }];
+
+        let mut solver = ConstraintSolver::new(&[]);
+        let result = solver.solve(constraint).expect_err("should be invalid");
+
+        assert_eq!(
+            result.to_string(),
+            "internal error: symbol \"a\" was not present in to_assign set"
+        );
+    }
+
+    #[test]
+    fn symbol_type_unsolvable() {
+        let symbol_a = intern_string("a");
+        let symbol_b = intern_string("b");
+
+        let constraint = vec![Constraint::TypeEqual {
+            symbol: symbol_a,
+            required_type: Type::U64,
+        }];
+
+        let mut solver = ConstraintSolver::new(&[symbol_a, symbol_b]);
+        let result = solver.solve(constraint).expect_err("should be invalid");
+
+        assert_eq!(result.to_string(), "unable to infer type for symbol \"b\"");
     }
 }

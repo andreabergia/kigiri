@@ -88,6 +88,8 @@ pub enum SemanticAnalysisError {
         first_type: String,
         second_type: String,
     },
+    #[error("unable to infer type for symbol \"{symbol}\"")]
+    UnableToInferTypeOfSymbol { symbol: String },
 }
 
 #[derive(Default)]
