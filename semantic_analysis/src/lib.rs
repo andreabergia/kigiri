@@ -4,6 +4,7 @@ mod phase_return_path_analyzer;
 mod phase_top_level_declaration_collector;
 mod phase_type_resolver;
 mod semantic_analyzer;
+mod type_constraints;
 mod types;
 
 pub use ast_typed::*;

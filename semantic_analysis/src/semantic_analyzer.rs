@@ -80,6 +80,14 @@ pub enum SemanticAnalysisError {
     InternalError { message: String },
     #[error("function \"{function_name}\" does not return a value on all paths")]
     NotAllPathsReturnAValue { function_name: String },
+    #[error(
+        "conflicting type requirements for symbol \"{symbol}\": first type {first_type}, second type {second_type}"
+    )]
+    ConflictingTypeRequirements {
+        symbol: String,
+        first_type: String,
+        second_type: String,
+    },
 }
 
 #[derive(Default)]
